@@ -20,8 +20,13 @@ Trois principes d'architecture à respecter dans toute modification :
 
 1. **Aucun modèle fondamental n'est développé ici, et aucun agrégateur.**
    Chaque capacité IA appelle l'API OFFICIELLE de l'éditeur du modèle
-   (BFL, Google, ByteDance ARK, Kling, Runway, ElevenLabs) — pas de
-   vendor lock-in. Le catalogue `lib/ai/catalog.ts` (feature -> candidats
+   (BFL, Google, Kling, Runway, ElevenLabs, OpenAI) — pas de
+   vendor lock-in. **Exception assumée** (demande explicite du propriétaire,
+   juillet 2026) : Magic Hour, plateforme AGRÉGATRICE, est câblée comme
+   fournisseur `magichour` (image : flux-2-klein épinglé, éligible free
+   tier ; vidéo : routage `default`) — ne pas ajouter d'autre agrégateur
+   sans décision explicite. Le catalogue `lib/ai/catalog.ts`
+   (feature -> candidats
    ordonnés) et les adaptateurs `lib/ai/providers/` sont le centre de
    l'architecture : changer de fournisseur/modèle = modifier UNE entrée
    du catalogue (+ éventuellement son adaptateur), jamais de code ailleurs.
@@ -84,7 +89,9 @@ lib/
   ai/catalog.ts               # LE fichier central : feature -> candidats
                               #   (provider, modelId officiel, coût interne)
   ai/providers/               # un adaptateur par API officielle (bfl, google,
-                              #   ark, kling, runway, elevenlabs) + index.ts
+                              #   kling, runway, elevenlabs, openai +
+                              #   magichour, agrégateur — exception §1 ;
+                              #   comfyui — serveur local de test) + index.ts
                               #   (registre + contrôle de configuration)
   ai/router.ts                # orchestration : tri (tier + modèle choisi),
                               #   fallback, chaînage
@@ -102,6 +109,8 @@ lib/
   utils.ts                    # cn() (clsx + tailwind-merge)
 scripts/
   simulate-fallback.ts        # tests hors-ligne du routeur (npm run test:fallback)
+  smoke-comfyui.ts            # test de l'adaptateur ComfyUI contre un serveur
+                              #   mock (npm run test:comfyui)
 legacy/                       # ancien backend FastAPI (référence, non utilisé)
 ```
 
@@ -129,6 +138,7 @@ cp .env.example .env.local   # puis renseigner au moins UN fournisseur
 npm run dev                  # http://localhost:3000 -> /app/dashboard
 npm run build                # vérif compile + lint + types
 npm run test:fallback        # tests hors-ligne du routeur (fallback, tri)
+npm run test:comfyui         # test hors-ligne de l'adaptateur ComfyUI (mock)
 ```
 
 Vérification rapide : `GET /app/dashboard` → 200 ; `POST /api/generate`
@@ -141,9 +151,12 @@ du fallback ci-dessus sont définis.
 
 Toutes les clés sont côté serveur via `.env.local` (voir `.env.example`,
 chaque entrée y est documentée) : `BFL_API_KEY` (Flux Kontext),
-`GOOGLE_API_KEY` (Nano Banana), `ARK_API_KEY` (Seedream/Seedance),
-`KLING_ACCESS_KEY` + `KLING_SECRET_KEY` (Kling), `RUNWAY_API_KEY` (Gen-4),
-`ELEVENLABS_API_KEY` (narration). Un fournisseur non configuré échoue vite
+`GOOGLE_API_KEY` (Nano Banana),
+`KLING_SECRET_KEY` (Kling), `RUNWAY_API_KEY` (Gen-4),
+`ELEVENLABS_API_KEY` (narration), `OPENAI_API_KEY` (GPT Image + Sora),
+`MAGIC_HOUR_API_KEY` (agrégateur — exception §1),
+`COMFYUI_CHECKPOINT` (+ options, serveur local de test — voir .env.example).
+Un fournisseur non configuré échoue vite
 et le routeur bascule sur le suivant — configurer au moins un fournisseur
 image et un fournisseur vidéo pour couvrir les deux fonctionnalités.
 À venir : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,

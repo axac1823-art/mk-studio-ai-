@@ -21,7 +21,17 @@ export type Resolution = "1K" | "2K" | "4K";
 /** Fournisseurs d'API directs supportés (PAS d'agrégateur — chaque modèle
  *  est appelé sur l'API officielle de son éditeur). Ajouter un fournisseur
  *  = ajouter son adaptateur dans lib/ai/providers/ + une entrée ici. */
-export type ProviderName = "bfl" | "google" | "ark" | "kling" | "runway" | "elevenlabs";
+export type ProviderName =
+  | "bfl"
+  | "google"
+  | "kling"
+  | "runway"
+  | "elevenlabs"
+  | "openai"
+  // Agrégateur — exception assumée au principe ci-dessus (voir AGENTS.md §1).
+  | "magichour"
+  // Serveur LOCAL de test (GPU de l'utilisateur) — dev hors-ligne, pas pour la prod.
+  | "comfyui";
 
 /** Requête normalisée, indépendante de tout fournisseur. */
 export interface GenerationRequest {

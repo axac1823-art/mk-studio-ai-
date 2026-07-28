@@ -100,3 +100,13 @@ export function parseDataUri(uri: string): { mime: string; data: string } | null
 export function toBase64OrUrl(uri: string): string {
   return parseDataUri(uri)?.data ?? uri;
 }
+
+/** Base64 brut -> octets pour FormData/fetch : les typings DOM exigent un
+ *  buffer NON partagé (Uint8Array<ArrayBuffer>) pour Blob/BodyInit — la
+ *  copie explicite évite les erreurs de typage avec un Buffer Node. */
+export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+  const buf = Buffer.from(base64, "base64");
+  const bytes = new Uint8Array(new ArrayBuffer(buf.length));
+  bytes.set(buf);
+  return bytes;
+}

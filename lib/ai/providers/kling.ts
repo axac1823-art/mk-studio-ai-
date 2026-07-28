@@ -1,13 +1,13 @@
 // Adaptateur Kling (Kuaishou) — API officielle (https://app.klingai.com).
 // Modèles servis : kling-v3, kling-v2-5-turbo (image->vidéo).
 //
-// Auth : JWT HS256 signé avec la paire AccessKey/SecretKey (généré ici via
-// node:crypto, sans dépendance). Schéma : POST /v1/videos/image2video
-// -> data.task_id, puis polling GET /v1/videos/image2video/{task_id}
-// -> data.task_status "succeed" -> data.task_result.videos[0].url.
+// Auth : JWT HS256 signé avec la SecretKey seule (généré ici via
+// node:crypto, sans dépendance) ; le claim `iss` porte la même clé.
+// Schéma : POST /v1/videos/image2video -> data.task_id, puis polling
+// GET /v1/videos/image2video/{task_id} -> data.task_status "succeed"
+// -> data.task_result.videos[0].url.
 //
-// Clés : KLING_ACCESS_KEY + KLING_SECRET_KEY (console développeur Kling)
-// — serveur uniquement.
+// Clé : KLING_SECRET_KEY (console développeur Kling) — serveur uniquement.
 import { createHmac } from "crypto";
 
 import type { ProviderAdapter } from "../types";
@@ -19,14 +19,13 @@ function base64url(input: string): string {
   return Buffer.from(input).toString("base64url");
 }
 
-/** JWT HS256 tel qu'attendu par l'API Kling (iss = AccessKey, signé avec la
- *  SecretKey, validité 30 min). */
+/** JWT HS256 tel qu'attendu par l'API Kling (iss = SecretKey, signé avec la
+ *  même clé, validité 30 min). */
 function signKlingToken(): string {
-  const accessKey = requireEnv("KLING_ACCESS_KEY");
   const secretKey = requireEnv("KLING_SECRET_KEY");
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payload = base64url(JSON.stringify({ iss: accessKey, exp: now + 1800, nbf: now - 5 }));
+  const payload = base64url(JSON.stringify({ iss: secretKey, exp: now + 1800, nbf: now - 5 }));
   const signature = createHmac("sha256", secretKey).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${signature}`;
 }

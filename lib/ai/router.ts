@@ -135,7 +135,9 @@ async function runImagePipeline(
 
   // Post-traitement : upscale si 2K/4K demandé (le modèle de base ne
   // produit pas cette résolution nativement) — invisible pour l'utilisateur.
-  if (req.resolution !== "1K") {
+  // Liste de candidats vide (ex. Seedream/ARK retiré) = étape sautée : le
+  // rendu est livré à sa résolution native (dégradation gracieuse).
+  if (req.resolution !== "1K" && MODEL_CATALOG.upscale.length > 0) {
     onStage?.("upscaling");
     const upscaleCandidates = orderCandidates(MODEL_CATALOG.upscale, req.quality);
     const upscaleReq: GenerationRequest = {

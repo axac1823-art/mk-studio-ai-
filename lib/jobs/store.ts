@@ -25,7 +25,15 @@ export interface Job {
   createdAt: number;
 }
 
-const jobs = new Map<string, Job>();
+// En dev, Next.js instancie ce module SÉPARÉMENT pour chaque route handler :
+// POST /api/generate et GET /api/generate/[id] ne partageraient alors pas le
+// même Map (le poll 404 systématiquement). Ancré sur globalThis, le store
+// reste unique quelle que soit la compilation.
+const globalForJobs = globalThis as unknown as { __renderStudioJobs?: Map<string, Job> };
+if (!globalForJobs.__renderStudioJobs) {
+  globalForJobs.__renderStudioJobs = new Map<string, Job>();
+}
+const jobs = globalForJobs.__renderStudioJobs;
 
 export function createJob(id: string): Job {
   const job: Job = { id, status: "pending", createdAt: Date.now() };

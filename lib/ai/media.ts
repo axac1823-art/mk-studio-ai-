@@ -35,12 +35,32 @@ async function ensureFfmpeg(): Promise<void> {
 }
 
 async function downloadToTemp(url: string, ext: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download failed (${res.status})`);
   await fs.mkdir(MEDIA_DIR, { recursive: true });
   const filePath = path.join(MEDIA_DIR, `${randomUUID()}${ext}`);
+  // Les vidéos déjà stockées en local (ex. sortie Sora, voir providers/
+  // openai.ts) sont lues sur disque — `fetch` ne résout pas les chemins
+  // relatifs `/api/media/...` côté serveur.
+  const localMatch = /^\/api\/media\/([a-f0-9-]+\.mp4)$/.exec(url);
+  if (localMatch) {
+    const buffer = await readMediaFile(localMatch[1]);
+    if (!buffer) throw new Error("local media not found");
+    await fs.writeFile(filePath, buffer);
+    return filePath;
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed (${res.status})`);
   await fs.writeFile(filePath, Buffer.from(await res.arrayBuffer()));
   return filePath;
+}
+
+/** Stocke une vidéo produite côté serveur (ex. MP4 téléchargé depuis l'API
+ *  d'un fournisseur qui ne publie pas d'URL de sortie — Sora) et retourne
+ *  le chemin PUBLIC `/api/media/<nom>.mp4`, comme le merge ffmpeg. */
+export async function storeVideoBuffer(buffer: Buffer): Promise<string> {
+  await fs.mkdir(MEDIA_DIR, { recursive: true });
+  const outputName = `${randomUUID()}.mp4`;
+  await fs.writeFile(path.join(MEDIA_DIR, outputName), buffer);
+  return `/api/media/${outputName}`;
 }
 
 /** Fusionne une vidéo (URL CDN) et une piste audio (URL CDN) en un seul

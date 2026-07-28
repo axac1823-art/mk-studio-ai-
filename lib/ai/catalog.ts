@@ -88,43 +88,10 @@ function googleEditInput(req: GenerationRequest): Record<string, unknown> {
   };
 }
 
-/** ByteDance Seedream (ARK) : édition multi-références, `size` accepte
- *  directement "1K"/"2K"/"4K". */
-function seedreamEditInput(req: GenerationRequest): Record<string, unknown> {
-  return {
-    prompt: req.prompt,
-    image: [req.imageUrl, ...req.referenceUrls],
-    size: req.resolution,
-    response_format: "url",
-    quantity: req.quantity,
-  };
-}
-
-/** Upscale via Seedream : ré-édition de la sortie à la résolution cible. */
-function seedreamUpscaleInput(req: GenerationRequest): Record<string, unknown> {
-  return {
-    prompt: "enhance fine details and textures, ultra high resolution, keep the exact same composition",
-    image: [req.imageUrl],
-    size: req.resolution === "4K" ? "4K" : "2K",
-    response_format: "url",
-  };
-}
-
 /** Les durées demandées (4/8/12 s) sont mappées au plus proche supporté
  *  par les modèles vidéo (généralement 5 ou 10 s). */
 function mapDuration(req: GenerationRequest): number {
   return (req.durationSeconds ?? 4) <= 6 ? 5 : 10;
-}
-
-/** ByteDance Seedance (ARK) : tâche `contents/generations` — les réglages
- *  passent en flags inline dans le texte (--ratio, --dur). */
-function seedanceVideoInput(req: GenerationRequest): Record<string, unknown> {
-  return {
-    content: [
-      { type: "text", text: `${req.prompt} --ratio ${req.aspectRatio} --dur ${mapDuration(req)}` },
-      { type: "image_url", image_url: { url: req.imageUrl } },
-    ],
-  };
 }
 
 /** Kling officiel : image base64 ou URL ; les ratios 4:3/3:4 ne sont pas
@@ -164,6 +131,79 @@ function runwayVideoInput(req: GenerationRequest): Record<string, unknown> {
   };
 }
 
+/** OpenAI GPT Image : édition multi-images ; tailles au plus proche du
+ *  ratio demandé (l'API n'offre que 3 tailles), qualité depuis le tier. */
+function openaiEditInput(req: GenerationRequest): Record<string, unknown> {
+  return {
+    prompt: req.prompt,
+    images: [req.imageUrl, ...req.referenceUrls],
+    size:
+      req.aspectRatio === "16:9" || req.aspectRatio === "4:3"
+        ? "1536x1024"
+        : req.aspectRatio === "9:16" || req.aspectRatio === "3:4"
+          ? "1024x1536"
+          : "1024x1024",
+    quality: req.quality === "pro" ? "high" : "medium",
+    quantity: req.quantity,
+  };
+}
+
+/** OpenAI Sora : les durées demandées (4/8/12 s) correspondent EXACTEMENT
+ *  à celles de l'API ; ratios mappés sur les 2 orientations disponibles. */
+function soraVideoInput(req: GenerationRequest): Record<string, unknown> {
+  return {
+    prompt: req.prompt,
+    image_url: req.imageUrl,
+    seconds: String(req.durationSeconds ?? 4),
+    size: req.aspectRatio === "9:16" || req.aspectRatio === "3:4" ? "720x1280" : "1280x720",
+  };
+}
+
+/** Magic Hour (agrégateur — exception assumée, voir AGENTS.md §1) : le
+ *  modèle épinglé (flux-2-klein) n'accepte que auto/1:1/16:9/9:16 — les
+ *  ratios 4:3 et 3:4 replient sur le plus proche supporté (même logique
+ *  que pour Kling vidéo). Résolution "auto" : mappée côté serveur selon
+ *  le TIER de l'abonnement (le free tier rejette 1k+ -> 640px) — le
+ *  réglage résolution du studio est donc ignoré pour ce candidat. */
+function magichourEditInput(req: GenerationRequest): Record<string, unknown> {
+  const ratio =
+    req.aspectRatio === "16:9" || req.aspectRatio === "4:3"
+      ? "16:9"
+      : req.aspectRatio === "9:16" || req.aspectRatio === "3:4"
+        ? "9:16"
+        : "1:1";
+  return {
+    prompt: req.prompt,
+    images: [req.imageUrl, ...req.referenceUrls],
+    aspectRatio: ratio,
+    resolution: "auto",
+    quantity: req.quantity,
+  };
+}
+
+/** Magic Hour image-to-video : durées transmises telles quelles (le routage
+ *  `default` vise kling-3.0 sur tiers payants, qui accepte 3-15 s),
+ *  résolution depuis le tier. */
+function magichourVideoInput(req: GenerationRequest): Record<string, unknown> {
+  return {
+    prompt: req.prompt,
+    image: req.imageUrl,
+    endSeconds: req.durationSeconds ?? 4,
+    resolution: req.quality === "pro" ? "1080p" : "720p",
+  };
+}
+
+/** ComfyUI (serveur LOCAL de test) : img2img — l'image source est versée
+ *  dans input/ par l'adaptateur ; dimensions et composition suivent
+ *  l'original (denoise borné < 1). */
+function comfyuiImg2imgInput(req: GenerationRequest): Record<string, unknown> {
+  return {
+    prompt: req.prompt,
+    image: req.imageUrl,
+    quantity: req.quantity,
+  };
+}
+
 function ttsInput(req: GenerationRequest): Record<string, unknown> {
   return { text: req.narrationScript ?? "" };
 }
@@ -200,17 +240,6 @@ export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
       extractOutput: extractImageUrls,
     },
     {
-      key: "edit-gamma",
-      provider: "ark",
-      modelId: "doubao-seedream-4-5-251128",
-      costWeight: 3,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: seedreamEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
       key: "edit-alpha",
       provider: "bfl",
       modelId: "flux-kontext-pro",
@@ -232,6 +261,57 @@ export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
       buildInput: googleEditInput,
       extractOutput: extractImageUrls,
     },
+    {
+      key: "edit-delta-pro",
+      provider: "openai",
+      modelId: "gpt-image-1.5",
+      costWeight: 7,
+      maxReferences: 13,
+      timeoutMs: IMAGE_TIMEOUT_MS,
+      tiers: ["pro"],
+      buildInput: openaiEditInput,
+      extractOutput: extractImageUrls,
+    },
+    {
+      key: "edit-delta",
+      provider: "openai",
+      modelId: "gpt-image-1",
+      costWeight: 5,
+      maxReferences: 13,
+      timeoutMs: IMAGE_TIMEOUT_MS,
+      tiers: ["standard", "pro"],
+      buildInput: openaiEditInput,
+      extractOutput: extractImageUrls,
+    },
+    {
+      // Agrégateur (exception assumée, voir AGENTS.md §1) : flux-2-klein est
+      // ÉPINGLÉ car c'est le seul modèle d'édition éligible au free tier
+      // (max 5 images additionnelles, résolution "auto" = plafond du tier)
+      // — repasser à `default` (routage recommandé) sur un plan payant.
+      key: "edit-epsilon",
+      provider: "magichour",
+      modelId: "flux-2-klein",
+      costWeight: 5,
+      maxReferences: 5,
+      timeoutMs: IMAGE_TIMEOUT_MS,
+      tiers: ["standard", "pro"],
+      buildInput: magichourEditInput,
+      extractOutput: extractImageUrls,
+    },
+    {
+      // Provider LOCAL de test (votre GPU, gratuit, hors-ligne) : img2img
+      // via ComfyUI — dernier recours du routage auto, ou essayé en premier
+      // si choisi dans le dropdown. Pas de références (graphe par défaut).
+      key: "edit-zeta",
+      provider: "comfyui",
+      modelId: "img2img",
+      costWeight: 0,
+      maxReferences: 0,
+      timeoutMs: IMAGE_TIMEOUT_MS,
+      tiers: ["standard", "pro"],
+      buildInput: comfyuiImg2imgInput,
+      extractOutput: extractImageUrls,
+    },
   ],
 
   mood_swap: [
@@ -244,17 +324,6 @@ export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
       timeoutMs: IMAGE_TIMEOUT_MS,
       tiers: ["standard", "pro"],
       buildInput: bflEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-gamma",
-      provider: "ark",
-      modelId: "doubao-seedream-4-5-251128",
-      costWeight: 3,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: seedreamEditInput,
       extractOutput: extractImageUrls,
     },
   ],
@@ -284,32 +353,12 @@ export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
     },
   ],
 
-  upscale: [
-    {
-      key: "upscale-alpha",
-      provider: "ark",
-      modelId: "doubao-seedream-4-5-251128",
-      costWeight: 3,
-      maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: seedreamUpscaleInput,
-      extractOutput: extractImageUrls,
-    },
-  ],
+  // Plus de candidat upscale (Seedream/ARK retiré) : le pipeline saute
+  // l'étape quand la liste est vide (voir router.runImagePipeline) et livre
+  // le rendu à sa résolution native.
+  upscale: [],
 
   animate: [
-    {
-      key: "video-alpha",
-      provider: "ark",
-      modelId: "doubao-seedance-1-0-pro-250528",
-      costWeight: 20,
-      maxReferences: 0,
-      timeoutMs: VIDEO_TIMEOUT_MS,
-      tiers: ["pro"],
-      buildInput: seedanceVideoInput,
-      extractOutput: extractVideoUrl,
-    },
     {
       key: "video-beta-pro",
       provider: "kling",
@@ -343,6 +392,42 @@ export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
       timeoutMs: VIDEO_TIMEOUT_MS,
       tiers: ["standard"],
       buildInput: runwayVideoInput,
+      extractOutput: extractVideoUrl,
+    },
+    {
+      key: "video-delta-pro",
+      provider: "openai",
+      modelId: "sora-2-pro",
+      costWeight: 19,
+      maxReferences: 0,
+      timeoutMs: VIDEO_TIMEOUT_MS,
+      tiers: ["pro"],
+      buildInput: soraVideoInput,
+      extractOutput: extractVideoUrl,
+    },
+    {
+      key: "video-delta",
+      provider: "openai",
+      modelId: "sora-2",
+      costWeight: 16,
+      maxReferences: 0,
+      timeoutMs: VIDEO_TIMEOUT_MS,
+      tiers: ["standard", "pro"],
+      buildInput: soraVideoInput,
+      extractOutput: extractVideoUrl,
+    },
+    {
+      // Agrégateur (exception assumée, voir AGENTS.md §1) : `default` ~
+      // kling-3.0 sur tiers payants, ltx-2.3 en gratuit (12 s rejeté ->
+      // fallback sur les fournisseurs directs).
+      key: "video-epsilon",
+      provider: "magichour",
+      modelId: "default",
+      costWeight: 16,
+      maxReferences: 0,
+      timeoutMs: VIDEO_TIMEOUT_MS,
+      tiers: ["standard", "pro"],
+      buildInput: magichourVideoInput,
       extractOutput: extractVideoUrl,
     },
   ],
