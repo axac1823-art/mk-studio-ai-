@@ -4,11 +4,13 @@
 // libellés PRODUIT génériques), comparateur avant/après pour les images,
 // lecteur vidéo pour Animate, et vignettes de variations si quantité > 1.
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompareSlider } from "@/components/compare-slider";
+import { saveResult } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 export type ResultState =
@@ -32,6 +34,12 @@ interface ResultPanelProps {
 
 export function ResultPanel({ result }: ResultPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // Sortie actuellement affichée (variation sélectionnée pour les images) —
+  // c'est elle que le bouton Download enregistre.
+  const selectedUrl =
+    result.status === "done"
+      ? result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]
+      : null;
 
   return (
     <Card>
@@ -102,6 +110,19 @@ export function ResultPanel({ result }: ResultPanelProps) {
               </div>
             )}
           </>
+        )}
+
+        {result.status === "done" && selectedUrl && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-end"
+            onClick={() => void saveResult(selectedUrl, result.kind)}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Download
+          </Button>
         )}
       </CardContent>
     </Card>
