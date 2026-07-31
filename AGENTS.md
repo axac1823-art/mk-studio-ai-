@@ -99,12 +99,21 @@ lib/
   ai/prompt-templates.ts      # prompts VERSIONNÉS (fragments par preset)
   ai/media.ts                 # merge vidéo+audio ffmpeg, stockage temp local
   ai/logger.ts                # trace des tentatives (analytics interne)
+  ai/types.ts                 # schéma interne normalisé (Feature, Provider,
+                              #   GenerationRequest/Result) — le client ne
+                              #   connaît jamais les fournisseurs
+  ai/providers/http.ts        # helpers partagés des adaptateurs (JSON,
+                              #   polling avec timeout, base64)
   model-options.ts            # options du dropdown modèle (noms PRODUIT ->
                               #   clés génériques du catalogue) — CLIENT-SAFE
   presets.ts                  # métadonnées UI des presets (types de scène,
                               #   matériaux, éclairage, motion, bornes)
   costs.ts                    # coûts en crédits affichés/facturés
   credits.ts                  # solde (stub jusqu'au jalon DB)
+  features.ts                 # métadonnées d'affichage des onglets/features
+                              #   (noms PRODUIT) — CLIENT-SAFE
+  download.ts                 # téléchargement client d'un résultat (blob ->
+                              #   <a download>, repli nouvel onglet)
   jobs/store.ts               # jobs en mémoire (remplaçable par BullMQ)
   utils.ts                    # cn() (clsx + tailwind-merge)
 scripts/
@@ -240,5 +249,6 @@ Exigences d'architecture pour les jalons 3-4 (à respecter telles quelles) :
   prendra le relais au jalon DB.
 - L'historique du studio est **en mémoire** (session navigateur) — la
   persistance arrive avec la DB.
-- Le dépôt git existe mais n'a **aucun commit** — penser à committer.
+- Le dépôt est versionné (git). ⚠️ `.env` (clés réelles) ne doit jamais
+  être committé — il est listé dans `.gitignore`.
 - `legacy/` n'est pas destiné à être exécuté ; ne pas importer depuis.
