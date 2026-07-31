@@ -1,29 +1,42 @@
 // Adaptateur ComfyUI — serveur LOCAL de test (défaut http://127.0.0.1:8188).
-// Sert à faire tourner le pipeline SANS clé payante : img2img sur le GPU de
-// l'utilisateur, gratuit et hors-ligne. Ce n'est pas un fournisseur au sens
-// produit (la qualité dépend du checkpoint chargé) — mais il respecte le
-// même contrat ProviderAdapter que les API officielles et le fallback reste
-// automatique si le serveur est éteint.
+// Sert à faire tourner le pipeline SANS clé payante : img2img ET img2video
+// (i2v) sur le GPU de l'utilisateur, gratuit et hors-ligne. Ce n'est pas un
+// fournisseur au sens produit (la qualité dépend du checkpoint chargé) —
+// mais il respecte le même contrat ProviderAdapter que les API officielles
+// et le fallback reste automatique si le serveur est éteint.
 //
 // Schéma (API HTTP de ComfyUI) :
 //   1. POST /upload/image (multipart) — l'image source vers input/
 //   2. POST /prompt { prompt: <graphe de nœuds> } -> { prompt_id }
-//   3. polling GET /history/{prompt_id} -> outputs (SaveImage)
-//   4. GET /view?filename=... -> octets -> data URI (comme les autres
-//      adaptateurs, en attendant le stockage objet du jalon DB)
+//   3. polling GET /history/{prompt_id} -> outputs (SaveImage pour l'image,
+//      VHS_VideoCombine — clé "gifs" de l'historique — pour la vidéo)
+//   4. GET /view?filename=... -> octets -> data URI pour l'image ; pour la
+//      vidéo, stockage via lib/ai/media.ts -> /api/media/<nom>.mp4 (une
+//      data URI vidéo serait trop lourde)
 //
-// Le graphe par défaut (checkpoints SD1.5/SDXL : CheckpointLoaderSimple ->
-// CLIPTextEncode x2 -> LoadImage -> VAEEncode -> KSampler -> VAEDecode ->
-// SaveImage) est REMPLAÇABLE : COMFYUI_WORKFLOW_FILE pointe un JSON exporté
-// de ComfyUI en format API, avec les placeholders "{{PROMPT}}",
-// "{{NEGATIVE}}", "{{IMAGE}}", "{{SEED}}" — indispensable pour Flux ou tout
-// graphe custom.
+// Deux "endpoints" locaux (le modelId du catalogue choisit) :
+// - "img2img" (print_render) : graphe par défaut checkpoints SD1.5/SDXL
+//   (CheckpointLoaderSimple -> CLIPTextEncode x2 -> LoadImage -> VAEEncode
+//   -> KSampler -> VAEDecode -> SaveImage), REMPLAÇABLE via
+//   COMFYUI_WORKFLOW_FILE — indispensable pour Flux ou tout graphe custom ;
+// - "i2v" (animate) : PAS de graphe par défaut (Wan/LTX/SVD ont des nœuds
+//   trop différents, souvent via custom nodes) —
+//   COMFYUI_VIDEO_WORKFLOW_FILE est REQUIS (sinon échec vite -> fallback).
 //
-// Env : COMFYUI_CHECKPOINT (requis — nom exact du .safetensors dans
-// models/checkpoints) ; COMFYUI_BASE_URL, COMFYUI_DENOISE (défaut 0.55) et
-// COMFYUI_WORKFLOW_FILE optionnels. Serveur local : pas de clé, mais ces
-// variables restent serveur (jamais de NEXT_PUBLIC_ par convention).
+// Placeholders des fichiers de workflow (JSON exporté de ComfyUI en format
+// API, quotes incluses dans le fichier) : "{{PROMPT}}", "{{NEGATIVE}}",
+// "{{IMAGE}}", "{{SEED}}" ; vidéo uniquement : "{{FRAMES}}" (durée x fps),
+// "{{FPS}}", "{{WIDTH}}", "{{HEIGHT}}" — remplacés par des NOMBRES.
+//
+// Env : COMFYUI_CHECKPOINT (requis pour img2img — nom exact du
+// .safetensors dans models/checkpoints) ; COMFYUI_VIDEO_WORKFLOW_FILE
+// (requis pour i2v) ; COMFYUI_BASE_URL, COMFYUI_DENOISE (défaut 0.55),
+// COMFYUI_WORKFLOW_FILE et COMFYUI_VIDEO_FPS (défaut 16) optionnels.
+// Serveur local : pas de clé, mais ces variables restent serveur (jamais
+// de NEXT_PUBLIC_ par convention).
 import { readFile } from "fs/promises";
+
+import { storeVideoBuffer } from "../media";
 
 import type { ProviderAdapter } from "../types";
 import {
@@ -79,15 +92,49 @@ async function uploadImage(imageDataUri: string): Promise<string> {
   return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
 }
 
-interface WorkflowOptions {
+interface WorkflowValues {
   prompt: string;
   imageName: string;
   seed: number;
+  /** Vidéo uniquement — injectés dans les placeholders "{{FRAMES}}" etc. */
+  frames?: number;
+  fps?: number;
+  width?: number;
+  height?: number;
+}
+
+/** Substitue UN placeholder dans le JSON brut du workflow : la forme QUOTÉE
+ *  ("{{KEY}}") est remplacée par la valeur JSON — chaîne complète (quotes
+ *  réinsérées) ou nombre brut. Valeur undefined : no-op. */
+function substitute(raw: string, key: string, value: string | number | undefined): string {
+  if (value === undefined) return raw;
+  return raw.replaceAll(
+    `"{{${key}}}"`,
+    typeof value === "number" ? String(value) : JSON.stringify(value)
+  );
+}
+
+/** Charge un workflow exporté de ComfyUI (format API) et y injecte les
+ *  valeurs — les placeholders sont remplacés AVANT le parse JSON. */
+async function loadWorkflowFile(
+  file: string,
+  values: WorkflowValues
+): Promise<Record<string, unknown>> {
+  let raw = await readFile(file, "utf8");
+  raw = substitute(raw, "PROMPT", values.prompt);
+  raw = substitute(raw, "NEGATIVE", DEFAULT_NEGATIVE);
+  raw = substitute(raw, "IMAGE", values.imageName);
+  raw = substitute(raw, "SEED", values.seed);
+  raw = substitute(raw, "FRAMES", values.frames);
+  raw = substitute(raw, "FPS", values.fps);
+  raw = substitute(raw, "WIDTH", values.width);
+  raw = substitute(raw, "HEIGHT", values.height);
+  return JSON.parse(raw) as Record<string, unknown>;
 }
 
 /** Graphe minimal img2img pour checkpoints style SD1.5/SDXL (une seule
  *  image d'entrée, dimensions conservées — la composition suit l'original). */
-function defaultWorkflow(opts: WorkflowOptions): Record<string, unknown> {
+function defaultWorkflow(opts: WorkflowValues): Record<string, unknown> {
   return {
     "3": {
       class_type: "KSampler",
@@ -114,48 +161,53 @@ function defaultWorkflow(opts: WorkflowOptions): Record<string, unknown> {
   };
 }
 
-/** Charge le graphe custom si COMFYUI_WORKFLOW_FILE est défini, sinon le
- *  graphe par défaut. Les placeholders du fichier sont remplacés AVANT le
- *  parse JSON (valeurs de chaînes complètes, quotes incluses). */
-async function buildWorkflow(opts: WorkflowOptions): Promise<Record<string, unknown>> {
+/** Image : graphe custom si COMFYUI_WORKFLOW_FILE est défini, sinon le
+ *  graphe par défaut. */
+async function buildImageWorkflow(values: WorkflowValues): Promise<Record<string, unknown>> {
   const file = process.env.COMFYUI_WORKFLOW_FILE;
-  if (!file) return defaultWorkflow(opts);
-  const raw = await readFile(file, "utf8");
-  const replaced = raw
-    .replaceAll('"{{PROMPT}}"', JSON.stringify(opts.prompt))
-    .replaceAll('"{{NEGATIVE}}"', JSON.stringify(DEFAULT_NEGATIVE))
-    .replaceAll('"{{IMAGE}}"', JSON.stringify(opts.imageName))
-    .replaceAll('"{{SEED}}"', String(opts.seed));
-  return JSON.parse(replaced) as Record<string, unknown>;
+  if (!file) return defaultWorkflow(values);
+  return loadWorkflowFile(file, values);
 }
+
+/** Vidéo : pas de graphe par défaut (les pipelines Wan/LTX/SVD diffèrent
+ *  trop) — COMFYUI_VIDEO_WORKFLOW_FILE est requis (voir runVideo). */
 
 interface PromptSubmitResponse {
   prompt_id?: string;
   node_errors?: Record<string, unknown>;
 }
 
+type NodeOutputs = Record<
+  string,
+  {
+    images?: Array<{ filename?: string; subfolder?: string; type?: string }>;
+    // VideoHelperSuite (VHS_VideoCombine) publie les mp4 sous "gifs" ;
+    // certains nœuds custom utilisent "videos".
+    gifs?: Array<{ filename?: string; subfolder?: string; type?: string }>;
+    videos?: Array<{ filename?: string; subfolder?: string; type?: string }>;
+  }
+>;
+
 type History = Record<
   string,
   {
     status?: { completed?: boolean; status_str?: string };
-    outputs?: Record<string, { images?: Array<{ filename?: string; subfolder?: string; type?: string }> }>;
+    outputs?: NodeOutputs;
   }
 >;
 
-interface ProducedImage {
+interface ProducedFile {
   filename: string;
   subfolder: string;
   type: string;
 }
 
-async function runOne(input: Record<string, unknown>, timeoutMs: number): Promise<string> {
-  const imageName = await uploadImage(String(input.image ?? ""));
-  const workflow = await buildWorkflow({
-    prompt: String(input.prompt ?? ""),
-    imageName,
-    seed: Math.floor(Math.random() * 2 ** 32),
-  });
-
+/** POST /prompt + polling /history jusqu'aux outputs (erreur ou timeout =
+ *  échec de la tentative -> le routeur bascule sur le candidat suivant). */
+async function executeWorkflow(
+  workflow: Record<string, unknown>,
+  timeoutMs: number
+): Promise<NodeOutputs> {
   const submit = (await postJson(`${baseUrl()}/prompt`, {}, { prompt: workflow })) as PromptSubmitResponse;
   if (!submit.prompt_id) {
     throw new ProviderError(
@@ -164,54 +216,127 @@ async function runOne(input: Record<string, unknown>, timeoutMs: number): Promis
   }
   const promptId = submit.prompt_id;
 
-  const produced = await pollUntilDone<History>({
+  const outputs = await pollUntilDone<History>({
     fetchStatus: () => getJson(`${baseUrl()}/history/${promptId}`, {}),
     extractDone: (history) => {
       const entry = history[promptId];
-      if (!entry?.status?.completed) return null;
-      for (const nodeOutput of Object.values(entry.outputs ?? {})) {
-        const image = nodeOutput.images?.[0];
-        if (image?.filename) {
-          const result: ProducedImage = {
-            filename: image.filename,
-            subfolder: image.subfolder ?? "",
-            type: image.type ?? "output",
-          };
-          return result;
-        }
-      }
-      throw new ProviderError("comfyui: history completed without output image");
+      return entry?.status?.completed ? (entry.outputs ?? {}) : null;
     },
     extractError: (history) =>
       history[promptId]?.status?.status_str === "error" ? "comfyui: execution error" : null,
     timeoutMs,
     intervalMs: 2000,
   });
+  return outputs as NodeOutputs;
+}
 
-  const image = produced as ProducedImage;
+/** Premier fichier produit parmi les clés demandées (images pour img2img,
+ *  gifs/videos pour i2v), dans l'ordre des nœuds de sortie. */
+function firstFile(outputs: NodeOutputs, kinds: Array<"images" | "gifs" | "videos">): ProducedFile | null {
+  for (const nodeOutput of Object.values(outputs)) {
+    for (const kind of kinds) {
+      const file = nodeOutput[kind]?.[0];
+      if (file?.filename) {
+        return {
+          filename: file.filename,
+          subfolder: file.subfolder ?? "",
+          type: file.type ?? "output",
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/** GET /view -> octets du fichier produit (+ mime, utilisé pour la data
+ *  URI image). */
+async function fetchView(file: ProducedFile): Promise<{ buffer: Buffer; mime: string }> {
   const params = new URLSearchParams({
-    filename: image.filename,
-    subfolder: image.subfolder,
-    type: image.type,
+    filename: file.filename,
+    subfolder: file.subfolder,
+    type: file.type,
   });
   const res = await fetch(`${baseUrl()}/view?${params.toString()}`);
   if (!res.ok) {
     throw new ProviderError(`GET ${baseUrl()}/view failed (${res.status})`, res.status);
   }
-  const mime = res.headers.get("content-type") ?? "image/png";
-  return `data:${mime};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
+  return {
+    buffer: Buffer.from(await res.arrayBuffer()),
+    mime: res.headers.get("content-type") ?? "application/octet-stream",
+  };
+}
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 2 ** 32);
+}
+
+async function runImageOne(input: Record<string, unknown>, timeoutMs: number): Promise<string> {
+  const workflow = await buildImageWorkflow({
+    prompt: String(input.prompt ?? ""),
+    imageName: await uploadImage(String(input.image ?? "")),
+    seed: randomSeed(),
+  });
+  const outputs = await executeWorkflow(workflow, timeoutMs);
+  const image = firstFile(outputs, ["images"]);
+  if (!image) throw new ProviderError("comfyui: history completed without output image");
+  const { buffer, mime } = await fetchView(image);
+  return `data:${mime.startsWith("image/") ? mime : "image/png"};base64,${buffer.toString("base64")}`;
+}
+
+const DEFAULT_VIDEO_FPS = 16;
+
+/** FPS injecté dans "{{FPS}}" et utilisé pour convertir la durée en frames
+ *  — doit correspondre au frame_rate du graphe exporté (16 = Wan, 24/25 =
+ *  LTX-Video). Borné pour rester sain quelle que soit la valeur d'env. */
+function videoFps(): number {
+  const raw = Number(process.env.COMFYUI_VIDEO_FPS ?? String(DEFAULT_VIDEO_FPS));
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_VIDEO_FPS;
+  return Math.min(60, Math.floor(raw));
+}
+
+/** Vidéo img2video : une SEULE sortie mp4, stockée côté serveur via
+ *  lib/ai/media.ts (/api/media/<nom>.mp4) — comme les vidéos mergées. */
+async function runVideo(
+  input: Record<string, unknown>,
+  timeoutMs: number
+): Promise<{ video: { url: string } }> {
+  // requireEnv échoue vite AVANT l'upload si le workflow n'est pas configuré.
+  const workflowFile = requireEnv("COMFYUI_VIDEO_WORKFLOW_FILE");
+  const fps = videoFps();
+  const duration = Number(input.duration);
+  const frames = Math.max(
+    1,
+    Math.round((Number.isFinite(duration) && duration > 0 ? duration : 4) * fps)
+  );
+  const workflow = await loadWorkflowFile(workflowFile, {
+    prompt: String(input.prompt ?? ""),
+    imageName: await uploadImage(String(input.image ?? "")),
+    seed: randomSeed(),
+    frames,
+    fps,
+    width: Number(input.width) || undefined,
+    height: Number(input.height) || undefined,
+  });
+  const outputs = await executeWorkflow(workflow, timeoutMs);
+  const video = firstFile(outputs, ["gifs", "videos"]);
+  if (!video) {
+    throw new ProviderError("comfyui: history completed without video output (gifs/videos)");
+  }
+  const { buffer } = await fetchView(video);
+  return { video: { url: await storeVideoBuffer(buffer) } };
 }
 
 export const comfyuiAdapter: ProviderAdapter = {
   name: "comfyui",
   async run(modelId, input, timeoutMs) {
-    // Un seul "endpoint" local aujourd'hui : img2img. Le modelId sert de
-    // garde-fou si le catalogue évolue (vidéo locale, upscale...).
+    // Deux "endpoints" locaux : img2img (graphe image) et i2v (workflow
+    // vidéo custom). Le modelId sert de garde-fou si le catalogue évolue.
+    if (modelId === "i2v") return runVideo(input, timeoutMs);
     if (modelId !== "img2img") {
       throw new ProviderError(`comfyui: unsupported endpoint "${modelId}"`);
     }
     const count = Math.max(1, Number(input.quantity) || 1);
-    const urls = await Promise.all(Array.from({ length: count }, () => runOne(input, timeoutMs)));
+    const urls = await Promise.all(Array.from({ length: count }, () => runImageOne(input, timeoutMs)));
     return { images: urls.map((url) => ({ url })) };
   },
 };

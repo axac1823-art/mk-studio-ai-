@@ -2,15 +2,34 @@
 
 Ce fichier s'adresse aux agents de code IA. Il décrit le dépôt tel qu'il
 existe réellement — ne rien supposer au-delà de ce qui est écrit ici.
+Pour un guide fichier-par-fichier (lancer / comprendre / modifier), voir
+`GUIDE.md`.
 
 ## Vue d'ensemble
 
-SaaS de **rendu architectural par IA** (concept type RenderLab) : les
-architectes / designers d'intérieur déposent un screenshot brut de viewport
-3D (SketchUp, Revit, 3ds Max) et obtiennent un rendu photoréaliste.
-L'utilisateur peut choisir un modèle parmi une liste curatée de noms
-PRODUIT (dropdown du studio) : son choix est essayé EN PREMIER, le
-fallback sur les autres modèles reste automatique et invisible.
+SaaS de **rendu architectural par IA** — **agrégateur IA VERTICAL** pour
+architectes, professionnels de l'archviz, décorateurs d'intérieur et
+agents immobiliers. Ce n'est PAS un outil généraliste de création de
+contenu (type Magnific/Higgsfield visant pub, cinéma, réseaux sociaux).
+
+Scope MVP : **6 fonctions métier**, une par onglet du studio —
+
+1. **Render** : screenshot 3D (SketchUp, Revit, 3ds Max) -> rendu
+   photoréaliste, géométrie préservée ;
+2. **Mood** : même scène, variation jour/nuit/saison/météo ;
+3. **Exterior -> Interior** : vue intérieure plausible et cohérente
+   depuis un rendu extérieur ;
+4. **Plan to Render** : plan technique 2D -> rendu meublé/paysagé ;
+5. **Animate** : vidéo courte de présentation (4-8 s, mouvement de caméra
+   simple, SANS narration en V1) ;
+6. **Multi-Angle** : 2-3 angles de caméra additionnels (cohérence
+   best-effort) — le plus lourd, en dernier.
+
+Exclusions V1 (ne pas implémenter, retiré du code le cas échéant) :
+édition conversationnelle par chat, swap d'objets/mobilier, narration /
+voix off / lip-sync, presets non liés au bâti, et **tout sélecteur de
+modèle IA visible** — le routage entre modèles est 100% serveur, le
+fallback automatique et invisible.
 
 Refonte en cours d'un ancien backend FastAPI : celui-ci est archivé dans
 `legacy/` (conservé comme référence pour les presets et le registre, non
@@ -20,7 +39,7 @@ Trois principes d'architecture à respecter dans toute modification :
 
 1. **Aucun modèle fondamental n'est développé ici, et aucun agrégateur.**
    Chaque capacité IA appelle l'API OFFICIELLE de l'éditeur du modèle
-   (BFL, Google, Kling, Runway, ElevenLabs, OpenAI) — pas de
+   (BFL, Google, Kling, Runway, OpenAI) — pas de
    vendor lock-in. **Exception assumée** (demande explicite du propriétaire,
    juillet 2026) : Magic Hour, plateforme AGRÉGATRICE, est câblée comme
    fournisseur `magichour` (image : flux-2-klein épinglé, éligible free
@@ -61,56 +80,55 @@ app/
                               #   marketing arrive en dernier)
   layout.tsx                  # fonts Geist, metadata, thème sombre
   globals.css                 # variables CSS shadcn (zinc, light+dark)
-  app/dashboard/page.tsx      # STUDIO : onglets de fonctionnalités, upload,
-                              #   type de scène, presets, dropdown modèle,
-                              #   génération, polling 2,5 s, comparateur
-                              #   avant/après, historique session
-  api/generate/route.ts       # POST multipart (image + sceneTypeId +
-                              #   modelOption? + réglages) -> crée le job et
-                              #   lance l'orchestration -> { jobId }
+  app/dashboard/page.tsx      # STUDIO : 6 onglets métier câblés, upload,
+                              #   type de scène, presets, génération,
+                              #   polling 2,5 s, comparateur avant/après,
+                              #   historique session
+  api/generate/route.ts       # POST multipart (image + feature + sceneTypeId/
+                              #   motionId + réglages) -> crée le job et lance
+                              #   l'orchestration -> { jobId }
   api/generate/[id]/route.ts  # GET -> statut du job -> { status, outputUrls? }
   api/credits/balance/route.ts# GET -> solde de crédits (stub jusqu'au jalon DB)
-  api/media/[name]/route.ts   # sert les vidéos mergées (ffmpeg) en local
+  api/media/[name]/route.ts   # sert les vidéos stockées en local
 components/
   compare-slider.tsx          # comparateur avant/après (clip-path + pointer events)
   upload-dropzone.tsx         # drag & drop + aperçu (PNG/JPEG/WebP, 10 Mo max)
-  studio/model-picker.tsx     # dropdown modèle (Featured/All, noms PRODUIT)
   studio/scene-type-picker.tsx# "Customize Scene" : 3 types de scène préparés
-  studio/generation-controls.tsx # barre basse : dropdowns modèle/quantité/
-                              #   qualité/ratio/résolution + bouton Generate
-  studio/animate-panel.tsx    # panneau Animate (source, motion, durée,
-                              #   narration, dropdown modèle)
+  studio/generation-controls.tsx # barre basse : quantité/qualité/ratio/
+                              #   résolution + bouton Generate (PAS de
+                              #   sélecteur de modèle — routage 100% serveur)
+  studio/animate-panel.tsx    # panneau Animate (source, motion, durée 4-8 s)
+  studio/image-feature-panel.tsx # panneau générique Mood/Ext->Int/Plan/
+                              #   Multi-Angle (upload + presets + détails)
   studio/preset-grid.tsx      # vignettes cliquables (matériau, éclairage)
   studio/...                  # result-panel, references-panel, scene-details,
-                              #   settings-accordion, feature-card, icon-grid
+                              #   settings-accordion
   ui/                         # composants shadcn/ui (button, card, tabs,
                               #   badge, skeleton, textarea, switch, select)
 lib/
   ai/catalog.ts               # LE fichier central : feature -> candidats
-                              #   (provider, modelId officiel, coût interne)
+                              #   (provider, modelId officiel, coût interne) ;
+                              #   les features pas encore câblées ont une
+                              #   liste VIDE (pattern upscale)
   ai/providers/               # un adaptateur par API officielle (bfl, google,
-                              #   kling, runway, elevenlabs, openai +
-                              #   magichour, agrégateur — exception §1 ;
-                              #   comfyui — serveur local de test) + index.ts
-                              #   (registre + contrôle de configuration)
-  ai/router.ts                # orchestration : tri (tier + modèle choisi),
-                              #   fallback, chaînage
-  ai/chains/animate.ts        # chaîne vidéo -> TTS -> merge ffmpeg
+                              #   kling, runway, openai + magichour,
+                              #   agrégateur — exception §1 ; comfyui — serveur
+                              #   local de test : img2img + i2v) + index.ts
+                              #   (registre + contrôle de configuration) et
+                              #   http.ts (helpers polling/JSON/base64)
+  ai/router.ts                # orchestration : tri par tier, fallback,
+                              #   post-traitement upscale du pipeline image
   ai/prompt-templates.ts      # prompts VERSIONNÉS (fragments par preset)
-  ai/media.ts                 # merge vidéo+audio ffmpeg, stockage temp local
+  ai/media.ts                 # stockage temp local des vidéos (Sora, ComfyUI)
   ai/logger.ts                # trace des tentatives (analytics interne)
   ai/types.ts                 # schéma interne normalisé (Feature, Provider,
                               #   GenerationRequest/Result) — le client ne
                               #   connaît jamais les fournisseurs
-  ai/providers/http.ts        # helpers partagés des adaptateurs (JSON,
-                              #   polling avec timeout, base64)
-  model-options.ts            # options du dropdown modèle (noms PRODUIT ->
-                              #   clés génériques du catalogue) — CLIENT-SAFE
   presets.ts                  # métadonnées UI des presets (types de scène,
                               #   matériaux, éclairage, motion, bornes)
   costs.ts                    # coûts en crédits affichés/facturés
   credits.ts                  # solde (stub jusqu'au jalon DB)
-  features.ts                 # métadonnées d'affichage des onglets/features
+  features.ts                 # métadonnées d'affichage des 6 onglets/features
                               #   (noms PRODUIT) — CLIENT-SAFE
   download.ts                 # téléchargement client d'un résultat (blob ->
                               #   <a download>, repli nouvel onglet)
@@ -119,22 +137,20 @@ lib/
 scripts/
   simulate-fallback.ts        # tests hors-ligne du routeur (npm run test:fallback)
   smoke-comfyui.ts            # test de l'adaptateur ComfyUI contre un serveur
-                              #   mock (npm run test:comfyui)
+                              #   mock, image + vidéo (npm run test:comfyui)
 legacy/                       # ancien backend FastAPI (référence, non utilisé)
 ```
 
 ### Flux d'une génération (jalon actuel)
 
 1. Le client POST `multipart/form-data` vers `/api/generate`
-   (image + feature + sceneTypeId/motionId + modelOption optionnel +
-   réglages qualité/ratio/résolution/quantité).
+   (image + feature + sceneTypeId/motionId + réglages
+   qualité/ratio/résolution/quantité/durée).
 2. La route valide (type, taille), construit le prompt via
-   `lib/ai/prompt-templates.ts`, résout le modèle choisi
-   (`lib/model-options.ts` -> clé de candidat interne) et crée un job.
+   `lib/ai/prompt-templates.ts` et crée un job.
 3. Le routeur (`lib/ai/router.ts`) essaie les candidats du catalogue dans
-   l'ordre (modèle choisi en premier, puis tier de qualité) — chacun sur
-   l'API officielle de son fournisseur ; échec -> fallback automatique.
-   Animate chaîne ensuite TTS (ElevenLabs) + merge ffmpeg.
+   l'ordre (tier de qualité) — chacun sur l'API officielle de son
+   fournisseur ; échec -> fallback automatique.
 4. Le client polle `GET /api/generate/{jobId}` toutes les 2,5 s jusqu'à
    `done` (avec `outputUrls`) ou `error`.
 
@@ -162,9 +178,10 @@ Toutes les clés sont côté serveur via `.env.local` (voir `.env.example`,
 chaque entrée y est documentée) : `BFL_API_KEY` (Flux Kontext),
 `GOOGLE_API_KEY` (Nano Banana),
 `KLING_SECRET_KEY` (Kling), `RUNWAY_API_KEY` (Gen-4),
-`ELEVENLABS_API_KEY` (narration), `OPENAI_API_KEY` (GPT Image + Sora),
+`OPENAI_API_KEY` (GPT Image + Sora),
 `MAGIC_HOUR_API_KEY` (agrégateur — exception §1),
-`COMFYUI_CHECKPOINT` (+ options, serveur local de test — voir .env.example).
+`COMFYUI_CHECKPOINT` et/ou `COMFYUI_VIDEO_WORKFLOW_FILE` (serveur local de
+test : img2img et/ou i2v — voir .env.example).
 Un fournisseur non configuré échoue vite
 et le routeur bascule sur le suivant — configurer au moins un fournisseur
 image et un fournisseur vidéo pour couvrir les deux fonctionnalités.
@@ -187,8 +204,8 @@ image et un fournisseur vidéo pour couvrir les deux fonctionnalités.
 - Changement de fournisseur ou de version de modèle IA : toucher
   **uniquement** `MODEL_CATALOG` dans `lib/ai/catalog.ts` (et l'adaptateur
   `lib/ai/providers/<provider>.ts` si le fournisseur est nouveau), rien
-  d'autre. Exposer un nouveau choix dans le dropdown = ajouter UNE entrée
-  dans `lib/model-options.ts` qui pointe vers la clé du candidat.
+  d'autre. (Le sélecteur de modèle a été retiré en V1 : le routage est
+  100% serveur, aucune liste de modèles côté client.)
 - shadcn/ui a été installé **à la main** (le CLI npm était défaillant) :
   `components.json` + `components/ui/` + thème dans `tailwind.config.ts` et
   `globals.css`. Pour ajouter un composant, reprendre le source officiel
@@ -196,20 +213,22 @@ image et un fournisseur vidéo pour couvrir les deux fonctionnalités.
 
 ## Feuille de route (spec produit)
 
-Ordre de construction convenu — **ne pas avancer sans validation de l'étape
-courante** :
+Ordre de construction convenu avec le propriétaire (recadrage MVP —
+juillet 2026) — **ne pas avancer sans validation de l'étape courante** :
 
 1. ~~Scaffold Next.js + Tailwind + shadcn/ui~~ — fait.
-2. ~~Boucle upload -> API -> modèle IA -> affichage pour Print-to-Render,
-   sans auth ni facturation~~ — **fait (jalon courant)**.
-3. Auth (Supabase Auth), schéma DB, système de crédits.
-4. Abonnements Stripe + webhooks + mint des crédits.
-5. Fonctionnalités suivantes (mood swap, chat edit, upscale 4K) — même
-   pipeline, autres presets/prompts.
-6. Object swap et new angle en dernier (itération lourde).
+2. ~~Fonction 1 — Screenshot-to-Render (boucle upload -> API -> modèle IA
+   -> affichage, sans auth ni facturation)~~ — fait.
+3. ~~Fonction 5 — vidéo courte de présentation (4-8 s, sans narration)~~ —
+   fait.
+4. ~~Fonctions 2, 3, 4 et 6 — Mood, Exterior -> Interior, Plan to Render,
+   Multi-Angle (même pipeline image, prompts dédiés ; multi-angle en
+   cohérence best-effort)~~ — fait.
+5. Auth (Supabase Auth), schéma DB, système de crédits — **prochain jalon**.
+6. Abonnements Stripe + webhooks + mint des crédits.
 7. Landing page marketing en tout dernier.
 
-Exigences d'architecture pour les jalons 3-4 (à respecter telles quelles) :
+Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
 
 - Chaque génération : vérifier le solde de crédits → refus si insuffisant →
   appel modèle → **débit uniquement au succès** → log (input, output, coût,
@@ -239,10 +258,11 @@ Exigences d'architecture pour les jalons 3-4 (à respecter telles quelles) :
   branchement de clé (le fallback absorbe un id invalide, mais le coût
   d'appel reste réel). Le `model_name` exact de **Kling v3** est à
   confirmer dans la console Kling.
-- Le dropdown "modèle" du studio expose des noms PRODUIT
-  (`lib/model-options.ts`) ; il change juste quel candidat est essayé en
-  premier — le fallback reste automatique (testé dans
-  `scripts/simulate-fallback.ts`).
+- **Recadrage MVP (juillet 2026)** : agrégateur vertical archviz/immobilier
+  — narration (ElevenLabs), object swap, sélecteur de modèle visible et
+  onglets/icônes génériques RETIRÉS du code ; 6 onglets métier TOUS câblés
+  (les 5 fonctions image partagent `IMAGE_EDIT_CANDIDATES` dans le
+  catalogue ; multi-angle = cohérence best-effort).
 - Pas d'auth : la route `/api/generate` est **ouverte** — ne pas exposer
   telle quelle en production.
 - L'image transite en data URI base64 (10 Mo max) ; S3/Supabase Storage
