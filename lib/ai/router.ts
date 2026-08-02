@@ -3,16 +3,15 @@
 //
 // Responsabilités :
 // - résoudre la liste de candidats d'une feature (catalogue) selon le tier
-//   de qualité demandé ET le modèle éventuellement choisi par l'utilisateur
-//   (essayé en premier), puis les essayer dans l'ordre : en cas d'échec
+//   de qualité demandé, puis les essayer dans l'ordre : en cas d'échec
 //   (timeout, erreur, rejet politique de contenu), bascule automatique sur
 //   le suivant — invisible pour l'utilisateur ;
 // - dispatcher chaque candidat vers l'API OFFICIELLE de son fournisseur
 //   (lib/ai/providers/) — aucun agrégateur, aucune dépendance fatale à un
 //   fournisseur unique ;
 // - normaliser requêtes/réponses via GenerationRequest/GenerationResult ;
-// - chaîner les pipelines composés (rendu -> upscale 2K/4K ; Animate :
-//   vidéo -> TTS -> merge ffmpeg, voir chains/animate.ts) ;
+// - enchaîner le post-traitement d'upscale du pipeline image quand la
+//   résolution demandée dépasse le natif du modèle de base ;
 // - tracer chaque tentative pour l'analytics interne (logger.ts).
 //
 // Le point d'entrée `executeWithFallback` est exporté séparément pour
@@ -41,10 +40,12 @@ export interface RouterDeps {
 
 export type StageCallback = (stage: string) => void;
 
-/** Tri des candidats : le modèle choisi par l'utilisateur (s'il fait partie
- *  de la feature) passe EN PREMIER ; ensuite, à priorité de configuration
- *  égale, un candidat du tier demandé passe devant. Tri stable : l'ordre du
- *  catalogue reste la priorité principale et le fallback reste automatique. */
+/** Tri des candidats : à priorité de configuration égale, un candidat du
+ *  tier demandé passe devant. Tri stable : l'ordre du catalogue reste la
+ *  priorité principale. Le paramètre optionnel `preferredKey` (un candidat
+ *  passé en premier) n'est plus alimenté depuis le recadrage V1 — aucun
+ *  sélecteur de modèle n'est exposé — mais reste couvert par
+ *  scripts/simulate-fallback.ts. */
 export function orderCandidates(
   candidates: ModelCandidate[],
   quality: QualityTier,
@@ -124,7 +125,7 @@ async function runImagePipeline(
 ): Promise<GenerationResult> {
   const candidates =
     deps.candidatesOverride ??
-    orderCandidates(MODEL_CATALOG[req.feature], req.quality, req.preferredCandidateKey);
+    orderCandidates(MODEL_CATALOG[req.feature], req.quality);
 
   onStage?.("render");
   const render = await executeWithFallback(req.feature, candidates, req, deps);
@@ -163,10 +164,18 @@ export async function runGeneration(
   deps: RouterDeps = {}
 ): Promise<GenerationResult> {
   if (req.feature === "animate") {
-    // Import dynamique : la chaîne Animate (ffmpeg) n'est chargée que si
-    // nécessaire, pour garder le pipeline image léger.
-    const { runAnimateChain } = await import("./chains/animate");
-    return runAnimateChain(req, onStage, deps);
+    // Vidéo courte de présentation : un seul appel modèle avec fallback
+    // automatique (pas de narration ni de merge ffmpeg en V1).
+    onStage?.("video");
+    const candidates =
+      deps.candidatesOverride ?? orderCandidates(MODEL_CATALOG.animate, req.quality);
+    const video = await executeWithFallback("animate", candidates, req, deps);
+    return {
+      kind: "video",
+      outputUrls: video.outputUrls,
+      servedBy: video.winner.key,
+      attempts: video.attempts,
+    };
   }
   return runImagePipeline(req, onStage, deps);
 }

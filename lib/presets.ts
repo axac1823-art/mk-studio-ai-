@@ -42,6 +42,33 @@ export const LIGHTING_PRESETS: PresetMeta[] = [
   { id: "night", label: "Night", swatch: "from-indigo-400 to-slate-800" },
 ];
 
+// --- Fonctions 2/4/6 du scope MVP : presets dédiés (bâti uniquement) ---
+
+/** Mood Shift (fonction 2) : variation d'ambiance de la MÊME scène. */
+export const MOOD_PRESETS: PresetMeta[] = [
+  { id: "daylight", label: "Daylight", swatch: "from-sky-200 to-blue-400" },
+  { id: "golden_hour", label: "Golden hour", swatch: "from-amber-300 to-orange-500" },
+  { id: "night", label: "Night", swatch: "from-indigo-400 to-slate-800" },
+  { id: "overcast", label: "Overcast", swatch: "from-slate-200 to-slate-400" },
+  { id: "rain", label: "Rain", swatch: "from-cyan-300 to-slate-500" },
+  { id: "snow", label: "Snow", swatch: "from-slate-100 to-sky-300" },
+];
+
+/** Plan to Render (fonction 4) : orientation du rendu depuis un plan 2D. */
+export const PLAN_RENDER_PRESETS: PresetMeta[] = [
+  { id: "furnished_interior", label: "Furnished interior", swatch: "from-amber-100 to-amber-300" },
+  { id: "landscaped_exterior", label: "Landscaped exterior", swatch: "from-emerald-200 to-emerald-500" },
+];
+
+/** Multi-Angle (fonction 6) : angle de caméra additionnel, même scène. */
+export const ANGLE_PRESETS: PresetMeta[] = [
+  { id: "eye_level", label: "Eye level", swatch: "from-zinc-200 to-zinc-400" },
+  { id: "high_angle", label: "High angle", swatch: "from-stone-300 to-stone-500" },
+  { id: "aerial", label: "Aerial / drone", swatch: "from-sky-300 to-indigo-500" },
+  { id: "corner_view", label: "Corner view", swatch: "from-orange-200 to-amber-400" },
+  { id: "close_up", label: "Close-up", swatch: "from-rose-200 to-rose-400" },
+];
+
 export interface MotionPresetMeta {
   id: string;
   label: string;
@@ -61,7 +88,6 @@ export const MOTION_PRESETS: MotionPresetMeta[] = [
 export const MAX_REFERENCES = 14;
 export const MAX_QUANTITY = 4;
 export const SCENE_DETAILS_MAX = 10_000;
-export const NARRATION_SCRIPT_MAX = 2_000;
 
 export const ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4"] as const;
 export const RESOLUTIONS = ["1K", "2K", "4K"] as const;
@@ -69,4 +95,5 @@ export const QUALITY_TIERS = [
   { id: "standard", label: "Standard" },
   { id: "pro", label: "Pro" },
 ] as const;
-export const DURATIONS = [4, 8, 12] as const;
+// Scope V1 : vidéos courtes de présentation (4-8 s), sans narration.
+export const DURATIONS = [4, 8] as const;

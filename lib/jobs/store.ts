@@ -14,7 +14,7 @@ export interface Job {
   id: string;
   status: JobStatus;
   /** Étape courante — libellés PRODUIT génériques ("render", "video",
-   *  "narration"...), jamais un nom de modèle/fournisseur. */
+   *  "upscaling"...), jamais un nom de modèle/fournisseur. */
   stage?: string;
   /** Type de média produit ("audio" n'apparaît qu'en intermédiaire de
    *  chaîne, jamais en résultat final aujourd'hui — union alignée sur

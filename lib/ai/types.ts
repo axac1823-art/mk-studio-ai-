@@ -6,13 +6,17 @@
 // modèle sous-jacent (servedBy, AttemptLog, costWeight) reste côté
 // serveur, pour l'analytics interne qualité/coût/latence.
 
+/** Fonctionnalités du scope MVP (agrégateur vertical archviz/immobilier) —
+ *  6 fonctions métier + "upscale", étape de post-traitement interne au
+ *  pipeline image (pas une fonctionnalité exposée). */
 export type Feature =
   | "print_render"
   | "mood_swap"
-  | "object_swap"
-  | "upscale"
+  | "exterior_to_interior"
+  | "plan_to_render"
+  | "multi_angle"
   | "animate"
-  | "lip_sync_narration";
+  | "upscale";
 
 export type QualityTier = "standard" | "pro";
 export type AspectRatio = "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
@@ -26,7 +30,6 @@ export type ProviderName =
   | "google"
   | "kling"
   | "runway"
-  | "elevenlabs"
   | "openai"
   // Agrégateur — exception assumée au principe ci-dessus (voir AGENTS.md §1).
   | "magichour"
@@ -46,13 +49,9 @@ export interface GenerationRequest {
   aspectRatio: AspectRatio;
   resolution: Resolution;
   quantity: number;
-  /** Clé interne du candidat à essayer EN PREMIER (choix "modèle" de
-   *  l'utilisateur dans le picker) — le fallback reste automatique. */
-  preferredCandidateKey?: string;
-  // --- Champs spécifiques à la chaîne Animate ---
+  // --- Champs spécifiques à Animate (vidéo courte, sans narration en V1) ---
   motionPresetId?: string;
-  durationSeconds?: 4 | 8 | 12;
-  narrationScript?: string;
+  durationSeconds?: 4 | 8;
   /** Image de fin optionnelle (start/end frame) — ignorée par les modèles
    *  qui ne la supportent pas. */
   endImageUrl?: string;
@@ -81,8 +80,8 @@ export interface AttemptLog {
 }
 
 /** Adaptateur de fournisseur : interface unique derrière laquelle se cachent
- *  les API officielles de chaque éditeur (BFL, Google, ByteDance, Kling,
- *  Runway, ElevenLabs...). Injectable pour les tests/simulations. */
+ *  les API officielles de chaque éditeur (BFL, Google, Kling, Runway,
+ *  OpenAI...). Injectable pour les tests/simulations. */
 export interface ProviderAdapter {
   /** Nom interne — journalisation uniquement. */
   name: string;

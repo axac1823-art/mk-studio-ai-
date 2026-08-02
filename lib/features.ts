@@ -1,36 +1,38 @@
 // Métadonnées d'affichage des fonctionnalités — CLIENT-SAFE.
-// Le `name` et la `tagline` sont les libellés PRODUIT vus par
-// l'utilisateur ; ils ne révèlent rien des modèles sous-jacents.
+// Le `name` est le libellé PRODUIT vu par l'utilisateur (historique,
+// résultats) ; il ne révèle rien des modèles sous-jacents.
+//
+// Scope MVP : agrégateur IA VERTICAL pour architectes, archviz,
+// décorateurs d'intérieur et agents immobiliers — 6 fonctions métier,
+// une par onglet du studio. Pas d'outil généraliste (voir AGENTS.md).
 
-export type StudioTab = "render" | "edit" | "animate" | "audio";
+export type StudioTab =
+  | "print_render"
+  | "mood_swap"
+  | "exterior_to_interior"
+  | "plan_to_render"
+  | "animate"
+  | "multi_angle";
 
 export const STUDIO_TABS: Array<{ id: StudioTab; label: string }> = [
-  { id: "render", label: "Render" },
-  { id: "edit", label: "Edit" },
+  { id: "print_render", label: "Render" },
+  { id: "mood_swap", label: "Mood" },
+  { id: "exterior_to_interior", label: "Exterior → Interior" },
+  { id: "plan_to_render", label: "Plan to Render" },
   { id: "animate", label: "Animate" },
-  { id: "audio", label: "Audio" },
+  { id: "multi_angle", label: "Multi-Angle" },
 ];
 
 export interface FeatureMeta {
-  id: "print_render" | "animate";
-  tab: StudioTab;
+  id: StudioTab;
   name: string;
-  tagline: string;
 }
 
-export const FEATURES: Record<FeatureMeta["id"], FeatureMeta> = {
-  print_render: {
-    id: "print_render",
-    tab: "render",
-    name: "Print Render",
-    tagline:
-      "Enhance your model adding extreme photorealism suitable for editorial photographic presentations.",
-  },
-  animate: {
-    id: "animate",
-    tab: "animate",
-    name: "Animate",
-    tagline:
-      "Turn any render into a cinematic camera move, with optional AI narration.",
-  },
+export const FEATURES: Record<StudioTab, FeatureMeta> = {
+  print_render: { id: "print_render", name: "Print Render" },
+  mood_swap: { id: "mood_swap", name: "Mood Shift" },
+  exterior_to_interior: { id: "exterior_to_interior", name: "Exterior to Interior" },
+  plan_to_render: { id: "plan_to_render", name: "Plan to Render" },
+  animate: { id: "animate", name: "Animate" },
+  multi_angle: { id: "multi_angle", name: "Multi-Angle" },
 };

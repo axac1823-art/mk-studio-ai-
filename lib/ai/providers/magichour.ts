@@ -114,8 +114,7 @@ async function runVideo(
     model: modelId,
     end_seconds: Number(input.endSeconds) || 5,
     resolution: String(input.resolution ?? "720p"),
-    // La narration est gérée par la chaîne Animate (ElevenLabs + ffmpeg) :
-    // pas de piste audio générée côté Magic Hour.
+    // Pas de piste audio générée côté Magic Hour (vidéo muette en V1).
     audio: false,
     style: { prompt: String(input.prompt ?? "") },
     assets: { image_file_path: filePath },

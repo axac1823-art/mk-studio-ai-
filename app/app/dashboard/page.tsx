@@ -1,17 +1,20 @@
 "use client";
 
-// Studio — orchestration des panneaux (jalon orchestration multi-modèles).
-// L'utilisateur ne voit qu'UN bouton Generate par fonctionnalité : choix
-// du modèle, routage, fallback et chaînage ont tous lieu côté serveur.
+// Studio — orchestration des panneaux. Scope MVP : agrégateur IA VERTICAL
+// pour architectes / archviz / décorateurs / agents immobiliers — 6
+// fonctions métier, une par onglet, TOUTES câblées (les fonctions image
+// partagent le même pipeline, seul le prompt change). L'utilisateur ne
+// voit qu'UN bouton Generate par fonctionnalité : routage et fallback des
+// modèles ont lieu côté serveur (aucun sélecteur de modèle exposé en V1).
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnimatePanel } from "@/components/studio/animate-panel";
-import { FeatureCard } from "@/components/studio/feature-card";
 import { GenerationControls } from "@/components/studio/generation-controls";
-import { StudioIconGrid, type StudioIconId } from "@/components/studio/icon-grid";
+import { ImageFeaturePanel } from "@/components/studio/image-feature-panel";
 import { ReferencesPanel, type ReferenceImage } from "@/components/studio/references-panel";
 import { ResultPanel, type ResultState } from "@/components/studio/result-panel";
 import { SceneDetails } from "@/components/studio/scene-details";
@@ -20,12 +23,15 @@ import { SettingsAccordion } from "@/components/studio/settings-accordion";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { computeCreditCost } from "@/lib/costs";
 import { FEATURES, STUDIO_TABS, type StudioTab } from "@/lib/features";
-import { AUTO_MODEL_OPTION_ID, modelOptionsFor } from "@/lib/model-options";
 import {
+  ANGLE_PRESETS,
   LIGHTING_PRESETS,
   MATERIAL_PRESETS,
+  MOOD_PRESETS,
   MOTION_PRESETS,
+  PLAN_RENDER_PRESETS,
   SCENE_TYPE_PRESETS,
+  type PresetMeta,
 } from "@/lib/presets";
 import type { AspectRatio, QualityTier, Resolution } from "@/lib/ai/types";
 
@@ -41,14 +47,31 @@ interface HistoryEntry {
 
 type RightView = "compare" | "gallery";
 
-const TAB_PLACEHOLDERS: Partial<Record<StudioTab, string>> = {
-  edit: "Mood swap, chat edit and object swap arrive in the next milestones — same one-click pipeline, no model to pick.",
-  audio: "Narration and audio tools arrive in a dedicated milestone. Narration is already available inside Animate.",
+/** Fonctions image "simples" (hors Print Render) : même panneau générique,
+ *  seuls les presets dédiés changent. */
+type SimpleImageTab = Exclude<StudioTab, "print_render" | "animate">;
+
+interface SimpleImageState {
+  file: File | null;
+  previewUrl: string | null;
+  optionId: string;
+  sceneDetails: string;
+}
+
+const SIMPLE_TAB_CONFIG: Record<SimpleImageTab, { options?: PresetMeta[]; optionsLabel?: string }> = {
+  mood_swap: { options: MOOD_PRESETS, optionsLabel: "Atmosphere" },
+  exterior_to_interior: {},
+  plan_to_render: { options: PLAN_RENDER_PRESETS, optionsLabel: "Render style" },
+  multi_angle: { options: ANGLE_PRESETS, optionsLabel: "Camera angle" },
 };
+
+function initialSimpleState(optionId: string): SimpleImageState {
+  return { file: null, previewUrl: null, optionId, sceneDetails: "" };
+}
 
 export default function DashboardPage() {
   // --- Navigation ---
-  const [tab, setTab] = useState<StudioTab>("render");
+  const [tab, setTab] = useState<StudioTab>("print_render");
   const [rightView, setRightView] = useState<RightView>("compare");
 
   // --- Crédits (stub côté serveur jusqu'au jalon DB) ---
@@ -63,11 +86,15 @@ export default function DashboardPage() {
   const [lightingId, setLightingId] = useState(LIGHTING_PRESETS[0].id);
   const [sceneDetails, setSceneDetails] = useState("");
 
-  // --- Choix du modèle (dropdown) — "auto" = routage serveur ---
-  const [renderModelId, setRenderModelId] = useState(AUTO_MODEL_OPTION_ID);
-  const [animateModelId, setAnimateModelId] = useState("auto-video");
+  // --- Fonctions image simples (Mood, Ext->Int, Plan, Multi-Angle) ---
+  const [simpleTabs, setSimpleTabs] = useState<Record<SimpleImageTab, SimpleImageState>>({
+    mood_swap: initialSimpleState(MOOD_PRESETS[0].id),
+    exterior_to_interior: initialSimpleState(""),
+    plan_to_render: initialSimpleState(PLAN_RENDER_PRESETS[0].id),
+    multi_angle: initialSimpleState(ANGLE_PRESETS[0].id),
+  });
 
-  // --- Contrôles de génération ---
+  // --- Contrôles de génération (partagés par toutes les fonctions image) ---
   const [quantity, setQuantity] = useState(1);
   const [quality, setQuality] = useState<QualityTier>("standard");
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("4:3");
@@ -80,9 +107,7 @@ export default function DashboardPage() {
     previewUrl: null,
   });
   const [motionId, setMotionId] = useState(MOTION_PRESETS[0].id);
-  const [durationSeconds, setDurationSeconds] = useState<4 | 8 | 12>(4);
-  const [withNarration, setWithNarration] = useState(false);
-  const [narrationScript, setNarrationScript] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState<4 | 8>(4);
   const [animateSceneDetails, setAnimateSceneDetails] = useState("");
 
   // --- Job courant + historique de session ---
@@ -142,7 +167,12 @@ export default function DashboardPage() {
     [stopPolling]
   );
 
-  const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
+  const submitGeneration = async (
+    form: FormData,
+    kind: "image" | "video",
+    beforeUrl: string | null,
+    featureName: string
+  ) => {
     setError(null);
     setResult({ status: "busy" });
     setRightView("compare");
@@ -160,11 +190,21 @@ export default function DashboardPage() {
         setError(data.error ?? "Generation failed, please try again.");
         return;
       }
-      pollJob(data.jobId, kind, beforeUrl, FEATURES[kind === "video" ? "animate" : "print_render"].name);
+      pollJob(data.jobId, kind, beforeUrl, featureName);
     } catch {
       setResult({ status: "idle" });
       setError("Network error — please try again.");
     }
+  };
+
+  const updateSimpleTab = (id: SimpleImageTab, patch: Partial<SimpleImageState>) =>
+    setSimpleTabs((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
+
+  const appendSharedSettings = (form: FormData) => {
+    form.append("quality", quality);
+    form.append("aspectRatio", aspectRatio);
+    form.append("resolution", resolution);
+    form.append("quantity", String(quantity));
   };
 
   const handleGenerateRender = () => {
@@ -177,12 +217,23 @@ export default function DashboardPage() {
     form.append("materialId", materialId);
     form.append("lightingId", lightingId);
     form.append("sceneDetails", sceneDetails);
-    form.append("modelOption", renderModelId);
-    form.append("quality", quality);
-    form.append("aspectRatio", aspectRatio);
-    form.append("resolution", resolution);
-    form.append("quantity", String(quantity));
-    void submitGeneration(form, "image", previewUrl);
+    appendSharedSettings(form);
+    void submitGeneration(form, "image", previewUrl, FEATURES.print_render.name);
+  };
+
+  const handleGenerateSimpleImage = () => {
+    if (tab === "print_render" || tab === "animate") return;
+    const state = simpleTabs[tab];
+    if (!state.file) return;
+    const form = new FormData();
+    form.append("feature", tab);
+    form.append("image", state.file);
+    if (SIMPLE_TAB_CONFIG[tab].options && state.optionId) {
+      form.append("optionId", state.optionId);
+    }
+    form.append("sceneDetails", state.sceneDetails);
+    appendSharedSettings(form);
+    void submitGeneration(form, "image", state.previewUrl, FEATURES[tab].name);
   };
 
   const handleGenerateVideo = () => {
@@ -200,32 +251,12 @@ export default function DashboardPage() {
     form.append("motionId", motionId);
     form.append("durationSeconds", String(durationSeconds));
     form.append("sceneDetails", animateSceneDetails);
-    form.append("modelOption", animateModelId);
     form.append("quality", quality);
     form.append("aspectRatio", aspectRatio);
     form.append("resolution", "1K");
     form.append("quantity", "1");
-    if (withNarration) {
-      form.append("narration", "on");
-      form.append("narrationScript", narrationScript);
-    }
-    void submitGeneration(form, "video", animateSource.previewUrl);
+    void submitGeneration(form, "video", animateSource.previewUrl, FEATURES.animate.name);
   };
-
-  const handleIconSelect = (id: StudioIconId) => {
-    if (id === "animate") {
-      setTab("animate");
-    } else if (id === "gallery") {
-      setTab("render");
-      setRightView("gallery");
-    } else {
-      setTab("render");
-      setRightView("compare");
-    }
-  };
-
-  const activeIconId: StudioIconId =
-    tab === "animate" ? "animate" : rightView === "gallery" ? "gallery" : "enhance";
 
   const handleAddReferences = (files: File[]) => {
     setReferences((current) => [
@@ -240,17 +271,18 @@ export default function DashboardPage() {
 
   const latestImageUrl = history.find((entry) => entry.kind === "image")?.outputUrls[0] ?? null;
 
-  const renderCost = computeCreditCost({ feature: "print_render", quality, resolution, quantity });
+  // Coût et état du bouton pour la fonction image active (Render compris).
+  const activeImageCost =
+    tab === "animate" ? 0 : computeCreditCost({ feature: tab, quality, resolution, quantity });
+  const activeImageFile = tab === "print_render" ? file : tab === "animate" ? null : simpleTabs[tab].file;
+
   const animateCost = computeCreditCost({
     feature: "animate",
     quality,
     resolution: "1K",
     quantity: 1,
     durationSeconds,
-    withNarration,
   });
-
-  const activeFeature = FEATURES[tab === "animate" ? "animate" : "print_render"];
 
   return (
     <main className="flex min-h-screen w-full flex-col gap-5 p-4 pb-0 sm:p-6 sm:pb-0">
@@ -258,7 +290,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">RenderStudio</h1>
           <p className="text-sm text-muted-foreground">
-            From 3D viewport screenshot to photorealistic render.
+            AI renders for architecture, archviz &amp; real estate.
           </p>
         </div>
         <Badge variant="secondary" className="gap-1">
@@ -276,156 +308,169 @@ export default function DashboardPage() {
         </TabsList>
       </Tabs>
 
-      <StudioIconGrid activeId={activeIconId} onSelect={handleIconSelect} />
-
-      {TAB_PLACEHOLDERS[tab] ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{STUDIO_TABS.find((studioTab) => studioTab.id === tab)?.label}</CardTitle>
-            <CardDescription>{TAB_PLACEHOLDERS[tab]}</CardDescription>
-          </CardHeader>
-        </Card>
-      ) : (
-        <div className="grid flex-1 gap-6 lg:grid-cols-[400px_1fr]">
-          <div className="flex flex-col gap-4">
-            <FeatureCard name={activeFeature.name} tagline={activeFeature.tagline} />
-
-            <Card>
-              <CardContent className="flex flex-col gap-4 p-4">
-                {tab === "render" ? (
-                  <>
-                    <UploadDropzone
-                      previewUrl={previewUrl}
-                      onFileSelected={(selected) => {
-                        setFile(selected);
-                        setPreviewUrl(URL.createObjectURL(selected));
-                        setError(null);
-                      }}
-                    />
-                    <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
-                    <ReferencesPanel
-                      references={references}
-                      onAdd={handleAddReferences}
-                      onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
-                    />
-                    <SettingsAccordion
-                      materialId={materialId}
-                      lightingId={lightingId}
-                      onMaterialChange={setMaterialId}
-                      onLightingChange={setLightingId}
-                    />
-                    <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
-                  </>
-                ) : (
-                  <AnimatePanel
-                    source={animateSource}
-                    hasHistoryImages={latestImageUrl !== null}
-                    onPickFromHistory={() => {
-                      if (latestImageUrl) setAnimateSource({ kind: "history", previewUrl: latestImageUrl });
-                    }}
+      <div className="grid flex-1 gap-6 lg:grid-cols-[400px_1fr]">
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-4">
+              {tab === "print_render" ? (
+                <>
+                  <UploadDropzone
+                    previewUrl={previewUrl}
                     onFileSelected={(selected) => {
-                      setAnimateFile(selected);
-                      setAnimateSource({ kind: "upload", previewUrl: URL.createObjectURL(selected) });
+                      setFile(selected);
+                      setPreviewUrl(URL.createObjectURL(selected));
                       setError(null);
                     }}
-                    modelOptions={modelOptionsFor("animate")}
-                    modelId={animateModelId}
-                    onModelChange={setAnimateModelId}
-                    motionId={motionId}
-                    onMotionChange={setMotionId}
-                    durationSeconds={durationSeconds}
-                    onDurationChange={setDurationSeconds}
-                    withNarration={withNarration}
-                    onNarrationToggle={setWithNarration}
-                    narrationScript={narrationScript}
-                    onNarrationScriptChange={setNarrationScript}
-                    sceneDetails={animateSceneDetails}
-                    onSceneDetailsChange={setAnimateSceneDetails}
-                    cost={animateCost}
-                    balance={balance}
-                    isBusy={isBusy}
-                    onGenerate={handleGenerateVideo}
                   />
-                )}
+                  <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
+                  <ReferencesPanel
+                    references={references}
+                    onAdd={handleAddReferences}
+                    onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
+                  />
+                  <SettingsAccordion
+                    materialId={materialId}
+                    lightingId={lightingId}
+                    onMaterialChange={setMaterialId}
+                    onLightingChange={setLightingId}
+                  />
+                  <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
+                </>
+              ) : tab === "animate" ? (
+                <AnimatePanel
+                  source={animateSource}
+                  hasHistoryImages={latestImageUrl !== null}
+                  onPickFromHistory={() => {
+                    if (latestImageUrl) setAnimateSource({ kind: "history", previewUrl: latestImageUrl });
+                  }}
+                  onFileSelected={(selected) => {
+                    setAnimateFile(selected);
+                    setAnimateSource({ kind: "upload", previewUrl: URL.createObjectURL(selected) });
+                    setError(null);
+                  }}
+                  motionId={motionId}
+                  onMotionChange={setMotionId}
+                  durationSeconds={durationSeconds}
+                  onDurationChange={setDurationSeconds}
+                  sceneDetails={animateSceneDetails}
+                  onSceneDetailsChange={setAnimateSceneDetails}
+                  cost={animateCost}
+                  balance={balance}
+                  isBusy={isBusy}
+                  onGenerate={handleGenerateVideo}
+                />
+              ) : (
+                <ImageFeaturePanel
+                  previewUrl={simpleTabs[tab].previewUrl}
+                  onFileSelected={(selected) => {
+                    updateSimpleTab(tab, {
+                      file: selected,
+                      previewUrl: URL.createObjectURL(selected),
+                    });
+                    setError(null);
+                  }}
+                  options={SIMPLE_TAB_CONFIG[tab].options}
+                  optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
+                  optionId={simpleTabs[tab].optionId}
+                  onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
+                  sceneDetails={simpleTabs[tab].sceneDetails}
+                  onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
+                />
+              )}
 
-                {error && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {error}
-                  </p>
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex flex-col gap-6 pb-6">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant={rightView === "compare" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setRightView("compare")}
+            >
+              Result
+            </Button>
+            <Button
+              type="button"
+              variant={rightView === "gallery" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setRightView("gallery")}
+            >
+              Results
+            </Button>
+          </div>
+
+          {rightView === "compare" ? (
+            <ResultPanel result={result} />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Results</CardTitle>
+                <CardDescription>
+                  Session history — kept in your browser only, accounts come next.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {history.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nothing generated yet.</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {history.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => {
+                          setResult({
+                            status: "done",
+                            kind: entry.kind,
+                            beforeUrl: entry.beforeUrl,
+                            outputUrls: entry.outputUrls,
+                          });
+                          setRightView("compare");
+                        }}
+                        className="group rounded-lg border p-1.5 text-left transition-colors hover:border-primary/60"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={entry.outputUrls[0]}
+                          alt={entry.featureName}
+                          className="aspect-[4/3] w-full rounded-md object-cover"
+                        />
+                        <span className="mt-1 block px-0.5 text-xs text-muted-foreground">
+                          {entry.featureName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
-          </div>
-
-          <div className="flex flex-col gap-6 pb-6">
-            {rightView === "compare" ? (
-              <ResultPanel result={result} />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Results</CardTitle>
-                  <CardDescription>
-                    Session history — kept in your browser only, accounts come next.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {history.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Nothing generated yet.</p>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {history.map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          onClick={() => {
-                            setResult({
-                              status: "done",
-                              kind: entry.kind,
-                              beforeUrl: entry.beforeUrl,
-                              outputUrls: entry.outputUrls,
-                            });
-                            setRightView("compare");
-                          }}
-                          className="group rounded-lg border p-1.5 text-left transition-colors hover:border-primary/60"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={entry.outputUrls[0]}
-                            alt={entry.featureName}
-                            className="aspect-[4/3] w-full rounded-md object-cover"
-                          />
-                          <span className="mt-1 block px-0.5 text-xs text-muted-foreground">
-                            {entry.featureName}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {tab === "render" && (
+      {tab !== "animate" && (
         <GenerationControls
-          modelOptions={modelOptionsFor("print_render")}
-          modelId={renderModelId}
           quantity={quantity}
           quality={quality}
           aspectRatio={aspectRatio}
           resolution={resolution}
-          cost={renderCost}
+          cost={activeImageCost}
           balance={balance}
           isBusy={isBusy}
-          canGenerate={file !== null}
-          onModelChange={setRenderModelId}
+          canGenerate={activeImageFile !== null}
           onQuantityChange={setQuantity}
           onQualityChange={setQuality}
           onAspectRatioChange={setAspectRatio}
           onResolutionChange={setResolution}
-          onGenerate={handleGenerateRender}
+          onGenerate={tab === "print_render" ? handleGenerateRender : handleGenerateSimpleImage}
         />
       )}
     </main>

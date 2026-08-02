@@ -1,17 +1,15 @@
 "use client";
 
-// Panneau Animate — pipeline vidéo type Higgsfield, entièrement câblé sur
-// la chaîne serveur (vidéo -> TTS -> merge). L'utilisateur ne voit qu'UN
-// bouton "Generate Video" et UN coût, peu importe les modèles enchaînés.
-import { Check, Loader2, Mic, Sparkles } from "lucide-react";
+// Panneau Animate — vidéo courte de présentation (mouvement de caméra
+// simple sur un rendu existant, 4-8 s, SANS narration en V1, scope MVP).
+// L'utilisateur ne voit qu'UN bouton "Generate Video" et UN coût : le
+// routage entre modèles vidéo et le fallback sont 100% serveur.
+import { Check, Loader2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { ModelPicker } from "@/components/studio/model-picker";
 import { UploadDropzone } from "@/components/upload-dropzone";
-import { DURATIONS, MOTION_PRESETS, NARRATION_SCRIPT_MAX } from "@/lib/presets";
-import type { ModelOption } from "@/lib/model-options";
+import { DURATIONS, MOTION_PRESETS } from "@/lib/presets";
 import { cn } from "@/lib/utils";
 
 export interface AnimateSource {
@@ -25,17 +23,10 @@ interface AnimatePanelProps {
   hasHistoryImages: boolean;
   onPickFromHistory: () => void;
   onFileSelected: (file: File) => void;
-  modelOptions: ModelOption[];
-  modelId: string;
-  onModelChange: (id: string) => void;
   motionId: string;
   onMotionChange: (id: string) => void;
-  durationSeconds: 4 | 8 | 12;
-  onDurationChange: (value: 4 | 8 | 12) => void;
-  withNarration: boolean;
-  onNarrationToggle: (enabled: boolean) => void;
-  narrationScript: string;
-  onNarrationScriptChange: (value: string) => void;
+  durationSeconds: 4 | 8;
+  onDurationChange: (value: 4 | 8) => void;
   sceneDetails: string;
   onSceneDetailsChange: (value: string) => void;
   cost: number;
@@ -49,17 +40,10 @@ export function AnimatePanel({
   hasHistoryImages,
   onPickFromHistory,
   onFileSelected,
-  modelOptions,
-  modelId,
-  onModelChange,
   motionId,
   onMotionChange,
   durationSeconds,
   onDurationChange,
-  withNarration,
-  onNarrationToggle,
-  narrationScript,
-  onNarrationScriptChange,
   sceneDetails,
   onSceneDetailsChange,
   cost,
@@ -145,34 +129,6 @@ export function AnimatePanel({
           placeholder="The more details, the better the result…"
           rows={2}
         />
-      </div>
-
-      <div className="flex flex-col gap-2 rounded-lg border p-3">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <Mic className="h-4 w-4" />
-            Add narration
-          </span>
-          <Switch checked={withNarration} onCheckedChange={onNarrationToggle} aria-label="Add narration" />
-        </div>
-        {withNarration && (
-          <div className="flex flex-col gap-1">
-            <Textarea
-              value={narrationScript}
-              onChange={(e) => onNarrationScriptChange(e.target.value.slice(0, NARRATION_SCRIPT_MAX))}
-              placeholder="Narration script — leave empty for an auto-generated caption."
-              rows={3}
-            />
-            <span className="self-end text-xs text-muted-foreground">
-              {narrationScript.length}/{NARRATION_SCRIPT_MAX}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Model</span>
-        <ModelPicker options={modelOptions} value={modelId} onChange={onModelChange} />
       </div>
 
       <div className="flex flex-col gap-1">

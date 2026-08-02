@@ -8,6 +8,8 @@
 //   (lib/ai/prompt-templates.ts), jamais envoyé brut ;
 // - le client ne reçoit que des messages GÉNÉRIQUES — l'erreur réelle et
 //   le modèle ayant servi sont journalisés côté serveur (logger) ;
+// - aucun sélecteur de modèle exposé : le routage est 100% serveur (scope
+//   V1 — agrégateur vertical, le choix du modèle est un détail interne) ;
 // - crédits : vérification du solde AVANT lancement ; le débit réel
 //   n'arrive qu'au jalon DB (ledger), et uniquement au succès.
 import { randomUUID } from "crypto";
@@ -16,27 +18,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { runGeneration } from "@/lib/ai/router";
 import { logGeneration } from "@/lib/ai/logger";
 import { isAnyProviderConfigured } from "@/lib/ai/providers";
-import { buildAnimatePrompt, buildAutoNarrationScript, buildPrintRenderPrompt } from "@/lib/ai/prompt-templates";
+import {
+  buildAnimatePrompt,
+  buildExteriorToInteriorPrompt,
+  buildMoodSwapPrompt,
+  buildMultiAnglePrompt,
+  buildPlanToRenderPrompt,
+  buildPrintRenderPrompt,
+} from "@/lib/ai/prompt-templates";
 import type { AspectRatio, Feature, GenerationRequest, QualityTier, Resolution } from "@/lib/ai/types";
 import { AllModelsFailedError } from "@/lib/ai/types";
 import { computeCreditCost } from "@/lib/costs";
 import { getCreditBalance } from "@/lib/credits";
 import { createJob, updateJob } from "@/lib/jobs/store";
-import { resolveCandidateKey } from "@/lib/model-options";
-import { MAX_QUANTITY, MAX_REFERENCES, NARRATION_SCRIPT_MAX, SCENE_DETAILS_MAX } from "@/lib/presets";
+import { MAX_QUANTITY, MAX_REFERENCES, SCENE_DETAILS_MAX } from "@/lib/presets";
 
 export const runtime = "nodejs";
-// La chaîne Animate (vidéo) peut durer plusieurs minutes.
+// La génération vidéo (Animate) peut durer plusieurs minutes.
 export const maxDuration = 300;
 
-const SUPPORTED_FEATURES: Feature[] = ["print_render", "animate"];
+// Les 6 fonctions du scope MVP (agrégateur vertical archviz/immobilier).
+const SUPPORTED_FEATURES: Feature[] = [
+  "print_render",
+  "mood_swap",
+  "exterior_to_interior",
+  "plan_to_render",
+  "multi_angle",
+  "animate",
+];
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
 const MAX_REFERENCE_SIZE = 5 * 1024 * 1024;
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
 const QUALITY_TIERS: QualityTier[] = ["standard", "pro"];
-const DURATIONS = [4, 8, 12];
+const DURATIONS = [4, 8];
 
 function asDataUri(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
@@ -49,6 +65,39 @@ function validImageFile(value: unknown, maxSize: number): value is File {
     value.size > 0 &&
     value.size <= maxSize
   );
+}
+
+interface PromptFields {
+  sceneDetails?: string;
+  sceneTypeId?: string;
+  materialId?: string;
+  lightingId?: string;
+  motionId?: string;
+  /** Preset de la fonction, porté par UN champ générique côté client
+   *  (moodId, planStyleId ou angleId selon la feature). */
+  optionId?: string;
+}
+
+/** Dispatch du template serveur par feature — tout le prompt engineering
+ *  vit dans lib/ai/prompt-templates.ts. */
+function buildFeaturePrompt(feature: Feature, fields: PromptFields): string {
+  switch (feature) {
+    case "animate":
+      return buildAnimatePrompt(fields);
+    case "mood_swap":
+      return buildMoodSwapPrompt({ moodId: fields.optionId, sceneDetails: fields.sceneDetails });
+    case "exterior_to_interior":
+      return buildExteriorToInteriorPrompt(fields);
+    case "plan_to_render":
+      return buildPlanToRenderPrompt({
+        planStyleId: fields.optionId,
+        sceneDetails: fields.sceneDetails,
+      });
+    case "multi_angle":
+      return buildMultiAnglePrompt({ angleId: fields.optionId, sceneDetails: fields.sceneDetails });
+    default:
+      return buildPrintRenderPrompt(fields);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -118,14 +167,12 @@ export async function POST(req: NextRequest) {
     ? Math.min(Math.max(rawQuantity, 1), MAX_QUANTITY)
     : 1;
   const rawDuration = Number(form.get("durationSeconds"));
-  const durationSeconds = (DURATIONS.includes(rawDuration) ? rawDuration : 4) as 4 | 8 | 12;
+  const durationSeconds = (DURATIONS.includes(rawDuration) ? rawDuration : 4) as 4 | 8;
 
   const sceneDetails = typeof form.get("sceneDetails") === "string"
     ? String(form.get("sceneDetails")).slice(0, SCENE_DETAILS_MAX)
     : undefined;
-  const narrationScript = typeof form.get("narrationScript") === "string"
-    ? String(form.get("narrationScript")).slice(0, NARRATION_SCRIPT_MAX).trim()
-    : "";
+  const optionId = typeof form.get("optionId") === "string" ? String(form.get("optionId")) : undefined;
 
   // --- Coût affiché = coût facturé, quel que soit le modèle servant ---
   const cost = computeCreditCost({
@@ -134,7 +181,6 @@ export async function POST(req: NextRequest) {
     resolution,
     quantity,
     durationSeconds,
-    withNarration: feature === "animate" && narrationScript.length > 0,
   });
   const balance = await getCreditBalance();
   if (balance < cost) {
@@ -147,12 +193,6 @@ export async function POST(req: NextRequest) {
   const materialId = typeof form.get("materialId") === "string" ? String(form.get("materialId")) : undefined;
   const lightingId = typeof form.get("lightingId") === "string" ? String(form.get("lightingId")) : undefined;
   const motionId = typeof form.get("motionId") === "string" ? String(form.get("motionId")) : undefined;
-
-  // Choix "modèle" de l'utilisateur (dropdown) : résout l'id public vers la
-  // clé interne du candidat à essayer EN PREMIER (fallback automatique
-  // ensuite). null/undefined = routage automatique.
-  const rawModelOption = typeof form.get("modelOption") === "string" ? String(form.get("modelOption")) : null;
-  const preferredCandidateKey = rawModelOption ? resolveCandidateKey(rawModelOption) : null;
 
   // Image principale : soit une URL (rendu précédent, transmise telle
   // quelle), soit le fichier uploadé encodé en data URI.
@@ -176,21 +216,20 @@ export async function POST(req: NextRequest) {
     feature: feature as Feature,
     imageUrl,
     referenceUrls,
-    prompt:
-      feature === "animate"
-        ? buildAnimatePrompt({ sceneDetails, motionId })
-        : buildPrintRenderPrompt({ sceneDetails, sceneTypeId, materialId, lightingId }),
+    prompt: buildFeaturePrompt(feature as Feature, {
+      sceneDetails,
+      sceneTypeId,
+      materialId,
+      lightingId,
+      motionId,
+      optionId,
+    }),
     quality,
     aspectRatio,
     resolution,
     quantity,
-    preferredCandidateKey: preferredCandidateKey ?? undefined,
     motionPresetId: motionId,
     durationSeconds,
-    narrationScript:
-      feature === "animate" && form.get("narration") === "on"
-        ? narrationScript || buildAutoNarrationScript({ sceneTypeId })
-        : undefined,
   };
 
   // --- Création du job + orchestration en arrière-plan ---

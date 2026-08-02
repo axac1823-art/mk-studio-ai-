@@ -1,17 +1,17 @@
 "use client";
 
 // Barre d'outils de génération (bas de studio) — TOUT en dropdowns :
-// - modèle (noms PRODUIT uniquement : le choix change juste quel candidat
-//   interne est essayé en premier, le fallback reste automatique)
 // - quantité (variantes)
 // - qualité — libellé GÉNÉRIQUE ("Standard/Pro") qui ne révèle rien du
 //   modèle sous-jacent (règle non négociable)
 // - ratio d'aspect, résolution
 // - bouton Generate avec coût en crédits EN DIRECT + état désactivé et
 //   message chiffré quand le solde est insuffisant (+ lien d'achat)
+//
+// AUCUN sélecteur de modèle : le routage entre fournisseurs est 100%
+// serveur (scope V1 — agrégateur vertical, le modèle est un détail interne).
 import { Loader2, Sparkles } from "lucide-react";
 
-import { ModelPicker } from "@/components/studio/model-picker";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ASPECT_RATIOS, MAX_QUANTITY, QUALITY_TIERS, RESOLUTIONS } from "@/lib/presets";
-import type { ModelOption } from "@/lib/model-options";
 import type { AspectRatio, QualityTier, Resolution } from "@/lib/ai/types";
 
 function DropdownControl<T extends string>({
@@ -59,8 +58,6 @@ function DropdownControl<T extends string>({
 }
 
 interface GenerationControlsProps {
-  modelOptions: ModelOption[];
-  modelId: string;
   quantity: number;
   quality: QualityTier;
   aspectRatio: AspectRatio;
@@ -69,7 +66,6 @@ interface GenerationControlsProps {
   balance: number | null;
   isBusy: boolean;
   canGenerate: boolean;
-  onModelChange: (id: string) => void;
   onQuantityChange: (value: number) => void;
   onQualityChange: (value: QualityTier) => void;
   onAspectRatioChange: (value: AspectRatio) => void;
@@ -78,8 +74,6 @@ interface GenerationControlsProps {
 }
 
 export function GenerationControls({
-  modelOptions,
-  modelId,
   quantity,
   quality,
   aspectRatio,
@@ -88,7 +82,6 @@ export function GenerationControls({
   balance,
   isBusy,
   canGenerate,
-  onModelChange,
   onQuantityChange,
   onQualityChange,
   onAspectRatioChange,
@@ -100,13 +93,6 @@ export function GenerationControls({
   return (
     <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-muted-foreground">Model</span>
-          <div className="w-[200px]">
-            <ModelPicker options={modelOptions} value={modelId} onChange={onModelChange} />
-          </div>
-        </div>
-
         <DropdownControl
           label="Quantity"
           options={Array.from({ length: MAX_QUANTITY }, (_, index) => String(index + 1))}

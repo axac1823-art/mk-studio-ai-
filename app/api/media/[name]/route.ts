@@ -1,6 +1,7 @@
-// Sert les vidéos produites côté serveur (merge ffmpeg de la chaîne
-// Animate), stockées dans le dossier temporaire local (lib/ai/media.ts).
-// REMPLACÉ par les URLs signées S3/Supabase Storage au jalon DB.
+// Sert les vidéos produites côté serveur (Sora, ou sortie du serveur
+// ComfyUI local i2v), stockées dans le dossier temporaire local
+// (lib/ai/media.ts). REMPLACÉ par les URLs signées S3/Supabase Storage au
+// jalon DB.
 import { NextRequest, NextResponse } from "next/server";
 
 import { readMediaFile } from "@/lib/ai/media";

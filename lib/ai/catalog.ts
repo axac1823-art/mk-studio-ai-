@@ -39,7 +39,7 @@ export interface ModelCandidate {
 
 // --- Extracteurs tolérants : normalisent les réponses des adaptateurs vers
 //     une simple liste d'URLs (les adaptateurs rendent tous la même forme
-//     { images } / { video } / { audio }). ---
+//     { images } / { video }). ---
 
 function asRecord(data: unknown): Record<string, unknown> {
   return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
@@ -56,11 +56,6 @@ function extractImageUrls(data: unknown): string[] {
 function extractVideoUrl(data: unknown): string[] {
   const video = asRecord(asRecord(data).video);
   return typeof video.url === "string" ? [video.url] : [];
-}
-
-function extractAudioUrl(data: unknown): string[] {
-  const audio = asRecord(asRecord(data).audio);
-  return typeof audio.url === "string" ? [audio.url] : [];
 }
 
 // --- Fabriques d'input : traduisent la GenerationRequest normalisée vers
@@ -204,154 +199,157 @@ function comfyuiImg2imgInput(req: GenerationRequest): Record<string, unknown> {
   };
 }
 
-function ttsInput(req: GenerationRequest): Record<string, unknown> {
-  return { text: req.narrationScript ?? "" };
+/** ComfyUI (serveur LOCAL de test) : img2video — le workflow custom
+ *  (COMFYUI_VIDEO_WORKFLOW_FILE) reçoit prompt/image + dimensions cibles.
+ *  Tailles modestes en multiples de 16 (la vidéo locale est LOURDE sur GPU
+ *  grand public) : ~480p en standard, ~720p en pro ; la durée est convertie
+ *  en frames côté adaptateur (COMFYUI_VIDEO_FPS). */
+function comfyuiVideoInput(req: GenerationRequest): Record<string, unknown> {
+  const pro = req.quality === "pro";
+  const [width, height] =
+    req.aspectRatio === "16:9"
+      ? pro
+        ? [1280, 720]
+        : [832, 480]
+      : req.aspectRatio === "9:16"
+        ? pro
+          ? [720, 1280]
+          : [480, 832]
+        : req.aspectRatio === "4:3"
+          ? pro
+            ? [1088, 816]
+            : [768, 576]
+          : req.aspectRatio === "3:4"
+            ? pro
+              ? [816, 1088]
+              : [576, 768]
+            : pro
+              ? [960, 960]
+              : [640, 640];
+  return {
+    prompt: req.prompt,
+    image: req.imageUrl,
+    duration: req.durationSeconds ?? 4,
+    width,
+    height,
+  };
 }
 
 // --- LE CATALOGUE : feature -> candidats par ordre de priorité. ---
-// Le tri final tient compte du tier demandé ET du modèle éventuellement
-// choisi par l'utilisateur (voir router.orderCandidates).
+// Le tri final tient compte du tier demandé (voir router.orderCandidates).
 
 const IMAGE_TIMEOUT_MS = 3 * 60 * 1000;
 const VIDEO_TIMEOUT_MS = 10 * 60 * 1000;
 
+/** Candidats partagés par TOUTES les features d'édition image du scope MVP
+ *  (même pipeline img2img/edit chez les mêmes fournisseurs — SEUL le prompt
+ *  change, voir lib/ai/prompt-templates.ts). Si une feature doit diverger
+ *  (modèle dédié, ordre différent), lui donner sa propre liste. */
+const IMAGE_EDIT_CANDIDATES: ModelCandidate[] = [
+  {
+    key: "edit-alpha-pro",
+    provider: "bfl",
+    modelId: "flux-kontext-max",
+    costWeight: 8,
+    maxReferences: 0,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["pro"],
+    buildInput: bflEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    key: "edit-beta-pro",
+    provider: "google",
+    modelId: "gemini-3-pro-image-preview",
+    costWeight: 6,
+    maxReferences: 13,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["standard", "pro"],
+    buildInput: googleEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    key: "edit-alpha",
+    provider: "bfl",
+    modelId: "flux-kontext-pro",
+    costWeight: 4,
+    maxReferences: 0,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["standard", "pro"],
+    buildInput: bflEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    key: "edit-beta",
+    provider: "google",
+    modelId: "gemini-2.5-flash-image",
+    costWeight: 2,
+    maxReferences: 13,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["standard"],
+    buildInput: googleEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    key: "edit-delta-pro",
+    provider: "openai",
+    modelId: "gpt-image-1.5",
+    costWeight: 7,
+    maxReferences: 13,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["pro"],
+    buildInput: openaiEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    key: "edit-delta",
+    provider: "openai",
+    modelId: "gpt-image-1",
+    costWeight: 5,
+    maxReferences: 13,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["standard", "pro"],
+    buildInput: openaiEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    // Agrégateur (exception assumée, voir AGENTS.md §1) : flux-2-klein est
+    // ÉPINGLÉ car c'est le seul modèle d'édition éligible au free tier
+    // (max 5 images additionnelles, résolution "auto" = plafond du tier)
+    // — repasser à `default` (routage recommandé) sur un plan payant.
+    key: "edit-epsilon",
+    provider: "magichour",
+    modelId: "flux-2-klein",
+    costWeight: 5,
+    maxReferences: 5,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["standard", "pro"],
+    buildInput: magichourEditInput,
+    extractOutput: extractImageUrls,
+  },
+  {
+    // Provider LOCAL de test (votre GPU, gratuit, hors-ligne) : img2img
+    // via ComfyUI — dernier recours du routage auto (coût nul). Pas de
+    // références (graphe par défaut).
+    key: "edit-zeta",
+    provider: "comfyui",
+    modelId: "img2img",
+    costWeight: 0,
+    maxReferences: 0,
+    timeoutMs: IMAGE_TIMEOUT_MS,
+    tiers: ["standard", "pro"],
+    buildInput: comfyuiImg2imgInput,
+    extractOutput: extractImageUrls,
+  },
+];
+
 export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
-  print_render: [
-    {
-      key: "edit-alpha-pro",
-      provider: "bfl",
-      modelId: "flux-kontext-max",
-      costWeight: 8,
-      maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["pro"],
-      buildInput: bflEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-beta-pro",
-      provider: "google",
-      modelId: "gemini-3-pro-image-preview",
-      costWeight: 6,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: googleEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-alpha",
-      provider: "bfl",
-      modelId: "flux-kontext-pro",
-      costWeight: 4,
-      maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: bflEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-beta",
-      provider: "google",
-      modelId: "gemini-2.5-flash-image",
-      costWeight: 2,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard"],
-      buildInput: googleEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-delta-pro",
-      provider: "openai",
-      modelId: "gpt-image-1.5",
-      costWeight: 7,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["pro"],
-      buildInput: openaiEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-delta",
-      provider: "openai",
-      modelId: "gpt-image-1",
-      costWeight: 5,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: openaiEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      // Agrégateur (exception assumée, voir AGENTS.md §1) : flux-2-klein est
-      // ÉPINGLÉ car c'est le seul modèle d'édition éligible au free tier
-      // (max 5 images additionnelles, résolution "auto" = plafond du tier)
-      // — repasser à `default` (routage recommandé) sur un plan payant.
-      key: "edit-epsilon",
-      provider: "magichour",
-      modelId: "flux-2-klein",
-      costWeight: 5,
-      maxReferences: 5,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: magichourEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      // Provider LOCAL de test (votre GPU, gratuit, hors-ligne) : img2img
-      // via ComfyUI — dernier recours du routage auto, ou essayé en premier
-      // si choisi dans le dropdown. Pas de références (graphe par défaut).
-      key: "edit-zeta",
-      provider: "comfyui",
-      modelId: "img2img",
-      costWeight: 0,
-      maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: comfyuiImg2imgInput,
-      extractOutput: extractImageUrls,
-    },
-  ],
-
-  mood_swap: [
-    {
-      key: "edit-alpha",
-      provider: "bfl",
-      modelId: "flux-kontext-pro",
-      costWeight: 4,
-      maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: bflEditInput,
-      extractOutput: extractImageUrls,
-    },
-  ],
-
-  object_swap: [
-    {
-      key: "edit-beta",
-      provider: "google",
-      modelId: "gemini-2.5-flash-image",
-      costWeight: 2,
-      maxReferences: 13,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: googleEditInput,
-      extractOutput: extractImageUrls,
-    },
-    {
-      key: "edit-alpha",
-      provider: "bfl",
-      modelId: "flux-kontext-pro",
-      costWeight: 4,
-      maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
-      tiers: ["standard", "pro"],
-      buildInput: bflEditInput,
-      extractOutput: extractImageUrls,
-    },
-  ],
+  // Les 5 features image du scope MVP partagent les mêmes candidats.
+  print_render: IMAGE_EDIT_CANDIDATES,
+  mood_swap: IMAGE_EDIT_CANDIDATES,
+  exterior_to_interior: IMAGE_EDIT_CANDIDATES,
+  plan_to_render: IMAGE_EDIT_CANDIDATES,
+  multi_angle: IMAGE_EDIT_CANDIDATES,
 
   // Plus de candidat upscale (Seedream/ARK retiré) : le pipeline saute
   // l'étape quand la liste est vide (voir router.runImagePipeline) et livre
@@ -430,19 +428,20 @@ export const MODEL_CATALOG: Record<Feature, ModelCandidate[]> = {
       buildInput: magichourVideoInput,
       extractOutput: extractVideoUrl,
     },
-  ],
-
-  lip_sync_narration: [
     {
-      key: "tts-alpha",
-      provider: "elevenlabs",
-      modelId: "eleven_turbo_v2_5",
-      costWeight: 2,
+      // Provider LOCAL de test (votre GPU, gratuit, hors-ligne) : img2video
+      // via ComfyUI — workflow custom OBLIGATOIRE
+      // (COMFYUI_VIDEO_WORKFLOW_FILE, ex. Wan 2.2 / LTX-Video), sinon échec
+      // vite -> fallback. Dernier recours du routage auto (coût nul).
+      key: "video-zeta",
+      provider: "comfyui",
+      modelId: "i2v",
+      costWeight: 0,
       maxReferences: 0,
-      timeoutMs: IMAGE_TIMEOUT_MS,
+      timeoutMs: VIDEO_TIMEOUT_MS,
       tiers: ["standard", "pro"],
-      buildInput: ttsInput,
-      extractOutput: extractAudioUrl,
+      buildInput: comfyuiVideoInput,
+      extractOutput: extractVideoUrl,
     },
   ],
 };
