@@ -1,160 +1,246 @@
-# RenderStudio — SaaS de rendu architectural par IA
+# RenderStudio — README
 
-**Agrégateur IA vertical** pour architectes, professionnels de l'archviz,
-décorateurs d'intérieur et agents immobiliers — pas un outil généraliste
-de création de contenu. Chaque modèle est appelé côté serveur sur l'API
-**officielle** de son éditeur (BFL, Google, OpenAI, Kling, Runway) — pas
-d'agrégateur (une seule exception documentée : Magic Hour) et pas de
-vendor lock-in : le fallback entre fournisseurs est automatique et
-invisible, et **aucun sélecteur de modèle n'est exposé** à l'utilisateur.
+> SaaS de rendu architectural par IA : screenshot 3D → rendu photoréaliste, ambiance, plan 2D → rendu meublé, vidéo courte de présentation, et multi-angles. Produit vertical pour architectes, archviz, décorateurs et agents immobiliers.
 
-> Architecture détaillée et spec produit : [`AGENTS.md`](AGENTS.md) —
-> guide développeur (lancer, comprendre chaque fichier, modifier) :
-> [`GUIDE.md`](GUIDE.md). L'ancien backend FastAPI est archivé dans
-> [`legacy/`](legacy/) (référence, non fonctionnel en l'état).
+Ce dépôt est organisé en **deux services** et une base de données partagée :
 
-## Fonctionnalités
+- `/web` : interface Next.js 14 + TypeScript, pages, auth, facturation, studio, gestion des projets.
+- `/worker` : service Python FastAPI qui détient **toute** la logique IA (appels providers, ComfyUI, upscale, ffmpeg, stockage local).
+- `/db` : schéma PostgreSQL unique, utilisé par les deux services.
+- `/legacy` : ancien backend FastAPI, **archivé pour référence uniquement**.
 
-Scope MVP : 6 fonctions métier, une par onglet du studio — **toutes
-câblées** (les 5 fonctions image partagent le même pipeline, seul le
-prompt change).
+---
 
-- **Render** — photoréalisme extrême à partir d'un screenshot de viewport
-  3D (SketchUp, Revit, 3ds Max), géométrie préservée : type de scène,
-  presets matériau/éclairage, images de référence, réglages
-  qualité/ratio/résolution/quantité, comparateur avant/après,
-  téléchargement du résultat.
-- **Mood** — même scène, variation jour/nuit/saison/météo (pluie, neige),
-  sans re-génération depuis zéro.
-- **Exterior → Interior** — vue intérieure plausible et cohérente avec
-  l'architecture, depuis un rendu extérieur.
-- **Plan to Render** — plan technique 2D → rendu meublé (intérieur) ou
-  paysagé (extérieur).
-- **Animate** — vidéo courte de présentation (4-8 s) : mouvement de caméra
-  simple (push-in, orbite, zoom…) sur un rendu existant, sans narration
-  en V1.
-- **Multi-Angle** — 2-3 angles de caméra additionnels de la même scène
-  (cohérence best-effort, sans garantie parfaite).
+## Legacy vs Worker
 
-## Stack
+- **`legacy/`** : ancien backend FastAPI monolithique. Il n'est pas lancé en production, il sert uniquement de référence pour certains presets et le registre des fournisseurs.
+- **`worker/`** : nouveau service FastAPI qui exécute les générations IA. C'est le seul endroit où les clés API providers sont lues. `/web` ne parle **jamais** directement aux providers ; il crée une ligne `jobs` en DB et appelle `/worker` via HTTP.
 
-- **Next.js 14.2** (App Router) · **React 18** · **TypeScript strict**
-- **TailwindCSS 3.4** · **shadcn/ui** (style new-york, base zinc, thème
-  sombre par défaut)
-- **Fetch natif + node:crypto** — aucune dépendance SDK propriétaire :
-  appels directs (submit + polling) aux API officielles des fournisseurs
-- À venir : **Supabase** (auth + Postgres + storage) et **Stripe**
-  (abonnements + webhooks)
+---
 
 ## Prérequis
 
-- **Node.js ≥ 18.17** (20 LTS recommandé) et npm
-- Au moins **une clé fournisseur image** et **une clé vidéo** (voir
-  [Configuration](#configuration)) — un fournisseur non configuré échoue
-  vite et le routeur bascule automatiquement sur le suivant
+- Docker Desktop (ou Docker Engine) pour la base de données.
+- Node.js 20+ et npm.
+- Python 3.11+.
 
-## Démarrage
+---
+
+## Lancer le projet en local
+
+### 1. Base de données
 
 ```bash
+docker compose up -d db
+```
+
+Port exposé côté hôte : `5433` (car `5432` est souvent déjà pris par un PostgreSQL natif Windows).
+
+Appliquer le schéma et le seed de dev :
+
+```bash
+docker compose exec -T db psql -U renderstudio -d renderstudio < db/schema.sql
+```
+
+Le seed crée un utilisateur `dev@renderstudio.local` avec 100 crédits et un projet `General` par défaut.
+
+### 2. Worker FastAPI
+
+```bash
+cd worker
+python -m venv .venv
+./.venv/Scripts/python -m pip install -r requirements.txt
+
+# Copier et renseigner AU MOINS une clé provider (voir worker/.env.example)
+cp .env.example .env
+
+./.venv/Scripts/python -m uvicorn main:app --port 8000
+```
+
+Le worker expose :
+- `http://127.0.0.1:8000/health` — santé.
+- `POST /generate/image` — génération image (Render, Mood, Ext→Int, Plan, Multi-Angle).
+- `POST /generate/video` — génération vidéo (Animate).
+- `POST /upscale` — upscaler un asset existant.
+- `GET /jobs/{id}` — état d'un job.
+- `GET /storage/{path}` — fichiers générés.
+
+### 3. Web Next.js
+
+```bash
+cd web
 npm install
-cp .env.example .env.local   # renseigner au moins un fournisseur
-npm run dev                  # http://localhost:3000 -> /app/dashboard
+
+# Copier et ajuster DATABASE_URL / WORKER_BASE_URL
+npm install
+cp .env.example .env.local
+
+npm run dev
 ```
 
-Vérification rapide : `GET /app/dashboard` → 200 ; `POST /api/generate`
-sans aucune clé fournisseur → erreur JSON explicite (503).
+Ouvrir `http://localhost:3000/app/dashboard`.
 
-## Configuration
+---
 
-Toutes les clés sont lues **côté serveur uniquement** via `.env.local`
-(jamais de préfixe `NEXT_PUBLIC_`). Chaque entrée de `.env.example` est
-documentée (où obtenir la clé, options).
+## Variables d'environnement
 
-| Variable | Fournisseur | Usage |
-| --- | --- | --- |
-| `BFL_API_KEY` | Black Forest Labs | Image — Flux Kontext Pro/Max |
-| `GOOGLE_API_KEY` | Google Gemini | Image — Nano Banana / Nano Banana Pro |
-| `OPENAI_API_KEY` | OpenAI | Image (GPT Image) + vidéo (Sora 2) |
-| `KLING_SECRET_KEY` | Kling (Kuaishou) | Vidéo — Kling 3 / 2.5 Turbo |
-| `RUNWAY_API_KEY` | Runway | Vidéo — Gen-4 Turbo |
-| `MAGIC_HOUR_API_KEY` | Magic Hour | Image + vidéo — agrégateur (exception assumée, éligible free tier) |
-| `COMFYUI_CHECKPOINT` | ComfyUI (local) | Image img2img hors-ligne sur votre GPU |
-| `COMFYUI_VIDEO_WORKFLOW_FILE` | ComfyUI (local) | Vidéo i2v hors-ligne — workflow custom requis (Wan/LTX, sortie mp4) |
+### `/web/.env.local`
 
-## Scripts
-
-| Commande | Rôle |
-| --- | --- |
-| `npm run dev` | Serveur de développement |
-| `npm run build` | Vérification complète : compile + lint + types |
-| `npm start` | Sert le build de production |
-| `npm run lint` | ESLint |
-| `npm run test:fallback` | Tests hors-ligne du routeur (tri, fallback) |
-| `npm run test:comfyui` | Smoke test de l'adaptateur ComfyUI (serveur mock) |
-
-## Structure du projet
-
-```
-app/                      # App Router (pas de src/)
-  page.tsx                # redirige vers /app/dashboard
-  app/dashboard/          # STUDIO : 6 onglets métier, upload, presets,
-                          #   génération, comparateur, historique session
-  api/generate/           # POST multipart -> job ; GET [id] -> statut
-  api/credits/balance/    # solde de crédits (stub jusqu'au jalon DB)
-  api/media/[name]/       # sert les vidéos stockées en local
-components/
-  studio/                 # panneaux du studio (render, animate, panneau
-                          #   image générique des 4 autres fonctions…)
-  ui/                     # shadcn/ui (installé à la main, style new-york)
-  compare-slider.tsx      # comparateur avant/après
-  upload-dropzone.tsx     # drag & drop + aperçu (PNG/JPEG/WebP, 10 Mo max)
-lib/
-  ai/catalog.ts           # LE fichier central : feature -> candidats ordonnés
-  ai/providers/           # un adaptateur par API officielle (+ http.ts : helpers)
-  ai/router.ts            # orchestration : tri par tier, fallback, upscale
-  ai/prompt-templates.ts  # prompts versionnés (presets -> prompt de génération)
-  ai/media.ts             # stockage temp local des vidéos (Sora, ComfyUI)
-  ai/types.ts             # schéma interne normalisé (aucun nom de fournisseur)
-  jobs/store.ts           # jobs en mémoire (remplaçable par BullMQ)
-  presets.ts  costs.ts  credits.ts  features.ts  download.ts  utils.ts
-scripts/                  # tests hors-ligne (routeur, adaptateur ComfyUI)
-legacy/                   # ancien backend FastAPI (référence, non utilisé)
+```env
+DATABASE_URL=postgresql://renderstudio:renderstudio@127.0.0.1:5433/renderstudio
+WORKER_BASE_URL=http://127.0.0.1:8000
+WORKER_PUBLIC_URL=http://127.0.0.1:8000
 ```
 
-## Fonctionnement d'une génération
+Aucune clé de provider IA ici.
 
-1. Le client POST `multipart/form-data` vers `/api/generate` (image +
-   feature + `sceneTypeId`/`motionId` + réglages
-   qualité/ratio/résolution/quantité/durée).
-2. La route valide (type, taille), construit le prompt via
-   `lib/ai/prompt-templates.ts` et crée un job.
-3. Le routeur (`lib/ai/router.ts`) essaie les candidats du catalogue dans
-   l'ordre (tier de qualité), chacun sur l'API officielle de son
-   fournisseur ; échec → fallback automatique.
-4. Le client polle `GET /api/generate/{jobId}` toutes les 2,5 s jusqu'à
-   `done` (avec `outputUrls`) ou `error`.
+### `/worker/.env`
 
-## Feuille de route
+```env
+DATABASE_URL=postgresql://renderstudio:renderstudio@127.0.0.1:5433/renderstudio
+WORKER_PUBLIC_URL=http://127.0.0.1:8000
 
-Ordre de construction convenu avec le propriétaire (détail et exigences
-d'architecture dans `AGENTS.md`) :
+# Provider images
+BFL_API_KEY=
+GOOGLE_API_KEY=
+OPENAI_API_KEY=
+MAGIC_HOUR_API_KEY=
 
-1. Scaffold Next.js + Tailwind + shadcn/ui — **fait**.
-2. Fonctions 1 à 6 — **toutes câblées** (les 5 fonctions image partagent
-   le même pipeline, seul le prompt change ; multi-angle en cohérence
-   best-effort).
-3. Auth (Supabase), schéma DB, système de crédits — **prochain jalon**.
-4. Abonnements Stripe + webhooks + mint des crédits.
-5. Landing page marketing.
+# Provider vidéos
+KLING_SECRET_KEY=
+RUNWAY_API_KEY=
+OPENAI_API_KEY=
+MAGIC_HOUR_API_KEY=
 
-## Sécurité et limites du jalon courant
+# ComfyUI local (optionnel, dev/test)
+COMFYUI_BASE_URL=http://127.0.0.1:8188
+COMFYUI_CHECKPOINT=
+# COMFYUI_VIDEO_WORKFLOW_FILE=
+# COMFYUI_UPSCALE_WORKFLOW_FILE=
+```
 
-- Les clés API ne quittent jamais le serveur : tous les appels modèles
-  passent par des Route Handlers (`app/api/...`).
-- `.env` est listé dans `.gitignore` — ne jamais committer de clés réelles.
-- Pas d'auth : la route `/api/generate` est **ouverte** — ne pas exposer
-  telle quelle en production.
-- L'image transite en data URI base64 (10 Mo max) ; S3/Supabase Storage
-  prendra le relais au jalon DB.
-- L'historique du studio et les jobs sont **en mémoire** (session
-  navigateur / processus serveur) — la persistance arrive avec la DB.
+Un provider non configuré est simplement sauté par le fallback.
+
+---
+
+## Architecture des flux
+
+1. L'utilisateur upload une image dans `/web` et choisit un feature (Render, Mood, etc.) dans un projet.
+2. `/web` crée un job `pending` dans la table `jobs`, puis appelle `POST /generate/image` (ou `/video`) du worker.
+3. Le worker démarre un `BackgroundTasks`, vérifie le solde, débite **uniquement au succès**, et exécute le workflow.
+4. Le workflow tente les providers dans l'ordre du catalogue (`worker/providers/*.py`), enregistre l'image/vidéo dans `worker/storage/`, crée une ligne `assets`, et met à jour le job en `complete`.
+5. Le front polle `GET /jobs/{id}` toutes les 2,5 s via la DB.
+
+---
+
+## Structure du dépôt
+
+```
+/                    <- racine : docker-compose, schéma DB, README
+├── web/             <- Next.js 14 : UI, pages, routes API, appels worker
+│   ├── app/         <- App Router (page studio, dashboard, pages projets)
+│   ├── components/  <- Composants React (studio, projets, sidebar)
+│   ├── lib/         <- DB, crédits, client worker, configs, presets
+│   ├── scripts/     <- purge-trash.ts (nettoyage corbeille)
+│   └── .env.example
+├── worker/          <- FastAPI Python : toute la logique IA
+│   ├── providers/   <- un fichier = un provider (bfl, google, kling, runway, openai, magichour, comfyui, upscale)
+│   ├── workflows/     <- image_render.py, video_generation.py, upscale.py, common.py
+│   ├── routes/      <- endpoints FastAPI (generate, jobs, upscale, storage)
+│   ├── storage/     <- fichiers générés en local (dev)
+│   ├── tests/       <- test_fallback.py, smoke_comfyui.py
+│   └── .env.example
+├── db/              <- schema.sql (source unique de vérité Postgres)
+└── legacy/          <- ancien backend FastAPI (non utilisé, référence uniquement)
+```
+
+---
+
+## Features V1
+
+Les 6 onglets du studio :
+
+1. **Render** : screenshot 3D → rendu photoréaliste.
+2. **Mood** : variation jour/nuit/saison/météo de la même scène.
+3. **Exterior → Interior** : vue intérieure plausible depuis une vue extérieure.
+4. **Plan to Render** : plan 2D technique → rendu meublé/paysagé.
+5. **Animate** : image → vidéo courte 4-8 s avec mouvement de caméra simple.
+6. **Multi-Angle** : 2-3 angles additionnels de la même scène (best-effort).
+
+### Upscale
+
+- Bouton disponible sur chaque résultat de la galerie.
+- Options : facteur 2× ou 4×, toggle « améliorer la netteté ».
+- Crée un nouvel asset lié à l'original via `parent_generation_id` ; l'original n'est jamais écrasé.
+- Coûts : `upscale_2x` = 8 crédits, `upscale_4x` = 15 crédits (configurable dans `action_costs`).
+
+### Projets / Assets (hiérarchie personnelle)
+
+- `projects` : id, user_id, name, cover_asset_id.
+- `assets` : id, project_id, user_id, type (`image`/`video`), generation_id, is_favorite, is_trashed, trashed_at.
+- Chaque génération est attachée à un projet au moment de la création.
+- Navigation : Home, Search, Projects, Favorites, Uploads, Trash.
+- Corbeille : `is_trashed` + `trashed_at` ; suppression définitive après 30 jours via `npm run purge:trash`.
+
+---
+
+## Ajouter un nouveau provider IA
+
+1. Créer `worker/providers/<nom>.py` avec une fonction `generate(input) -> dict` (voir `bfl.py` ou `google.py` comme modèle).
+2. L'enregistrer dans `worker/providers/__init__.py`.
+3. L'ajouter dans la liste de fallback du workflow concerné (`workflows/image_render.py` ou `workflows/video_generation.py`).
+4. Ajouter la clé dans `worker/.env.example` et `worker/config.py` si nécessaire.
+5. **Ne rien modifier côté `/web` :** les clés providers restent dans `/worker` uniquement.
+
+---
+
+## ComfyUI (dev/test local)
+
+Le provider `worker/providers/comfyui.py` est un fournisseur de secours/dev local. Il attend un serveur ComfyUI sur `COMFYUI_BASE_URL` (défaut `127.0.0.1:8188`).
+
+- Image : `img2img` avec le checkpoint `COMFYUI_CHECKPOINT`.
+- Vidéo : workflow i2v personnalisé via `COMFYUI_VIDEO_WORKFLOW_FILE`.
+- Upscale : workflow personnalisé via `COMFYUI_UPSCALE_WORKFLOW_FILE`.
+
+Si vous n'avez pas de workflow JSON personnalisé, le provider comporte des workflows par défaut minimaux. Les fichiers de workflow JSON sont chargés, et les paramètres `denoise`, `fps`, etc. sont surchargés via des variables d'environnement.
+
+Pour lancer un serveur ComfyUI local, référez-vous à la documentation officielle : `https://github.com/comfyanonymous/ComfyUI`.
+
+---
+
+## Tests et vérifications
+
+```bash
+# Worker
+cd worker
+./.venv/Scripts/python -m tests.test_fallback
+./.venv/Scripts/python -m tests.smoke_comfyui
+
+# Web
+cd web
+npm run build
+npm run purge:trash
+```
+
+Vérification rapide :
+- `GET http://localhost:3000/app/dashboard` → 200.
+- `GET http://localhost:8000/health` → `{"status":"ok"}`.
+- Sans aucune clé provider, une génération retourne une erreur explicite sans débiter de crédits.
+
+---
+
+## Notes de sécurité
+
+- Les clés providers ne vivent que dans `worker/.env`.
+- `/web` ne connaît que `WORKER_BASE_URL`.
+- Aucune variable sensible ne doit être préfixée `NEXT_PUBLIC_`.
+- `/legacy` est archivé et ne doit pas être importé ni exécuté.
+
+---
+
+## Jalons suivants (non implémentés)
+
+- Auth (Supabase Auth) + remplacer le user seed par une vraie authentification.
+- Facturation Stripe (Checkout + Customer Portal + webhooks) et plans d'abonnement.
+- Stockage distant S3/Supabase Storage à la place de `worker/storage/`.
+- Queue externe (BullMQ) pour remplacer `BackgroundTasks` à grande échelle.

@@ -40,7 +40,7 @@ app/
 ## Lancer en local
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv &&  .venv/Scripts/Activate
 pip install -r requirements.txt
 cp .env.example .env   # puis renseigner tes clés fal.ai / Replicate / DB
 uvicorn app.main:app --reload

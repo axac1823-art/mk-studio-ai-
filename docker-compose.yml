@@ -1,0 +1,26 @@
+# Postgres de dev pour RenderStudio (partagé par /web et /worker).
+#   docker compose up -d db
+#   docker compose exec -T db psql -U renderstudio -d renderstudio < db/schema.sql
+# Une instance existante fonctionne aussi : surcharger DATABASE_URL dans
+# web/.env.local et worker/.env.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: renderstudio
+      POSTGRES_PASSWORD: renderstudio
+      POSTGRES_DB: renderstudio
+    ports:
+      # 5433 côté hôte : un PostgreSQL natif Windows occupe déjà 5432 sur
+      # cette machine (ne pas le perturber).
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renderstudio -d renderstudio"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db-data:
