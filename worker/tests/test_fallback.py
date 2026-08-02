@@ -1,0 +1,134 @@
+"""Simulation hors-ligne du moteur de fallback — port de scripts/simulate-fallback.ts.
+
+    cd worker && ./.venv/Scripts/python -m tests.test_fallback
+
+Couvre : ordre des tentatives, fallback après erreurs, normalisation de la
+sortie, échec global (AllModelsFailedError), tri par tier de qualité,
+troncature des références, sortie vide = échec.
+"""
+from catalog import Candidate
+from workflows.engine import AllModelsFailedError, execute_with_fallback, order_candidates
+
+failures = 0
+
+
+def check(condition: bool, label: str) -> None:
+    global failures
+    if condition:
+        print(f"  PASS  {label}")
+    else:
+        failures += 1
+        print(f"  FAIL  {label}")
+
+
+def fake_candidate(key: str, **overrides) -> Candidate:
+    """Fabrique un candidat factice. build_input propage les références
+    pour pouvoir vérifier la troncature."""
+    defaults = {
+        "provider": "bfl",
+        "model_id": f"fake/{key}",
+        "cost_weight": 1,
+        "max_references": 99,
+        "timeout_ms": 1000,
+        "tiers": ("standard", "pro"),
+        "build_input": lambda req: {"prompt": req["prompt"], "refs": req.get("referenceUrls", [])},
+        "extract_output": lambda data: data.get("urls") if isinstance(data.get("urls"), list) else [],
+    }
+    defaults.update(overrides)
+    return Candidate(key=key, **defaults)
+
+
+def fake_adapter(failing_keys: list[str], calls: list[str]):
+    """Adaptateur factice : échoue pour les clés listées, réussit sinon et
+    enregistre l'ordre des appels."""
+
+    def run(model_id, _input, _timeout_ms):
+        calls.append(model_id)
+        if any(model_id.endswith(key) for key in failing_keys):
+            raise RuntimeError("simulated provider failure")
+        return {"urls": [f"https://example.test/{model_id.split('/')[-1]}.jpg"]}
+
+    return run
+
+
+def base_request(**overrides) -> dict:
+    req = {
+        "feature": "print_render",
+        "imageUrl": "data:image/png;base64,x",
+        "referenceUrls": ["ref-1", "ref-2", "ref-3"],
+        "prompt": "test prompt",
+        "quality": "standard",
+        "aspectRatio": "1:1",
+        "resolution": "1K",
+        "quantity": 1,
+    }
+    req.update(overrides)
+    return req
+
+
+def main() -> None:
+    print("\n[1] Fallback : A et B échouent, C sert la génération")
+    calls: list[str] = []
+    candidates = [fake_candidate("a"), fake_candidate("b"), fake_candidate("c")]
+    outcome = execute_with_fallback("print_render", candidates, base_request(), fake_adapter(["a", "b"], calls))
+    check(",".join(calls) == "fake/a,fake/b,fake/c", "tentatives dans l'ordre a, b, c")
+    check(outcome["winner"].key == "c", "le gagnant est c")
+    check(outcome["output_urls"][0] == "https://example.test/c.jpg", "sortie normalisée (URL)")
+    check(len(outcome["attempts"]) == 3, "3 tentatives tracées")
+    check(outcome["attempts"][0]["ok"] is False and bool(outcome["attempts"][0].get("error")), "erreur réelle tracée côté serveur")
+    check(all(a["latencyMs"] >= 0 for a in outcome["attempts"]), "latences enregistrées")
+
+    print("\n[2] Tous les candidats échouent -> AllModelsFailedError")
+    calls = []
+    thrown = None
+    try:
+        execute_with_fallback("print_render", [fake_candidate("a"), fake_candidate("b")], base_request(), fake_adapter(["a", "b"], calls))
+    except AllModelsFailedError as err:
+        thrown = err
+    check(isinstance(thrown, AllModelsFailedError), "lève AllModelsFailedError")
+    check(thrown is not None and len(thrown.attempts) == 2, "la trace des 2 tentatives est jointe")
+
+    print("\n[3] Tri par tier : un candidat 'pro' passe devant pour quality=pro")
+    standard = fake_candidate("standard-first", tiers=("standard",))
+    pro = fake_candidate("pro-second", tiers=("pro",))
+    ordered = order_candidates([standard, pro], "pro")
+    check(ordered[0].key == "pro-second", "le candidat pro est essayé en premier")
+    ordered_standard = order_candidates([standard, pro], "standard")
+    check(ordered_standard[0].key == "standard-first", "l'ordre config est conservé pour standard")
+
+    print("\n[4] Références tronquées au max supporté par le candidat")
+    calls = []
+    seen_refs: list = []
+
+    def build_input_spy(req):
+        seen_refs.extend(req.get("referenceUrls", []))
+        return {}
+
+    limited = fake_candidate("limited", max_references=1, build_input=build_input_spy)
+    execute_with_fallback("print_render", [limited], base_request(), fake_adapter([], calls))
+    check(len(seen_refs) == 1 and seen_refs[0] == "ref-1", "3 références fournies -> 1 seule passée au modèle")
+
+    print("\n[5] Sortie vide du fournisseur = échec -> fallback")
+    calls = []
+    empty = fake_candidate("empty", extract_output=lambda _data: [])
+    ok = fake_candidate("ok")
+    outcome = execute_with_fallback("print_render", [empty, ok], base_request(), fake_adapter([], calls))
+    check(outcome["winner"].key == "ok", "sortie vide traitée comme un échec, b sert")
+
+    print("\n[6] Clé préférée (tests) : essayée EN PREMIER, fallback conservé")
+    candidates = [fake_candidate("a"), fake_candidate("b"), fake_candidate("c")]
+    ordered = order_candidates(candidates, "standard", "b")
+    check(ordered[0].key == "b", "le candidat préféré passe devant")
+    check(ordered[1].key == "a" and ordered[2].key == "c", "l'ordre config est conservé pour le fallback")
+    unchanged = order_candidates(candidates, "standard", "inconnu")
+    check(unchanged[0].key == "a", "une clé inconnue ne change pas l'ordre")
+    tier_ordered = order_candidates(
+        [fake_candidate("pro-first", tiers=("pro",)), fake_candidate("std-second")], "pro", "std-second"
+    )
+    check(tier_ordered[0].key == "std-second", "la clé préférée prime sur le tier")
+
+    print("\nTous les tests passent.\n" if failures == 0 else f"\n{failures} test(s) en échec.\n")
+    raise SystemExit(0 if failures == 0 else 1)
+
+
+main()
