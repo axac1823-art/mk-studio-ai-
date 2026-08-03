@@ -69,20 +69,6 @@ export const ANGLE_PRESETS: PresetMeta[] = [
   { id: "close_up", label: "Close-up", swatch: "from-rose-200 to-rose-400" },
 ];
 
-export interface MotionPresetMeta {
-  id: string;
-  label: string;
-  description: string;
-}
-
-export const MOTION_PRESETS: MotionPresetMeta[] = [
-  { id: "push_in", label: "Push-in", description: "Slow cinematic move towards the subject" },
-  { id: "orbit", label: "Orbit", description: "Smooth rotation around the building" },
-  { id: "pan", label: "Pan", description: "Lateral sweep across the scene" },
-  { id: "tilt_up", label: "Tilt up", description: "Reveals the full height" },
-  { id: "dolly", label: "Dolly", description: "Walkthrough-style lateral move" },
-];
-
 // --- Bornes et options des contrôles de génération ---
 
 export const MAX_REFERENCES = 14;

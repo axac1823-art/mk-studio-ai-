@@ -25,6 +25,8 @@ def fake_candidate(key: str, **overrides) -> Candidate:
     """Fabrique un candidat factice. build_input propage les références
     pour pouvoir vérifier la troncature."""
     defaults = {
+        "name": key,
+        "description": f"fake model {key}",
         "provider": "bfl",
         "model_id": f"fake/{key}",
         "cost_weight": 1,
@@ -115,17 +117,27 @@ def main() -> None:
     outcome = execute_with_fallback("print_render", [empty, ok], base_request(), fake_adapter([], calls))
     check(outcome["winner"].key == "ok", "sortie vide traitée comme un échec, b sert")
 
-    print("\n[6] Clé préférée (tests) : essayée EN PREMIER, fallback conservé")
+    print("\n[6] Clé préférée (choix utilisateur) : uniquement ce candidat, pas de fallback silencieux")
     candidates = [fake_candidate("a"), fake_candidate("b"), fake_candidate("c")]
     ordered = order_candidates(candidates, "standard", "b")
-    check(ordered[0].key == "b", "le candidat préféré passe devant")
-    check(ordered[1].key == "a" and ordered[2].key == "c", "l'ordre config est conservé pour le fallback")
+    check(len(ordered) == 1 and ordered[0].key == "b", "seul le candidat choisi est retenu")
     unchanged = order_candidates(candidates, "standard", "inconnu")
-    check(unchanged[0].key == "a", "une clé inconnue ne change pas l'ordre")
+    check(len(unchanged) == 0, "une clé inconnue retourne une liste vide (échec explicite)")
     tier_ordered = order_candidates(
         [fake_candidate("pro-first", tiers=("pro",)), fake_candidate("std-second")], "pro", "std-second"
     )
-    check(tier_ordered[0].key == "std-second", "la clé préférée prime sur le tier")
+    check(len(tier_ordered) == 1 and tier_ordered[0].key == "std-second", "la clé choisie prime sur le tier")
+
+    print("\n[7] Choix utilisateur = échec du candidat unique -> AllModelsFailedError")
+    calls = []
+    thrown = None
+    try:
+        selected = [fake_candidate("x", max_references=1)]
+        execute_with_fallback("print_render", selected, base_request(), fake_adapter(["x"], calls))
+    except AllModelsFailedError as err:
+        thrown = err
+    check(isinstance(thrown, AllModelsFailedError), "échec du modèle choisi lève AllModelsFailedError")
+    check(thrown is not None and len(thrown.attempts) == 1, "une seule tentative tracée")
 
     print("\nTous les tests passent.\n" if failures == 0 else f"\n{failures} test(s) en échec.\n")
     raise SystemExit(0 if failures == 0 else 1)

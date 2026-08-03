@@ -69,7 +69,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         <Button asChild variant="ghost" size="sm" className="w-fit gap-2 px-0 text-muted-foreground">
           <Link href="/app/projects">
             <ArrowLeft className="h-4 w-4" />
-            All projects
+            All projects 
           </Link>
         </Button>
         <div className="flex items-start justify-between gap-4">

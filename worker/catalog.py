@@ -25,9 +25,11 @@ VIDEO_TIMEOUT_MS = 10 * 60 * 1000
 @dataclass(frozen=True)
 class Candidate:
     """Un modèle candidat pour une feature (journalisation interne via
-    `key` — jamais exposée au client)."""
+    `key` ; `name`/`description` sont affichables côté client)."""
 
     key: str
+    name: str
+    description: str
     provider: str
     model_id: str
     cost_weight: int
@@ -36,6 +38,25 @@ class Candidate:
     tiers: tuple[str, ...]
     build_input: Callable[[dict], dict]
     extract_output: Callable[[dict], list[str]]
+
+
+# --- Helpers d'exposition des modèles disponibles ---
+
+def list_feature_models(feature: str) -> list[dict]:
+    """Retourne les candidats configurés d'une feature, prêts à être
+    affichés dans un sélecteur utilisateur."""
+    from providers import is_provider_configured
+
+    return [
+        {
+            "key": c.key,
+            "name": c.name,
+            "description": c.description,
+            "tiers": c.tiers,
+        }
+        for c in MODEL_CATALOG.get(feature, [])
+        if is_provider_configured(c.provider)
+    ]
 
 
 # --- Extracteurs tolérants : normalisent les sorties des providers vers
@@ -95,12 +116,15 @@ def kling_video_input(req: dict) -> dict:
         if req["aspectRatio"] in ("9:16", "3:4")
         else "1:1"
     )
-    return {
+    payload = {
         "image": to_base64_or_url(req["imageUrl"]),
         "prompt": req["prompt"],
         "duration": str(map_duration(req)),
         "aspect_ratio": ratio,
     }
+    if req.get("endImageUrl"):
+        payload["end_image"] = to_base64_or_url(req["endImageUrl"])
+    return payload
 
 
 def runway_video_input(req: dict) -> dict:
@@ -111,12 +135,15 @@ def runway_video_input(req: dict) -> dict:
         "4:3": "1104:832",
         "3:4": "832:1104",
     }.get(req["aspectRatio"], "960:960")
-    return {
+    payload = {
         "promptImage": req["imageUrl"],
         "promptText": req["prompt"],
         "ratio": ratio,
         "duration": map_duration(req),
     }
+    if req.get("endImageUrl"):
+        payload["endImage"] = req["endImageUrl"]
+    return payload
 
 
 def openai_edit_input(req: dict) -> dict:
@@ -139,12 +166,15 @@ def openai_edit_input(req: dict) -> dict:
 
 def sora_video_input(req: dict) -> dict:
     """OpenAI Sora : durées exactes (4/8 s), 2 orientations."""
-    return {
+    payload = {
         "prompt": req["prompt"],
         "image_url": req["imageUrl"],
         "seconds": str(req.get("durationSeconds") or 4),
         "size": "720x1280" if req["aspectRatio"] in ("9:16", "3:4") else "1280x720",
     }
+    if req.get("endImageUrl"):
+        payload["end_image_url"] = req["endImageUrl"]
+    return payload
 
 
 def magichour_edit_input(req: dict) -> dict:
@@ -168,12 +198,15 @@ def magichour_edit_input(req: dict) -> dict:
 
 def magichour_video_input(req: dict) -> dict:
     """Magic Hour image-to-video : durées transmises telles quelles."""
-    return {
+    payload = {
         "prompt": req["prompt"],
         "image": req["imageUrl"],
         "endSeconds": req.get("durationSeconds") or 4,
         "resolution": "1080p" if req["quality"] == "pro" else "720p",
     }
+    if req.get("endImageUrl"):
+        payload["endImage"] = req["endImageUrl"]
+    return payload
 
 
 def comfyui_img2img_input(req: dict) -> dict:
@@ -195,6 +228,7 @@ def comfyui_video_input(req: dict) -> dict:
     return {
         "prompt": req["prompt"],
         "image": req["imageUrl"],
+        "endImage": req.get("endImageUrl"),
         "duration": req.get("durationSeconds") or 4,
         "width": width,
         "height": height,
@@ -207,34 +241,34 @@ def comfyui_video_input(req: dict) -> dict:
 # (même pipeline img2img/edit — SEUL le prompt change, voir prompts.py).
 # Si une feature doit diverger, lui donner sa propre liste.
 IMAGE_EDIT_CANDIDATES: list[Candidate] = [
-    Candidate("edit-alpha-pro", "bfl", "flux-kontext-max", 8, 0, IMAGE_TIMEOUT_MS, ("pro",), bfl_edit_input, extract_image_urls),
-    Candidate("edit-beta-pro", "google", "gemini-3-pro-image-preview", 6, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_edit_input, extract_image_urls),
-    Candidate("edit-alpha", "bfl", "flux-kontext-pro", 4, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_edit_input, extract_image_urls),
-    Candidate("edit-beta", "google", "gemini-2.5-flash-image", 2, 13, IMAGE_TIMEOUT_MS, ("standard",), google_edit_input, extract_image_urls),
-    Candidate("edit-delta-pro", "openai", "gpt-image-1.5", 7, 13, IMAGE_TIMEOUT_MS, ("pro",), openai_edit_input, extract_image_urls),
-    Candidate("edit-delta", "openai", "gpt-image-1", 5, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_edit_input, extract_image_urls),
+    Candidate("flux-kontext-max", "Flux Kontext Max", "Best for photorealistic architectural renders", "bfl", "flux-kontext-max", 8, 0, IMAGE_TIMEOUT_MS, ("pro",), bfl_edit_input, extract_image_urls),
+    Candidate("gemini-3-pro", "Gemini 3 Pro Image", "Best for detailed edits with many references", "google", "gemini-3-pro-image-preview", 6, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_edit_input, extract_image_urls),
+    Candidate("flux-kontext-pro", "Flux Kontext Pro", "Reliable photorealistic edits", "bfl", "flux-kontext-pro", 4, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_edit_input, extract_image_urls),
+    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast image edits at lower cost", "google", "gemini-2.5-flash-image", 2, 13, IMAGE_TIMEOUT_MS, ("standard",), google_edit_input, extract_image_urls),
+    Candidate("gpt-image-1.5", "GPT Image 1.5", "High quality architectural edits", "openai", "gpt-image-1.5", 7, 13, IMAGE_TIMEOUT_MS, ("pro",), openai_edit_input, extract_image_urls),
+    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI image edits", "openai", "gpt-image-1", 5, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_edit_input, extract_image_urls),
     # Agrégateur (exception assumée, AGENTS.md §1) : flux-2-klein ÉPINGLÉ
     # (seul modèle d'édition éligible au free tier).
-    Candidate("edit-epsilon", "magichour", "flux-2-klein", 5, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_edit_input, extract_image_urls),
+    Candidate("magichour-flux-2-klein", "Magic Hour Flux 2 Klein", "Free tier friendly image edits", "magichour", "flux-2-klein", 5, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_edit_input, extract_image_urls),
     # Provider LOCAL de test (GPU utilisateur, gratuit, hors-ligne) —
     # dernier recours du routage auto (coût nul).
-    Candidate("edit-zeta", "comfyui", "img2img", 0, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), comfyui_img2img_input, extract_image_urls),
+    Candidate("comfyui-img2img", "ComfyUI Local", "Local GPU test pipeline", "comfyui", "img2img", 0, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), comfyui_img2img_input, extract_image_urls),
 ]
 
 ANIMATE_CANDIDATES: list[Candidate] = [
     # Nom du modèle v3 à vérifier dans la console Kling — si l'API le
     # rejette, le fallback bascule automatiquement sur v2.5-turbo.
-    Candidate("video-beta-pro", "kling", "kling-v3", 18, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), kling_video_input, extract_video_url),
-    Candidate("video-beta", "kling", "kling-v2-5-turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), kling_video_input, extract_video_url),
-    Candidate("video-gamma", "runway", "gen4_turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard",), runway_video_input, extract_video_url),
-    Candidate("video-delta-pro", "openai", "sora-2-pro", 19, 0, VIDEO_TIMEOUT_MS, ("pro",), sora_video_input, extract_video_url),
-    Candidate("video-delta", "openai", "sora-2", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), sora_video_input, extract_video_url),
+    Candidate("kling-v3", "Kling v3", "Best for realistic physics and camera motion", "kling", "kling-v3", 18, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), kling_video_input, extract_video_url),
+    Candidate("kling-v2.5-turbo", "Kling v2.5 Turbo", "Fast video generation with smooth motion", "kling", "kling-v2-5-turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), kling_video_input, extract_video_url),
+    Candidate("runway-gen4-turbo", "Runway Gen-4 Turbo", "Best for smooth cinematic camera moves", "runway", "gen4_turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard",), runway_video_input, extract_video_url),
+    Candidate("sora-2-pro", "Sora 2 Pro", "Highest quality cinematic video", "openai", "sora-2-pro", 19, 0, VIDEO_TIMEOUT_MS, ("pro",), sora_video_input, extract_video_url),
+    Candidate("sora-2", "Sora 2", "High quality image-to-video", "openai", "sora-2", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), sora_video_input, extract_video_url),
     # Agrégateur (exception assumée, AGENTS.md §1) : `default` ~ kling-3.0
     # sur tiers payants, ltx-2.3 en gratuit.
-    Candidate("video-epsilon", "magichour", "default", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), magichour_video_input, extract_video_url),
+    Candidate("magichour-video", "Magic Hour Video", "Aggregated video models, free tier available", "magichour", "default", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), magichour_video_input, extract_video_url),
     # Provider LOCAL de test : img2video via workflow custom OBLIGATOIRE
     # (COMFYUI_VIDEO_WORKFLOW_FILE), sinon échec vite -> fallback.
-    Candidate("video-zeta", "comfyui", "i2v", 0, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), comfyui_video_input, extract_video_url),
+    Candidate("comfyui-i2v", "ComfyUI Local Video", "Local GPU test video pipeline", "comfyui", "i2v", 0, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), comfyui_video_input, extract_video_url),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {

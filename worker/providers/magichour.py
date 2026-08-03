@@ -123,6 +123,10 @@ def _run_image_edit(model_id: str, input_: dict, timeout_ms: int) -> str:
 
 def _run_video(model_id: str, input_: dict, timeout_ms: int) -> dict:
     file_path = _ensure_file_path(str(input_.get("image") or ""))
+    end_image_url = input_.get("endImage")
+    assets: dict = {"image_file_path": file_path}
+    if end_image_url:
+        assets["end_image_file_path"] = _ensure_file_path(str(end_image_url))
     try:
         end_seconds = float(input_.get("endSeconds")) or 5
     except (TypeError, ValueError):
@@ -137,7 +141,7 @@ def _run_video(model_id: str, input_: dict, timeout_ms: int) -> dict:
             # Pas de piste audio générée côté Magic Hour (vidéo muette en V1).
             "audio": False,
             "style": {"prompt": str(input_.get("prompt") or "")},
-            "assets": {"image_file_path": file_path},
+            "assets": assets,
         },
     )
     job_id = job.get("id")

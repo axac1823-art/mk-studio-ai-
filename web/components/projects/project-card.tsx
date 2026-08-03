@@ -1,14 +1,14 @@
 "use client";
 
-// Carte projet (grilles Projects et résultats de Search). La cover vient
-// de l'API ; sans cover on affiche un placeholder gradient pour garder une
-// grille visuellement régulière. Le bouton Delete est intégré dans la carte
-// et stoppe la propagation pour ne pas ouvrir le projet.
+// Carte projet (grille Projects et résultats de Search). La cover occupe
+// toute la hauteur de la carte avec un overlay dégradé pour le nom et le
+// compteur d'assets. Sans cover, un placeholder clair affiche le nom et
+// l'icône. Le bouton Delete apparaît au hover en haut à droite.
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { ImageIcon, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 
 export interface ProjectSummary {
   id: string;
@@ -24,41 +24,55 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, onDelete }: ProjectCardProps) {
+  const hasCover = Boolean(project.coverUrl);
+
   return (
-    <Card className="group overflow-hidden transition-colors hover:border-foreground/25">
+    <Card className="group relative overflow-hidden transition-all hover:ring-1 hover:ring-foreground/20">
       <Link href={`/app/projects/${project.id}`} className="block">
-        <div className="aspect-[4/3] bg-muted">
-          {project.coverUrl ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={project.coverUrl} alt="" className="h-full w-full object-cover" />
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+          {hasCover ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={project.coverUrl!}
+                alt=""
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-3">
+                <p className="truncate text-base font-semibold text-white">{project.name}</p>
+                <p className="text-xs text-white/80">{project.assetCount} assets</p>
+              </div>
+            </>
           ) : (
-            <div className="h-full w-full bg-gradient-to-br from-zinc-700/50 via-zinc-800/40 to-zinc-950/80" />
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted p-4 text-center text-muted-foreground">
+              <ImageIcon className="h-10 w-10" />
+              <div>
+                <p className="truncate text-base font-semibold text-foreground">{project.name}</p>
+                <p className="text-xs text-muted-foreground">{project.assetCount} assets</p>
+              </div>
+            </div>
           )}
         </div>
-        <CardContent className="p-3">
-          <p className="truncate text-sm font-medium">{project.name}</p>
-          <p className="text-xs text-muted-foreground">{project.assetCount} assets</p>
-        </CardContent>
       </Link>
+
       {onDelete && (
-        <div className="border-t px-3 py-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start gap-2 text-destructive hover:text-destructive"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (window.confirm(`Delete project "${project.name}" and all its assets? This cannot be undone.`)) {
-                onDelete(project.id);
-              }
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-2 top-2 h-8 w-8 bg-black/40 text-white/90 opacity-0 transition-opacity hover:bg-black/60 hover:text-white group-hover:opacity-100"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (window.confirm(`Delete project "${project.name}" and all its assets? This cannot be undone.`)) {
+              onDelete(project.id);
+            }
+          }}
+          aria-label="Delete project"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       )}
     </Card>
   );

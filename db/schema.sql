@@ -35,11 +35,23 @@ CREATE TABLE IF NOT EXISTS jobs (
   result_asset_id      uuid, -- FK ajoutée après assets
   parent_generation_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
   error_message        text, -- message GÉNÉRIQUE client uniquement
+  model_used           text, -- modèle/fournisseur ayant servi (historique + debug)
   credits_charged      int NOT NULL DEFAULT 0,
   created_at           timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_user_created ON jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_project ON jobs(project_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'jobs' AND column_name = 'model_used'
+    ) THEN
+        ALTER TABLE jobs ADD COLUMN model_used text;
+    END IF;
+END
+$$;
 
 -- Un asset = un fichier visible par l'utilisateur (résultat de génération
 -- ou image source uploadée — generation_id NULL = upload).

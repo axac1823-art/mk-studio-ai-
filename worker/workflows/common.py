@@ -51,12 +51,13 @@ def insert_asset(conn, job: dict, type_: str, storage_path: str) -> str:
     return str(row["id"])
 
 
-def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int) -> None:
-    """Succès : job complete + débit IDEMPOTENT du coût calculé par /web
-    (UNIQUE(ref_job_id, reason) — jamais deux 'spend' pour le même job)."""
+def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int, model_used: str | None = None) -> None:
+    """Succès : job complete + modèle utilisé + débit IDEMPOTENT du coût
+    calculé par /web (UNIQUE(ref_job_id, reason) — jamais deux 'spend' pour
+    le même job)."""
     conn.execute(
-        "UPDATE jobs SET status = 'complete', result_asset_id = %s, credits_charged = %s WHERE id = %s",
-        (result_asset_id, credits_charged, job["id"]),
+        "UPDATE jobs SET status = 'complete', result_asset_id = %s, credits_charged = %s, model_used = %s WHERE id = %s",
+        (result_asset_id, credits_charged, model_used, job["id"]),
     )
     if credits_charged > 0:
         conn.execute(
@@ -65,6 +66,12 @@ def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int) ->
                ON CONFLICT (ref_job_id, reason) DO NOTHING""",
             (job["user_id"], -credits_charged, job["id"]),
         )
+
+
+def set_model_used(conn, job_id: str, model_used: str) -> None:
+    """Enregistre le modèle utilisé dès qu'il est connu (avant la fin du job
+    si besoin)."""
+    conn.execute("UPDATE jobs SET model_used = %s WHERE id = %s", (model_used, job_id))
 
 
 def fail_job(conn, job: dict, err: Exception) -> None:

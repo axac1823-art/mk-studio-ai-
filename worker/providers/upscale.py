@@ -140,11 +140,37 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
     return {"images": [{"url": url}]}
 
 
-def upscale(input_: dict, timeout_ms: int = UPSCALE_TIMEOUT_MS) -> dict:
+def _is_provider_ready(name: str) -> bool:
+    if name == "comfyui":
+        return bool(os.environ.get("COMFYUI_UPSCALE_WORKFLOW_FILE"))
+    if name == "magichour":
+        return bool(os.environ.get("MAGIC_HOUR_API_KEY"))
+    return False
+
+
+def list_models() -> list[dict]:
+    """Modèles upscalers disponibles côté worker (key/name/description)."""
+    return [
+        {
+            "key": name,
+            "name": "ComfyUI Local Upscale" if name == "comfyui" else "Magic Hour AI Upscaler",
+            "description": "Local GPU upscaling workflow (Real-ESRGAN/USDU)" if name == "comfyui" else "Cloud AI upscaler with enhancement",
+        }
+        for name in _configured_providers()
+        if _is_provider_ready(name)
+    ]
+
+
+def upscale(input_: dict, timeout_ms: int = UPSCALE_TIMEOUT_MS, provider: str | None = None) -> dict:
     """Essaie les candidats dans l'ordre de UPSCALE_PROVIDERS jusqu'au
-    premier succès — toute erreur déclenche la bascule (comme le routeur)."""
+    premier succès — toute erreur déclenche la bascule (comme le routeur).
+    Si `provider` est fourni, seul ce provider est utilisé (pas de fallback
+    silencieux vers un autre modèle choisi par l'utilisateur)."""
     errors: list[str] = []
-    for name in _configured_providers():
+    candidates = [provider] if provider else _configured_providers()
+    for name in candidates:
+        if name not in ("comfyui", "magichour"):
+            raise ProviderError(f"unknown upscale provider: {name}")
         try:
             if name == "comfyui":
                 return _upscale_comfyui(input_, timeout_ms)
@@ -153,5 +179,5 @@ def upscale(input_: dict, timeout_ms: int = UPSCALE_TIMEOUT_MS) -> dict:
         except Exception as err:  # noqa: BLE001 — toute erreur = fallback
             errors.append(f"{name}: {err}")
     if not errors:
-        raise ProviderError("upscale: no provider in UPSCALE_PROVIDERS")
+        raise ProviderError("upscale: no provider configured")
     raise ProviderError("upscale failed — " + " | ".join(errors))

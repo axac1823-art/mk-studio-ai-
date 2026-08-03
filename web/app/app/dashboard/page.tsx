@@ -34,7 +34,6 @@ import {
   LIGHTING_PRESETS,
   MATERIAL_PRESETS,
   MOOD_PRESETS,
-  MOTION_PRESETS,
   PLAN_RENDER_PRESETS,
   SCENE_TYPE_PRESETS,
   UPSCALE_FACTORS,
@@ -44,6 +43,13 @@ import {
 import type { AspectRatio, QualityTier, Resolution } from "@/lib/ai/types";
 
 const POLL_INTERVAL_MS = 2500;
+
+/** Modèle affichable dans le sélecteur UI (key/name/description). */
+interface ModelOption {
+  key: string;
+  name: string;
+  description: string;
+}
 
 /** Asset tel que renvoyé par GET /api/assets (galerie du projet actif). */
 interface AssetItem {
@@ -114,6 +120,12 @@ export default function DashboardPage() {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("4:3");
   const [resolution, setResolution] = useState<Resolution>("1K");
 
+  // --- Modèles disponibles (fetchés au chargement) ---
+  const [imageModels, setImageModels] = useState<ModelOption[]>([]);
+  const [videoModels, setVideoModels] = useState<ModelOption[]>([]);
+  const [upscaleModels, setUpscaleModels] = useState<ModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>(""); // "" = default worker behavior
+
   // --- Animate ---
   const [animateFile, setAnimateFile] = useState<File | null>(null);
   const [animateSource, setAnimateSource] = useState<{ kind: "history" | "upload"; previewUrl: string | null }>({
@@ -125,16 +137,17 @@ export default function DashboardPage() {
     kind: "upload",
     previewUrl: null,
   });
-  const [motionId, setMotionId] = useState(MOTION_PRESETS[0].id);
+  const [motionPrompt, setMotionPrompt] = useState("");
   const [durationSeconds, setDurationSeconds] = useState<4 | 8>(4);
   const [animateSceneDetails, setAnimateSceneDetails] = useState("");
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>("");
 
   // --- Upscale ---
   const [upscaleFile, setUpscaleFile] = useState<File | null>(null);
   const [upscalePreviewUrl, setUpscalePreviewUrl] = useState<string | null>(null);
-  const [upscaleAssetId, setUpscaleAssetId] = useState<string | null>(null);
   const [upscaleFactor, setUpscaleFactor] = useState<UpscaleFactor>(UPSCALE_FACTORS[0].id);
   const [upscaleEnhance, setUpscaleEnhance] = useState(false);
+  const [selectedUpscaleModel, setSelectedUpscaleModel] = useState<string>("");
 
   // --- Job courant ---
   const [result, setResult] = useState<ResultState>({ status: "idle" });
@@ -183,7 +196,7 @@ export default function DashboardPage() {
       .catch(() => setAssets([]));
   }, []);
 
-  // Chargement initial : solde, coûts, projets (le projet par défaut est
+  // Chargement initial : solde, coûts, projets, modèles (le projet par défaut est
   // présélectionné — la galerie suit via l'effet ci-dessous).
   useEffect(() => {
     refreshBalance();
@@ -193,6 +206,18 @@ export default function DashboardPage() {
     void refreshProjects().then((defaultId) => {
       if (defaultId) setSelectedProjectId((current) => current ?? defaultId);
     });
+    fetch("/api/models")
+      .then((res) => (res.ok ? res.json() : { image: [], video: [], upscale: [] }))
+      .then((data: { image?: ModelOption[]; video?: ModelOption[]; upscale?: ModelOption[] }) => {
+        setImageModels(Array.isArray(data.image) ? data.image : []);
+        setVideoModels(Array.isArray(data.video) ? data.video : []);
+        setUpscaleModels(Array.isArray(data.upscale) ? data.upscale : []);
+      })
+      .catch(() => {
+        setImageModels([]);
+        setVideoModels([]);
+        setUpscaleModels([]);
+      });
   }, [refreshBalance, refreshProjects]);
 
   // La galerie suit le projet sélectionné.
@@ -200,14 +225,9 @@ export default function DashboardPage() {
     refreshAssets(selectedProjectId);
   }, [selectedProjectId, refreshAssets]);
 
-  // Upscale : pré-sélectionne le premier asset image du projet (ou le premier
-  // asset si aucune image) quand aucune source n'est choisie — mais on ne
-  // remplace jamais une source active (upload ou asset sélectionné).
-  useEffect(() => {
-    if (upscaleFile || upscaleAssetId) return;
-    const firstImage = assets.find((asset) => asset.type === "image");
-    setUpscaleAssetId(firstImage?.id ?? assets[0]?.id ?? null);
-  }, [assets, upscaleAssetId, upscaleFile]);
+  // Upscale : simple upload flow — pas de pré-sélection d'asset.
+  // La galerie du projet permet de retrouver l'historique.
+  // (pas d'effet ici)
 
   const handleCreateProject = useCallback(
     async (name: string) => {
@@ -305,6 +325,7 @@ export default function DashboardPage() {
     form.append("materialId", materialId);
     form.append("lightingId", lightingId);
     form.append("sceneDetails", sceneDetails);
+    if (selectedModel) form.append("model", selectedModel);
     appendSharedSettings(form);
     void submitGeneration(form, "image", previewUrl);
   };
@@ -320,6 +341,7 @@ export default function DashboardPage() {
       form.append("optionId", state.optionId);
     }
     form.append("sceneDetails", state.sceneDetails);
+    if (selectedModel) form.append("model", selectedModel);
     appendSharedSettings(form);
     void submitGeneration(form, "image", state.previewUrl);
   };
@@ -341,28 +363,29 @@ export default function DashboardPage() {
     } else if (endAnimateSource.kind === "history" && endAnimateSource.previewUrl) {
       form.append("endImageUrl", endAnimateSource.previewUrl);
     }
-    form.append("motionId", motionId);
+    form.append("motionPrompt", motionPrompt);
     form.append("durationSeconds", String(durationSeconds));
     form.append("sceneDetails", animateSceneDetails);
     form.append("quality", quality);
     form.append("aspectRatio", aspectRatio);
     form.append("resolution", "1K");
     form.append("quantity", "1");
+    if (selectedVideoModel) form.append("model", selectedVideoModel);
     void submitGeneration(form, "video", animateSource.previewUrl);
   };
 
   const handleUpscale = async () => {
-    if (!upscaleFile && !upscaleAssetId) return;
+    if (!upscaleFile) return;
     setError(null);
     setResult({ status: "busy" });
     setRightView("compare");
     try {
       const form = new FormData();
       form.append("feature", "upscale");
-      if (upscaleFile) form.append("image", upscaleFile);
-      if (upscaleAssetId) form.append("assetId", upscaleAssetId);
+      form.append("image", upscaleFile);
       form.append("factor", String(upscaleFactor));
       form.append("enhance", upscaleEnhance ? "1" : "0");
+      if (selectedUpscaleModel) form.append("model", selectedUpscaleModel);
       if (selectedProjectId) form.append("projectId", selectedProjectId);
       const res = await fetch("/api/upscale", { method: "POST", body: form });
       const data = await res.json();
@@ -377,8 +400,7 @@ export default function DashboardPage() {
         setError(data.error ?? "Upscale failed, please try again.");
         return;
       }
-      const selectedAsset = assets.find((asset) => asset.id === upscaleAssetId);
-      pollJob(data.jobId, "image", upscalePreviewUrl ?? selectedAsset?.url ?? null);
+      pollJob(data.jobId, "image", upscalePreviewUrl);
     } catch {
       setResult({ status: "idle" });
       setError("Network error — please try again.");
@@ -488,6 +510,9 @@ export default function DashboardPage() {
                   source={animateSource}
                   endSource={endAnimateSource}
                   hasHistoryImages={latestImageUrl !== null}
+                  models={videoModels}
+                  selectedModel={selectedVideoModel}
+                  onModelChange={setSelectedVideoModel}
                   onPickFromHistory={() => {
                     if (latestImageUrl) setAnimateSource({ kind: "history", previewUrl: latestImageUrl });
                   }}
@@ -504,10 +529,12 @@ export default function DashboardPage() {
                     setEndAnimateSource({ kind: "upload", previewUrl: URL.createObjectURL(selected) });
                     setError(null);
                   }}
-                  motionId={motionId}
-                  onMotionChange={setMotionId}
+                  motionPrompt={motionPrompt}
+                  onMotionPromptChange={setMotionPrompt}
                   durationSeconds={durationSeconds}
                   onDurationChange={setDurationSeconds}
+                  aspectRatio={aspectRatio}
+                  onAspectRatioChange={setAspectRatio}
                   sceneDetails={animateSceneDetails}
                   onSceneDetailsChange={setAnimateSceneDetails}
                   cost={animateCost}
@@ -517,32 +544,24 @@ export default function DashboardPage() {
                 />
               ) : tab === "upscale" ? (
                 <UpscalePanel
-                  assets={assets}
+                  models={upscaleModels}
+                  selectedModel={selectedUpscaleModel}
                   uploadFile={upscaleFile}
                   uploadPreviewUrl={upscalePreviewUrl}
-                  selectedAssetId={upscaleAssetId}
                   factor={upscaleFactor}
                   enhance={upscaleEnhance}
                   cost={upscaleCost}
                   balance={balance}
                   isBusy={isBusy}
+                  onModelChange={setSelectedUpscaleModel}
                   onUploadFileSelected={(file, previewUrl) => {
                     setUpscaleFile(file);
                     setUpscalePreviewUrl(previewUrl);
-                    setUpscaleAssetId(null);
                     setError(null);
                   }}
                   onClearUpload={() => {
                     setUpscaleFile(null);
                     setUpscalePreviewUrl(null);
-                    const firstImage = assets.find((asset) => asset.type === "image");
-                    setUpscaleAssetId(firstImage?.id ?? assets[0]?.id ?? null);
-                  }}
-                  onSelectAsset={(id) => {
-                    setUpscaleAssetId(id);
-                    setUpscaleFile(null);
-                    setUpscalePreviewUrl(null);
-                    setError(null);
                   }}
                   onFactorChange={setUpscaleFactor}
                   onEnhanceChange={setUpscaleEnhance}
@@ -657,6 +676,9 @@ export default function DashboardPage() {
           quality={quality}
           aspectRatio={aspectRatio}
           resolution={resolution}
+          model={selectedModel}
+          models={imageModels}
+          onModelChange={setSelectedModel}
           cost={activeImageCost}
           balance={balance}
           isBusy={isBusy}

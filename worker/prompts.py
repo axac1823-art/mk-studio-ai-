@@ -32,14 +32,6 @@ LIGHTING_FRAGMENTS = {
     "night": "night scene, interior lights on, blue hour sky",
 }
 
-MOTION_FRAGMENTS = {
-    "push_in": "slow cinematic camera push-in towards the building",
-    "orbit": "smooth orbital camera movement around the subject",
-    "pan": "slow lateral camera pan across the scene",
-    "tilt_up": "gentle upward camera tilt revealing the full height",
-    "dolly": "slow lateral dolly shot, architectural walkthrough feel",
-}
-
 # Mood Shift : la géométrie et la composition sont figées — SEULE
 # l'ambiance change (jour/nuit/saison/météo).
 MOOD_FRAGMENTS = {
@@ -137,12 +129,15 @@ def build_multi_angle_prompt(angle_id=None, scene_details=None) -> str:
     )
 
 
-def build_animate_prompt(scene_details=None, motion_id=None) -> str:
-    """Fonction 5 — Animate : mouvement de caméra simple, sans narration."""
+def build_animate_prompt(scene_details=None, motion_prompt=None) -> str:
+    """Fonction 5 — Animate : le mouvement est décrit en texte libre par
+    l'utilisateur (pas de preset). Si vide, on applique un mouvement par
+    défaut raisonnable."""
+    motion = (motion_prompt or "").strip() or "smooth cinematic camera motion"
     return _join(
         [
-            "cinematic architectural video, photorealistic, smooth camera motion, preserve the building geometry",
-            _fragment(MOTION_FRAGMENTS, motion_id) or MOTION_FRAGMENTS["push_in"],
+            "cinematic architectural video, photorealistic, preserve the building geometry",
+            motion,
             _sanitize_scene_details(scene_details),
         ]
     )
@@ -154,7 +149,7 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
     option_id = fields.get("optionId")
     details = fields.get("sceneDetails")
     if feature == "animate":
-        return build_animate_prompt(scene_details=details, motion_id=fields.get("motionId"))
+        return build_animate_prompt(scene_details=details, motion_prompt=fields.get("motionPrompt"))
     if feature == "mood_swap":
         return build_mood_swap_prompt(mood_id=option_id, scene_details=details)
     if feature == "exterior_to_interior":

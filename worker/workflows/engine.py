@@ -24,17 +24,19 @@ class AllModelsFailedError(Exception):
         self.attempts = attempts
 
 
-def order_candidates(candidates: list[Candidate], quality: str, preferred_key: str | None = None) -> list[Candidate]:
-    """Tri : `preferred_key` (réservé aux tests — aucun sélecteur de modèle
-    n'est exposé en V1) passe en premier, puis un candidat du tier demandé
-    passe devant à priorité égale. Tri stable."""
+def order_candidates(candidates: list[Candidate], quality: str, selected_key: str | None = None) -> list[Candidate]:
+    """Tri : `selected_key` (choix utilisateur) retourne UNIQUEMENT ce
+    candidat (pas de fallback silencieux vers un autre modèle). Si absent,
+    on trie par tier de qualité et ordre du catalogue. Tri stable."""
+    if selected_key:
+        return [c for c in candidates if c.key == selected_key]
+
     indexed = list(enumerate(candidates))
 
     def rank(item):
         index, candidate = item
-        preferred = 0 if (preferred_key and candidate.key == preferred_key) else 1
         tier_match = 0 if quality in candidate.tiers else 1
-        return (preferred, tier_match, index)
+        return (tier_match, index)
 
     return [candidate for _, candidate in sorted(indexed, key=rank)]
 

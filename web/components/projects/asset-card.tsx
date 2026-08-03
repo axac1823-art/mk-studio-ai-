@@ -6,11 +6,12 @@
 // actifs, ce qui la rend réutilisable partout. En mode corbeille
 // (trashed=true), l'action principale est Restore + Delete permanent.
 import { useState } from "react";
-import { ArchiveRestore, Play, Star, Trash2 } from "lucide-react";
+import { ArchiveRestore, Download, Play, Star, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { saveResult } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 export interface AssetSummary {
@@ -116,6 +117,17 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete }: Asset
           </>
         ) : (
           <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              disabled={busy}
+              onClick={() => void saveResult(asset.url, asset.type)}
+              aria-label="Download"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"

@@ -1,59 +1,63 @@
 "use client";
 
-// Panneau Upscale — action dédiée sur une image source (upload direct comme
-// Render, ou asset existant du projet). L'utilisateur choisit un facteur
-// 2×/4× et un toggle "Enhance quality". Le résultat est un NOUVEL asset
-// lié à l'original (parent_generation_id) — avant/après conservé.
-import { Check, Loader2, Sparkles, X } from "lucide-react";
+// Panneau Upscale — flux simple et autonome : upload d'une image,
+// choix du modèle upscaler, facteur 2×/4×, toggle Enhance, puis génération.
+// Le résultat est un NOUVEL asset lié à l'original (parent_generation_id) —
+// avant/après conservé.
+import { Loader2, Sparkles, X } from "lucide-react";
 
-import { AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { UPSCALE_FACTORS, type UpscaleFactor } from "@/lib/presets";
 import { cn } from "@/lib/utils";
 import { UploadDropzone } from "@/components/upload-dropzone";
 
+export interface UpscaleModelOption {
+  key: string;
+  name: string;
+  description: string;
+}
+
 interface UpscalePanelProps {
-  assets: AssetSummary[];
+  models: UpscaleModelOption[];
+  selectedModel: string;
   uploadFile: File | null;
   uploadPreviewUrl: string | null;
-  selectedAssetId: string | null;
   factor: UpscaleFactor;
   enhance: boolean;
   cost: number;
   balance: number | null;
   isBusy: boolean;
+  onModelChange: (value: string) => void;
   onUploadFileSelected: (file: File, previewUrl: string) => void;
   onClearUpload: () => void;
-  onSelectAsset: (id: string) => void;
   onFactorChange: (factor: UpscaleFactor) => void;
   onEnhanceChange: (value: boolean) => void;
   onGenerate: () => void;
 }
 
 export function UpscalePanel({
-  assets,
+  models,
+  selectedModel,
   uploadFile,
   uploadPreviewUrl,
-  selectedAssetId,
   factor,
   enhance,
   cost,
   balance,
   isBusy,
+  onModelChange,
   onUploadFileSelected,
   onClearUpload,
-  onSelectAsset,
   onFactorChange,
   onEnhanceChange,
   onGenerate,
 }: UpscalePanelProps) {
   const hasEnoughCredits = balance === null || balance >= cost;
-  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId);
-  const hasSource = uploadFile !== null || selectedAssetId !== null;
+  const hasSource = uploadFile !== null;
   const canGenerate = hasSource && hasEnoughCredits && !isBusy;
-
-  const previewUrl = uploadPreviewUrl ?? selectedAsset?.url ?? null;
+  const modelName = selectedModel ? models.find((m) => m.key === selectedModel)?.name : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -79,55 +83,30 @@ export function UpscalePanel({
         )}
       </div>
 
-      {assets.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Or choose from project</span>
-          <div className="grid grid-cols-3 gap-2">
-            {assets.map((asset) => {
-              const isActive = asset.id === selectedAssetId && !uploadFile;
-              return (
-                <button
-                  key={asset.id}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => onSelectAsset(asset.id)}
-                  className={cn(
-                    "relative overflow-hidden rounded-lg border transition-colors",
-                    isActive ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/40"
-                  )}
-                >
-                  {asset.type === "video" ? (
-                    <video
-                      src={asset.url}
-                      preload="metadata"
-                      muted
-                      className="aspect-[4/3] w-full object-cover"
-                    />
-                  ) : (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={asset.url} alt="" className="aspect-[4/3] w-full object-cover" loading="lazy" />
-                  )}
-                  {isActive && (
-                    <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
-                      <Check className="h-3 w-3" />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {previewUrl && (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium">Selected</span>
-          <div className="overflow-hidden rounded-lg border">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewUrl} alt="" className="w-full" loading="lazy" />
-          </div>
-        </div>
-      )}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Upscale model</span>
+        <Select value={selectedModel} onValueChange={onModelChange} disabled={models.length === 0}>
+          <SelectTrigger>
+            <SelectValue placeholder={models.length === 0 ? "No upscale models configured" : "Auto (recommended)"}>
+              {modelName ?? "Auto (recommended)"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Auto (recommended)</SelectItem>
+            {models.map((model) => (
+              <SelectItem key={model.key} value={model.key}>
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-medium">{model.name}</span>
+                  <span className="text-xs text-muted-foreground">{model.description}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {models.length === 0 && (
+          <p className="text-[11px] text-muted-foreground">No upscale provider configured on the worker.</p>
+        )}
+      </div>
 
       <div className="flex flex-col gap-1">
         <span className="text-sm font-medium">Scale</span>

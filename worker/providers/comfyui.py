@@ -123,6 +123,7 @@ def _load_workflow_file(path: str, values: dict) -> dict:
     raw = _substitute(raw, "PROMPT", values.get("prompt"))
     raw = _substitute(raw, "NEGATIVE", DEFAULT_NEGATIVE)
     raw = _substitute(raw, "IMAGE", values.get("image_name"))
+    raw = _substitute(raw, "END_IMAGE", values.get("end_image_name"))
     raw = _substitute(raw, "SEED", values.get("seed"))
     raw = _substitute(raw, "FRAMES", values.get("frames"))
     raw = _substitute(raw, "FPS", values.get("fps"))
@@ -253,18 +254,20 @@ def _run_video(input_: dict, timeout_ms: int) -> dict:
         except (TypeError, ValueError):
             return None
 
-    workflow = _load_workflow_file(
-        workflow_file,
-        {
-            "prompt": str(input_.get("prompt") or ""),
-            "image_name": _upload_image(str(input_.get("image") or "")),
-            "seed": _random_seed(),
-            "frames": frames,
-            "fps": fps,
-            "width": _int_or_none(input_.get("width")),
-            "height": _int_or_none(input_.get("height")),
-        },
-    )
+    image_url = str(input_.get("image") or "")
+    end_image_url = input_.get("endImage")
+    values: dict = {
+        "prompt": str(input_.get("prompt") or ""),
+        "image_name": _upload_image(image_url),
+        "seed": _random_seed(),
+        "frames": frames,
+        "fps": fps,
+        "width": _int_or_none(input_.get("width")),
+        "height": _int_or_none(input_.get("height")),
+    }
+    if end_image_url:
+        values["end_image_name"] = _upload_image(str(end_image_url))
+    workflow = _load_workflow_file(workflow_file, values)
     outputs = _execute_workflow(workflow, timeout_ms)
     video = _first_file(outputs, ("gifs", "videos"))
     if not video:

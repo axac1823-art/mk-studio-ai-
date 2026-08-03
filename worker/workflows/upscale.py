@@ -83,7 +83,8 @@ def run(job: dict) -> None:
                     "image": _load_source_as_data_uri(asset),
                     "factor": int(input_.get("factor") or 2),
                     "enhance": bool(input_.get("enhance")),
-                }
+                },
+                provider=input_.get("model"),
             )
             url = result["images"][0]["url"]
             path, _ext = store_output(url)

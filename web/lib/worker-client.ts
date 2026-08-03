@@ -2,7 +2,11 @@
 // providers IA. Le worker détient TOUTE la logique de génération et les
 // clés fournisseurs ; /web crée les jobs en DB et délègue l'exécution.
 
-const baseUrl = (): string => (process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+/** URL interne du worker — partagée avec les routes serveur. */
+export function baseUrl(): string {
+  return (process.env.WORKER_BASE_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+}
+
 const publicBaseUrl = (): string =>
   (process.env.WORKER_PUBLIC_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 

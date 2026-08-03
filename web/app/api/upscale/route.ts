@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   const assetIdField = optionalString(form, "assetId");
   const factor = Number(form.get("factor"));
   const enhance = form.get("enhance") === "1" || form.get("enhance") === "true";
+  const model = optionalString(form, "model");
   const projectIdField = optionalString(form, "projectId");
 
   if (factor !== 2 && factor !== 4) {
@@ -109,6 +110,7 @@ export async function POST(req: NextRequest) {
       assetId: asset.id,
       factor,
       enhance,
+      model,
       creditCost: cost,
     },
   });

@@ -1,15 +1,7 @@
 "use client";
 
-// Barre d'outils de génération (bas de studio) — TOUT en dropdowns :
-// - quantité (variantes)
-// - qualité — libellé GÉNÉRIQUE ("Standard/Pro") qui ne révèle rien du
-//   modèle sous-jacent (règle non négociable)
-// - ratio d'aspect, résolution
-// - bouton Generate avec coût en crédits EN DIRECT + état désactivé et
-//   message chiffré quand le solde est insuffisant (+ lien d'achat)
-//
-// AUCUN sélecteur de modèle : le routage entre fournisseurs est 100%
-// serveur (scope V1 — agrégateur vertical, le modèle est un détail interne).
+// Barre d'outils de génération (bas de studio) — Model, Quantity, Quality,
+// Aspect ratio, Resolution, Generate.
 import { Loader2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,36 +15,23 @@ import {
 import { ASPECT_RATIOS, MAX_QUANTITY, QUALITY_TIERS, RESOLUTIONS } from "@/lib/presets";
 import type { AspectRatio, QualityTier, Resolution } from "@/lib/ai/types";
 
-function DropdownControl<T extends string>({
+export interface ModelOption {
+  key: string;
+  name: string;
+  description: string;
+}
+
+function Control({
   label,
-  options,
-  value,
-  onChange,
+  children,
 }: {
   label: string;
-  options: ReadonlyArray<{ id: T; label: string } | T>;
-  value: T;
-  onChange: (value: T) => void;
+  children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <Select value={value} onValueChange={(id) => onChange(id as T)}>
-        <SelectTrigger className="w-[130px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => {
-            const id = typeof option === "string" ? option : option.id;
-            const text = typeof option === "string" ? option : option.label;
-            return (
-              <SelectItem key={id} value={id}>
-                {text}
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      {children}
     </div>
   );
 }
@@ -62,6 +41,9 @@ interface GenerationControlsProps {
   quality: QualityTier;
   aspectRatio: AspectRatio;
   resolution: Resolution;
+  model: string;
+  models: ModelOption[];
+  onModelChange: (value: string) => void;
   cost: number;
   balance: number | null;
   isBusy: boolean;
@@ -78,6 +60,9 @@ export function GenerationControls({
   quality,
   aspectRatio,
   resolution,
+  model,
+  models,
+  onModelChange,
   cost,
   balance,
   isBusy,
@@ -89,47 +74,106 @@ export function GenerationControls({
   onGenerate,
 }: GenerationControlsProps) {
   const hasEnoughCredits = balance === null || balance >= cost;
+  const modelName = model ? models.find((m) => m.key === model)?.name : null;
 
   return (
     <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-        <DropdownControl
-          label="Quantity"
-          options={Array.from({ length: MAX_QUANTITY }, (_, index) => String(index + 1))}
-          value={String(quantity)}
-          onChange={(value) => onQuantityChange(Number(value))}
-        />
-        <DropdownControl
-          label="Quality"
-          options={QUALITY_TIERS.map((tier) => ({ id: tier.id, label: tier.label }))}
-          value={quality}
-          onChange={onQualityChange}
-        />
-        <DropdownControl
-          label="Aspect ratio"
-          options={ASPECT_RATIOS}
-          value={aspectRatio}
-          onChange={onAspectRatioChange}
-        />
-        <DropdownControl
-          label="Resolution"
-          options={RESOLUTIONS}
-          value={resolution}
-          onChange={onResolutionChange}
-        />
+      <div className="flex flex-wrap items-end gap-4">
+        <Control label="Model">
+          <Select value={model} onValueChange={onModelChange} disabled={models.length === 0}>
+            <SelectTrigger className="h-9 w-[180px] text-xs">
+              <SelectValue placeholder="Auto (recommended)">
+                {modelName ?? "Auto (recommended)"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Auto (recommended)</SelectItem>
+              {models.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-medium">{m.name}</span>
+                    <span className="text-xs text-muted-foreground">{m.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Control>
+
+        <Control label="Quantity">
+          <Select value={String(quantity)} onValueChange={(value) => onQuantityChange(Number(value))}>
+            <SelectTrigger className="h-9 w-[72px] text-xs">
+              <SelectValue placeholder="1" />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: MAX_QUANTITY }, (_, i) => String(i + 1)).map((n) => (
+                <SelectItem key={n} value={n}>
+                  {n}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Control>
+
+        <Control label="Quality">
+          <Select value={quality} onValueChange={(value) => onQualityChange(value as QualityTier)}>
+            <SelectTrigger className="h-9 w-[120px] text-xs">
+              <SelectValue placeholder="Standard" />
+            </SelectTrigger>
+            <SelectContent>
+              {QUALITY_TIERS.map((tier) => (
+                <SelectItem key={tier.id} value={tier.id}>
+                  {tier.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Control>
+
+        <Control label="Aspect ratio">
+          <Select value={aspectRatio} onValueChange={(value) => onAspectRatioChange(value as AspectRatio)}>
+            <SelectTrigger className="h-9 w-[100px] text-xs">
+              <SelectValue placeholder="4:3" />
+            </SelectTrigger>
+            <SelectContent>
+              {ASPECT_RATIOS.map((ratio) => (
+                <SelectItem key={ratio} value={ratio}>
+                  {ratio}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Control>
+
+        <Control label="Resolution">
+          <Select value={resolution} onValueChange={(value) => onResolutionChange(value as Resolution)}>
+            <SelectTrigger className="h-9 w-[90px] text-xs">
+              <SelectValue placeholder="1K" />
+            </SelectTrigger>
+            <SelectContent>
+              {RESOLUTIONS.map((res) => (
+                <SelectItem key={res} value={res}>
+                  {res}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Control>
 
         <div className="ml-auto flex flex-col items-end gap-1">
           {!hasEnoughCredits && balance !== null && (
             <p role="alert" className="text-xs text-destructive">
-              You don&apos;t have enough credits for this generation. {cost} credits required. You
-              have {balance} credits.{" "}
-              {/* La page /app/billing arrive au jalon Stripe. */}
+              You don&apos;t have enough credits. {cost} required, {balance} available.{" "}
               <a href="/app/billing" className="font-medium underline">
-                Buy more credits
+                Buy more
               </a>
             </p>
           )}
-          <Button onClick={onGenerate} disabled={!canGenerate || isBusy || !hasEnoughCredits} size="lg">
+          <Button
+            onClick={onGenerate}
+            disabled={!canGenerate || isBusy || !hasEnoughCredits}
+            size="sm"
+          >
             {isBusy ? (
               <>
                 <Loader2 className="animate-spin" />

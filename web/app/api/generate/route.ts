@@ -104,6 +104,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const endImage = form.get("endImage");
+  const endImageUrlField = form.get("endImageUrl");
+  const hasEndImageUrl =
+    typeof endImageUrlField === "string" && /^https?:\/\/.+/.test(endImageUrlField.trim());
+
   const referenceFiles = form
     .getAll("reference")
     .filter((value): value is File => value instanceof File && value.size > 0);
@@ -140,6 +145,8 @@ export async function POST(req: NextRequest) {
   const durationSeconds = (DURATIONS.includes(rawDuration) ? rawDuration : 4) as 4 | 8;
 
   const sceneDetails = optionalString(form, "sceneDetails")?.slice(0, SCENE_DETAILS_MAX);
+  const model = optionalString(form, "model"); // choix utilisateur (optionnel)
+  const motionPrompt = optionalString(form, "motionPrompt"); // Animate : texte libre du mouvement (optionnel)
 
   // --- Projet cible : sélection studio, sinon le projet par défaut ---
   const user = await getDevUser();
@@ -187,6 +194,22 @@ export async function POST(req: NextRequest) {
     referenceFiles.map(async (file) => asDataUri(Buffer.from(await file.arrayBuffer()), file.type))
   );
 
+  // Image de FIN optionnelle pour Animate : traitée comme l'image principale
+  // (data URI si upload, URL worker si asset historique).
+  let endImageUrl: string | null = null;
+  if (hasEndImageUrl && typeof endImageUrlField === "string") {
+    endImageUrl = endImageUrlField.trim();
+  } else if (validImageFile(endImage, MAX_PRIMARY_SIZE)) {
+    const buffer = Buffer.from(await endImage.arrayBuffer());
+    endImageUrl = asDataUri(buffer, endImage.type);
+    try {
+      const storagePath = await uploadSource(buffer, endImage.type);
+      await insertSourceAsset({ userId: user.id, projectId: project.id, type: "image", storagePath });
+    } catch {
+      // best-effort : l'asset source est un confort, pas un prérequis.
+    }
+  }
+
   // --- Création du job + démarrage côté worker ---
   const jobId = await insertJob({
     userId: user.id,
@@ -195,6 +218,7 @@ export async function POST(req: NextRequest) {
     jobInput: {
       feature,
       imageUrl,
+      endImageUrl,
       referenceUrls,
       quality,
       aspectRatio,
@@ -207,6 +231,8 @@ export async function POST(req: NextRequest) {
       materialId: optionalString(form, "materialId"),
       lightingId: optionalString(form, "lightingId"),
       motionId: optionalString(form, "motionId"),
+      model,
+      motionPrompt,
       creditCost: cost,
     },
   });

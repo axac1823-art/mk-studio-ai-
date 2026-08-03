@@ -44,6 +44,7 @@ export interface DbJob {
   result_asset_id: string | null;
   parent_generation_id: string | null;
   error_message: string | null;
+  model_used: string | null;
   credits_charged: number;
   created_at: string;
 }
@@ -69,14 +70,24 @@ export interface DbProjectWithMeta extends DbProject {
   asset_count: number;
 }
 
-/** Projets de l'utilisateur, avec cover et compteur d'assets visibles. */
+/** Projets de l'utilisateur, avec cover et compteur d'assets visibles.
+ *  La cover est d'abord l'asset explicitement choisie ; sinon la dernière
+ *  asset visible du projet est utilisée comme aperçu automatique. */
 export async function listProjects(userId: string): Promise<DbProjectWithMeta[]> {
   return sql<DbProjectWithMeta[]>`
-    SELECT p.*, cover.storage_path AS cover_path,
+    SELECT p.*,
+      COALESCE(cover.storage_path, latest.storage_path) AS cover_path,
       (SELECT count(*)::int FROM assets a2
         WHERE a2.project_id = p.id AND NOT a2.is_trashed) AS asset_count
     FROM projects p
-    LEFT JOIN assets cover ON cover.id = p.cover_asset_id
+    LEFT JOIN assets cover
+      ON cover.id = p.cover_asset_id AND NOT cover.is_trashed
+    LEFT JOIN LATERAL (
+      SELECT storage_path FROM assets a
+      WHERE a.project_id = p.id AND NOT a.is_trashed
+      ORDER BY a.created_at DESC
+      LIMIT 1
+    ) latest ON true
     WHERE p.user_id = ${userId}
     ORDER BY p.updated_at DESC`;
 }
@@ -144,6 +155,11 @@ export async function getJob(jobId: string): Promise<DbJob | null> {
  *  n'a jamais tourné — message générique, aucun débit). */
 export async function markJobFailed(jobId: string): Promise<void> {
   await sql`UPDATE jobs SET status = 'failed', error_message = 'Generation failed, please try again.' WHERE id = ${jobId} AND status = 'pending'`;
+}
+
+/** Enregistre le modèle ayant servi (pour historique + debug). */
+export async function setJobModelUsed(jobId: string, model: string): Promise<void> {
+  await sql`UPDATE jobs SET model_used = ${model} WHERE id = ${jobId}`;
 }
 
 /** Assets produits par un job (polling du statut). */

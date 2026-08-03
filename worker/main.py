@@ -10,13 +10,14 @@ from fastapi.staticfiles import StaticFiles
 
 from config import STORAGE_DIR
 from providers import is_any_provider_configured
-from routes import generate, jobs, upscale
+from routes import generate, jobs, models, upscale
 from routes import storage as storage_routes
 
 app = FastAPI(title="RenderStudio Worker")
 
 app.include_router(generate.router)
 app.include_router(jobs.router)
+app.include_router(models.router)
 app.include_router(upscale.router)
 app.include_router(storage_routes.router)
 

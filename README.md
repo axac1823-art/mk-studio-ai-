@@ -158,19 +158,20 @@ Un provider non configuré est simplement sauté par le fallback.
 
 ## Features V1
 
-Les 6 onglets du studio :
+Les 7 onglets du studio :
 
 1. **Render** : screenshot 3D → rendu photoréaliste.
 2. **Mood** : variation jour/nuit/saison/météo de la même scène.
 3. **Exterior → Interior** : vue intérieure plausible depuis une vue extérieure.
 4. **Plan to Render** : plan 2D technique → rendu meublé/paysagé.
-5. **Animate** : image → vidéo courte 4-8 s avec mouvement de caméra simple.
+5. **Animate** : image → vidéo courte 4-8 s. Le panneau expose un champ de texte libre pour décrire le mouvement, un sélecteur de modèle vidéo, et une image de fin optionnelle (start/end frame). Pas de presets de caméra.
 6. **Multi-Angle** : 2-3 angles additionnels de la même scène (best-effort).
+7. **Upscale** : amélioration d'une image existante (upload ou asset), facteur 2×/4×, modèle au choix.
 
 ### Upscale
 
-- Bouton disponible sur chaque résultat de la galerie.
-- Options : facteur 2× ou 4×, toggle « améliorer la netteté ».
+- Panneau dédié dans le studio : upload, choix du modèle upcaleur, facteur 2× ou 4×, toggle « Enhance quality ».
+- Bouton « Download » disponible sur chaque résultat de la galerie.
 - Crée un nouvel asset lié à l'original via `parent_generation_id` ; l'original n'est jamais écrasé.
 - Coûts : `upscale_2x` = 8 crédits, `upscale_4x` = 15 crédits (configurable dans `action_costs`).
 
@@ -181,6 +182,7 @@ Les 6 onglets du studio :
 - Chaque génération est attachée à un projet au moment de la création.
 - Navigation : Home, Search, Projects, Favorites, Uploads, Trash.
 - Corbeille : `is_trashed` + `trashed_at` ; suppression définitive après 30 jours via `npm run purge:trash`.
+- La cover d'une carte projet est l'asset explicitement choisie, ou à défaut la dernière asset visible du projet.
 
 ---
 
