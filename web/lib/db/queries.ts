@@ -49,6 +49,29 @@ export interface DbJob {
   created_at: string;
 }
 
+export interface DbVideoJob {
+  id: string;
+  user_id: string;
+  project_id: string;
+  status: "pending" | "processing" | "complete" | "failed";
+  mode: string | null;
+  selected_model: string | null;
+  model_used: string | null;
+  start_image_url: string | null;
+  end_image_url: string | null;
+  media_references: Array<{ tag: string; asset_url: string; type: "image" | "video" }>;
+  shots: Array<{ id: string; prompt: string; tagged_media_ids: string[] }>;
+  duration: number;
+  aspect_ratio: string;
+  audio_enabled: boolean;
+  result_url: string | null;
+  credits_charged: number;
+  error_message: string | null;
+  progress: { current: number; total: number } | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const DEV_USER_EMAIL = "dev@renderstudio.local";
 
 /** Utilisateur unique de dev (placeholder auth). */
@@ -129,6 +152,41 @@ export async function insertJob(input: {
     VALUES (${input.userId}, ${input.projectId}, ${input.type}, ${sql.json(input.jobInput as JSONValue)}, ${input.parentGenerationId ?? null})
     RETURNING id`;
   return rows[0].id;
+}
+
+/** Crée un video_job (Video Generator). */
+export async function insertVideoJob(input: {
+  userId: string;
+  projectId: string;
+  startImageUrl: string | null;
+  endImageUrl: string | null;
+  mediaReferences: Array<{ tag: string; asset_url: string; type: "image" | "video" }>;
+  shots: Array<{ id: string; prompt: string; tagged_media_ids: string[] }>;
+  duration: number;
+  aspectRatio: string;
+  audioEnabled: boolean;
+  selectedModel: string | null;
+}): Promise<string> {
+  const rows = await sql<Array<{ id: string }>>`
+    INSERT INTO video_jobs (
+      user_id, project_id,
+      start_image_url, end_image_url,
+      media_references, shots,
+      duration, aspect_ratio, audio_enabled, selected_model
+    )
+    VALUES (
+      ${input.userId}, ${input.projectId},
+      ${input.startImageUrl}, ${input.endImageUrl},
+      ${sql.json(input.mediaReferences as JSONValue)}, ${sql.json(input.shots as JSONValue)},
+      ${input.duration}, ${input.aspectRatio}, ${input.audioEnabled}, ${input.selectedModel}
+    )
+    RETURNING id`;
+  return rows[0].id;
+}
+
+export async function getVideoJob(jobId: string): Promise<DbVideoJob | null> {
+  const rows = await sql<DbVideoJob[]>`SELECT * FROM video_jobs WHERE id = ${jobId} LIMIT 1`;
+  return rows[0] ?? null;
 }
 
 /** Crée un asset SOURCE (upload utilisateur — generation_id NULL, visible
@@ -217,6 +275,12 @@ export async function deleteAsset(userId: string, assetId: string): Promise<void
 export async function getActionCosts(): Promise<Record<string, number>> {
   const rows = await sql<Array<{ feature_type: string; credit_cost: number }>>`SELECT feature_type, credit_cost FROM action_costs`;
   return Object.fromEntries(rows.map((row) => [row.feature_type, row.credit_cost]));
+}
+
+/** Coûts vidéo par mode (clé = mode). */
+export async function getVideoActionCosts(): Promise<Record<string, number>> {
+  const rows = await sql<Array<{ mode: string; credit_cost: number }>>`SELECT mode, credit_cost FROM video_action_costs`;
+  return Object.fromEntries(rows.map((row) => [row.mode, row.credit_cost]));
 }
 
 /** Solde = somme du ledger (append-only : mint/spend/refund/expire). */

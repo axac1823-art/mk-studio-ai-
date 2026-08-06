@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .venv/
+.pytest_cache/
 
 # Fichiers générés par le worker en dev local
 worker/storage/*

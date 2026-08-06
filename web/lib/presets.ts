@@ -81,9 +81,6 @@ export const QUALITY_TIERS = [
   { id: "standard", label: "Standard" },
   { id: "pro", label: "Pro" },
 ] as const;
-// Scope V1 : vidéos courtes de présentation (4-8 s), sans narration.
-export const DURATIONS = [4, 8] as const;
-
 // --- Upscale : facteur et toggle enhance (simple, pas de réglages techniques) ---
 
 export type UpscaleFactor = 2 | 4;

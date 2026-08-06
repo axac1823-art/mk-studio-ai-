@@ -38,6 +38,11 @@ class Candidate:
     tiers: tuple[str, ...]
     build_input: Callable[[dict], dict]
     extract_output: Callable[[dict], list[str]]
+    # Capacités vidéo (ignorées pour les features image).
+    supports_text_to_video: bool = False
+    supports_image_to_video: bool = False
+    supports_start_end_frame: bool = False
+    supports_multi_reference: bool = False
 
 
 # --- Helpers d'exposition des modèles disponibles ---
@@ -53,10 +58,29 @@ def list_feature_models(feature: str) -> list[dict]:
             "name": c.name,
             "description": c.description,
             "tiers": c.tiers,
+            "supportsTextToVideo": c.supports_text_to_video,
+            "supportsImageToVideo": c.supports_image_to_video,
+            "supportsStartEndFrame": c.supports_start_end_frame,
+            "supportsMultiReference": c.supports_multi_reference,
         }
         for c in MODEL_CATALOG.get(feature, [])
         if is_provider_configured(c.provider)
     ]
+
+
+def filter_candidates_by_mode(candidates: list[Candidate], mode: str) -> list[Candidate]:
+    """Filtre les candidats vidéo selon le mode détecté."""
+    flags = {
+        "text_to_video": "supports_text_to_video",
+        "image_to_video": "supports_image_to_video",
+        "start_end_frame": "supports_start_end_frame",
+        "multi_reference": "supports_multi_reference",
+        "multi_shot": "supports_image_to_video",
+    }
+    attr = flags.get(mode)
+    if not attr:
+        return candidates
+    return [c for c in candidates if getattr(c, attr)]
 
 
 # --- Extracteurs tolérants : normalisent les sorties des providers vers
@@ -258,17 +282,52 @@ IMAGE_EDIT_CANDIDATES: list[Candidate] = [
 ANIMATE_CANDIDATES: list[Candidate] = [
     # Nom du modèle v3 à vérifier dans la console Kling — si l'API le
     # rejette, le fallback bascule automatiquement sur v2.5-turbo.
-    Candidate("kling-v3", "Kling v3", "Best for realistic physics and camera motion", "kling", "kling-v3", 18, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), kling_video_input, extract_video_url),
-    Candidate("kling-v2.5-turbo", "Kling v2.5 Turbo", "Fast video generation with smooth motion", "kling", "kling-v2-5-turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), kling_video_input, extract_video_url),
-    Candidate("runway-gen4-turbo", "Runway Gen-4 Turbo", "Best for smooth cinematic camera moves", "runway", "gen4_turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard",), runway_video_input, extract_video_url),
-    Candidate("sora-2-pro", "Sora 2 Pro", "Highest quality cinematic video", "openai", "sora-2-pro", 19, 0, VIDEO_TIMEOUT_MS, ("pro",), sora_video_input, extract_video_url),
-    Candidate("sora-2", "Sora 2", "High quality image-to-video", "openai", "sora-2", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), sora_video_input, extract_video_url),
+    Candidate(
+        "kling-v3", "Kling v3", "Best for realistic physics and camera motion",
+        "kling", "kling-v3", 18, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        kling_video_input, extract_video_url,
+        supports_image_to_video=True, supports_start_end_frame=True,
+    ),
+    Candidate(
+        "kling-v2.5-turbo", "Kling v2.5 Turbo", "Fast video generation with smooth motion",
+        "kling", "kling-v2-5-turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        kling_video_input, extract_video_url,
+        supports_image_to_video=True,
+    ),
+    Candidate(
+        "runway-gen4-turbo", "Runway Gen-4 Turbo", "Best for smooth cinematic camera moves",
+        "runway", "gen4_turbo", 15, 0, VIDEO_TIMEOUT_MS, ("standard",),
+        runway_video_input, extract_video_url,
+        supports_image_to_video=True,
+    ),
+    Candidate(
+        "sora-2-pro", "Sora 2 Pro", "Highest quality cinematic video",
+        "openai", "sora-2-pro", 19, 0, VIDEO_TIMEOUT_MS, ("pro",),
+        sora_video_input, extract_video_url,
+        supports_image_to_video=True,
+    ),
+    Candidate(
+        "sora-2", "Sora 2", "High quality image-to-video",
+        "openai", "sora-2", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        sora_video_input, extract_video_url,
+        supports_image_to_video=True,
+    ),
     # Agrégateur (exception assumée, AGENTS.md §1) : `default` ~ kling-3.0
     # sur tiers payants, ltx-2.3 en gratuit.
-    Candidate("magichour-video", "Magic Hour Video", "Aggregated video models, free tier available", "magichour", "default", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), magichour_video_input, extract_video_url),
+    Candidate(
+        "magichour-video", "Magic Hour Video", "Aggregated video models, free tier available",
+        "magichour", "default", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        magichour_video_input, extract_video_url,
+        supports_image_to_video=True,
+    ),
     # Provider LOCAL de test : img2video via workflow custom OBLIGATOIRE
     # (COMFYUI_VIDEO_WORKFLOW_FILE), sinon échec vite -> fallback.
-    Candidate("comfyui-i2v", "ComfyUI Local Video", "Local GPU test video pipeline", "comfyui", "i2v", 0, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"), comfyui_video_input, extract_video_url),
+    Candidate(
+        "comfyui-i2v", "ComfyUI Local Video", "Local GPU test video pipeline",
+        "comfyui", "i2v", 0, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        comfyui_video_input, extract_video_url,
+        supports_image_to_video=True,
+    ),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {

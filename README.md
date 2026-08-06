@@ -7,14 +7,6 @@ Ce dépôt est organisé en **deux services** et une base de données partagée 
 - `/web` : interface Next.js 14 + TypeScript, pages, auth, facturation, studio, gestion des projets.
 - `/worker` : service Python FastAPI qui détient **toute** la logique IA (appels providers, ComfyUI, upscale, ffmpeg, stockage local).
 - `/db` : schéma PostgreSQL unique, utilisé par les deux services.
-- `/legacy` : ancien backend FastAPI, **archivé pour référence uniquement**.
-
----
-
-## Legacy vs Worker
-
-- **`legacy/`** : ancien backend FastAPI monolithique. Il n'est pas lancé en production, il sert uniquement de référence pour certains presets et le registre des fournisseurs.
-- **`worker/`** : nouveau service FastAPI qui exécute les générations IA. C'est le seul endroit où les clés API providers sont lues. `/web` ne parle **jamais** directement aux providers ; il crée une ligne `jobs` en DB et appelle `/worker` via HTTP.
 
 ---
 
@@ -145,13 +137,12 @@ Un provider non configuré est simplement sauté par le fallback.
 │   └── .env.example
 ├── worker/          <- FastAPI Python : toute la logique IA
 │   ├── providers/   <- un fichier = un provider (bfl, google, kling, runway, openai, magichour, comfyui, upscale)
-│   ├── workflows/     <- image_render.py, video_generation.py, upscale.py, common.py
+│   ├── workflows/     <- image_render.py, video.py, upscale.py, common.py
 │   ├── routes/      <- endpoints FastAPI (generate, jobs, upscale, storage)
 │   ├── storage/     <- fichiers générés en local (dev)
-│   ├── tests/       <- test_fallback.py, smoke_comfyui.py
+│   ├── tests/       <- test_fallback.py, test_video_modes.py
 │   └── .env.example
 ├── db/              <- schema.sql (source unique de vérité Postgres)
-└── legacy/          <- ancien backend FastAPI (non utilisé, référence uniquement)
 ```
 
 ---
@@ -236,7 +227,6 @@ Vérification rapide :
 - Les clés providers ne vivent que dans `worker/.env`.
 - `/web` ne connaît que `WORKER_BASE_URL`.
 - Aucune variable sensible ne doit être préfixée `NEXT_PUBLIC_`.
-- `/legacy` est archivé et ne doit pas être importé ni exécuté.
 
 ---
 

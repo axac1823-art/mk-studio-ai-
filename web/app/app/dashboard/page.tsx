@@ -1,18 +1,17 @@
 "use client";
 
 // Studio — orchestration des panneaux. Scope MVP : agrégateur IA VERTICAL
-// pour architectes / archviz / décorateurs / agents immobiliers — 7
-// fonctions métier, une par onglet (Render, Mood, Ext→Int, Plan, Animate,
-// Multi-Angle, Upscale). Chaque génération est rattachée à un PROJET
+// pour architectes / archviz / décorateurs / agents immobiliers — 6
+// fonctions image, une par onglet. La génération vidéo vit désormais sur
+// la page dédiée /app/video. Chaque génération est rattachée à un PROJET
 // (sélecteur ci-dessous, création inline) ; la galerie de droite est lue
-// depuis la DB (assets du projet) — plus d'historique éphémère.
+// depuis la DB (assets du projet actif).
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AnimatePanel } from "@/components/studio/animate-panel";
 import { GenerationControls } from "@/components/studio/generation-controls";
 import { ImageFeaturePanel } from "@/components/studio/image-feature-panel";
 import { ProjectPicker, type ProjectOption } from "@/components/studio/project-picker";
@@ -61,9 +60,9 @@ interface AssetItem {
 
 type RightView = "compare" | "gallery";
 
-/** Fonctions image "simples" (hors Print Render et Animate/Upscale) : même panneau générique,
+/** Fonctions image "simples" (hors Print Render et Upscale) : même panneau générique,
  *  seuls les presets dédiés changent. */
-type SimpleImageTab = Exclude<StudioTab, "print_render" | "animate" | "upscale">;
+type SimpleImageTab = Exclude<StudioTab, "print_render" | "upscale">;
 
 interface SimpleImageState {
   file: File | null;
@@ -122,25 +121,8 @@ export default function DashboardPage() {
 
   // --- Modèles disponibles (fetchés au chargement) ---
   const [imageModels, setImageModels] = useState<ModelOption[]>([]);
-  const [videoModels, setVideoModels] = useState<ModelOption[]>([]);
   const [upscaleModels, setUpscaleModels] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>(""); // "" = default worker behavior
-
-  // --- Animate ---
-  const [animateFile, setAnimateFile] = useState<File | null>(null);
-  const [animateSource, setAnimateSource] = useState<{ kind: "history" | "upload"; previewUrl: string | null }>({
-    kind: "upload",
-    previewUrl: null,
-  });
-  const [endAnimateFile, setEndAnimateFile] = useState<File | null>(null);
-  const [endAnimateSource, setEndAnimateSource] = useState<{ kind: "history" | "upload"; previewUrl: string | null }>({
-    kind: "upload",
-    previewUrl: null,
-  });
-  const [motionPrompt, setMotionPrompt] = useState("");
-  const [durationSeconds, setDurationSeconds] = useState<4 | 8>(4);
-  const [animateSceneDetails, setAnimateSceneDetails] = useState("");
-  const [selectedVideoModel, setSelectedVideoModel] = useState<string>("");
 
   // --- Upscale ---
   const [upscaleFile, setUpscaleFile] = useState<File | null>(null);
@@ -207,15 +189,13 @@ export default function DashboardPage() {
       if (defaultId) setSelectedProjectId((current) => current ?? defaultId);
     });
     fetch("/api/models")
-      .then((res) => (res.ok ? res.json() : { image: [], video: [], upscale: [] }))
-      .then((data: { image?: ModelOption[]; video?: ModelOption[]; upscale?: ModelOption[] }) => {
+      .then((res) => (res.ok ? res.json() : { image: [], upscale: [] }))
+      .then((data: { image?: ModelOption[]; upscale?: ModelOption[] }) => {
         setImageModels(Array.isArray(data.image) ? data.image : []);
-        setVideoModels(Array.isArray(data.video) ? data.video : []);
         setUpscaleModels(Array.isArray(data.upscale) ? data.upscale : []);
       })
       .catch(() => {
         setImageModels([]);
-        setVideoModels([]);
         setUpscaleModels([]);
       });
   }, [refreshBalance, refreshProjects]);
@@ -331,7 +311,7 @@ export default function DashboardPage() {
   };
 
   const handleGenerateSimpleImage = () => {
-    if (tab === "print_render" || tab === "animate" || tab === "upscale") return;
+    if (tab === "print_render" || tab === "upscale") return;
     const state = simpleTabs[tab];
     if (!state.file) return;
     const form = new FormData();
@@ -344,34 +324,6 @@ export default function DashboardPage() {
     if (selectedModel) form.append("model", selectedModel);
     appendSharedSettings(form);
     void submitGeneration(form, "image", state.previewUrl);
-  };
-
-  const handleGenerateVideo = () => {
-    const form = new FormData();
-    form.append("feature", "animate");
-    if (animateSource.kind === "upload" && animateFile) {
-      form.append("image", animateFile);
-    } else if (animateSource.kind === "history" && animateSource.previewUrl) {
-      // Rendu précédent (URL du storage worker) : transmis tel quel, le
-      // worker le forwarde au pipeline — pas de re-upload nécessaire.
-      form.append("imageUrl", animateSource.previewUrl);
-    } else {
-      return;
-    }
-    if (endAnimateSource.kind === "upload" && endAnimateFile) {
-      form.append("endImage", endAnimateFile);
-    } else if (endAnimateSource.kind === "history" && endAnimateSource.previewUrl) {
-      form.append("endImageUrl", endAnimateSource.previewUrl);
-    }
-    form.append("motionPrompt", motionPrompt);
-    form.append("durationSeconds", String(durationSeconds));
-    form.append("sceneDetails", animateSceneDetails);
-    form.append("quality", quality);
-    form.append("aspectRatio", aspectRatio);
-    form.append("resolution", "1K");
-    form.append("quantity", "1");
-    if (selectedVideoModel) form.append("model", selectedVideoModel);
-    void submitGeneration(form, "video", animateSource.previewUrl);
   };
 
   const handleUpscale = async () => {
@@ -418,26 +370,14 @@ export default function DashboardPage() {
     ]);
   };
 
-  const latestImageUrl = assets.find((asset) => asset.type === "image")?.url ?? null;
 
   // Coût et état du bouton pour la fonction image active (Render compris) —
   // la config des coûts est fetchée une fois (affiché = facturé côté serveur).
-  const activeImageCost =
-    !costsConfig || tab === "animate"
-      ? 0
-      : computeDisplayCost(costsConfig, { feature: tab, quality, resolution, quantity });
+  const activeImageCost = !costsConfig
+    ? 0
+    : computeDisplayCost(costsConfig, { feature: tab, quality, resolution, quantity });
   const activeImageFile =
-    tab === "print_render" ? file : tab === "animate" || tab === "upscale" ? null : simpleTabs[tab].file;
-
-  const animateCost = costsConfig
-    ? computeDisplayCost(costsConfig, {
-        feature: "animate",
-        quality,
-        resolution: "1K",
-        quantity: 1,
-        durationSeconds,
-      })
-    : 0;
+    tab === "print_render" ? file : tab === "upscale" ? null : simpleTabs[tab].file;
 
   const upscaleCost = costsConfig
     ? computeDisplayCost(costsConfig, { feature: "upscale", quality, resolution: "1K", quantity: 1, upscaleFactor })
@@ -452,20 +392,37 @@ export default function DashboardPage() {
             AI renders for architecture, archviz &amp; real estate.
           </p>
         </div>
-        <Badge variant="secondary" className="gap-1">
-          {balance === null ? "…" : balance} credits
-        </Badge>
+        <div className="flex items-center gap-3">
+          <a href="/app/video">
+            <Button type="button" variant="outline" size="sm">
+              Video Generator
+            </Button>
+          </a>
+          <Badge variant="secondary" className="gap-1">
+            {balance === null ? "…" : balance} credits
+          </Badge>
+        </div>
       </header>
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
-        <TabsList>
-          {STUDIO_TABS.map((studioTab) => (
-            <TabsTrigger key={studioTab.id} value={studioTab.id}>
-              {studioTab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center gap-2">
+        <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
+          <TabsList>
+            {STUDIO_TABS.map((studioTab) => (
+              <TabsTrigger key={studioTab.id} value={studioTab.id}>
+                {studioTab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <a
+          href="/app/video"
+          className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+        >
+          <span className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            Video
+          </span>
+        </a>
+      </div>
 
       <div className="grid flex-1 gap-6 lg:grid-cols-[400px_1fr]">
         <div className="flex flex-col gap-4">
@@ -505,43 +462,6 @@ export default function DashboardPage() {
                   />
                   <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
                 </>
-              ) : tab === "animate" ? (
-                <AnimatePanel
-                  source={animateSource}
-                  endSource={endAnimateSource}
-                  hasHistoryImages={latestImageUrl !== null}
-                  models={videoModels}
-                  selectedModel={selectedVideoModel}
-                  onModelChange={setSelectedVideoModel}
-                  onPickFromHistory={() => {
-                    if (latestImageUrl) setAnimateSource({ kind: "history", previewUrl: latestImageUrl });
-                  }}
-                  onPickEndFromHistory={() => {
-                    if (latestImageUrl) setEndAnimateSource({ kind: "history", previewUrl: latestImageUrl });
-                  }}
-                  onFileSelected={(selected) => {
-                    setAnimateFile(selected);
-                    setAnimateSource({ kind: "upload", previewUrl: URL.createObjectURL(selected) });
-                    setError(null);
-                  }}
-                  onEndFileSelected={(selected) => {
-                    setEndAnimateFile(selected);
-                    setEndAnimateSource({ kind: "upload", previewUrl: URL.createObjectURL(selected) });
-                    setError(null);
-                  }}
-                  motionPrompt={motionPrompt}
-                  onMotionPromptChange={setMotionPrompt}
-                  durationSeconds={durationSeconds}
-                  onDurationChange={setDurationSeconds}
-                  aspectRatio={aspectRatio}
-                  onAspectRatioChange={setAspectRatio}
-                  sceneDetails={animateSceneDetails}
-                  onSceneDetailsChange={setAnimateSceneDetails}
-                  cost={animateCost}
-                  balance={balance}
-                  isBusy={isBusy}
-                  onGenerate={handleGenerateVideo}
-                />
               ) : tab === "upscale" ? (
                 <UpscalePanel
                   models={upscaleModels}
@@ -670,7 +590,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {tab !== "animate" && tab !== "upscale" && (
+      {tab !== "upscale" && (
         <GenerationControls
           quantity={quantity}
           quality={quality}

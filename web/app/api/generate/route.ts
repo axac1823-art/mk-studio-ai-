@@ -25,7 +25,6 @@ import {
   WorkerNotConfiguredError,
   isWorkerConfigured,
   startImageJob,
-  startVideoJob,
   uploadSource,
 } from "@/lib/worker-client";
 
@@ -35,14 +34,13 @@ export const dynamic = "force-dynamic";
 // La génération vidéo (Animate) peut durer plusieurs minutes côté worker.
 export const maxDuration = 300;
 
-// Les 6 fonctions du scope MVP (agrégateur vertical archviz/immobilier).
+// Les 5 fonctions image du scope MVP (agrégateur vertical archviz/immobilier).
 const SUPPORTED_FEATURES: Feature[] = [
   "print_render",
   "mood_swap",
   "exterior_to_interior",
   "plan_to_render",
   "multi_angle",
-  "animate",
 ];
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
@@ -50,7 +48,6 @@ const MAX_REFERENCE_SIZE = 5 * 1024 * 1024;
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
 const QUALITY_TIERS: QualityTier[] = ["standard", "pro"];
-const DURATIONS = [4, 8];
 
 function asDataUri(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
@@ -104,11 +101,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const endImage = form.get("endImage");
-  const endImageUrlField = form.get("endImageUrl");
-  const hasEndImageUrl =
-    typeof endImageUrlField === "string" && /^https?:\/\/.+/.test(endImageUrlField.trim());
-
   const referenceFiles = form
     .getAll("reference")
     .filter((value): value is File => value instanceof File && value.size > 0);
@@ -141,12 +133,9 @@ export async function POST(req: NextRequest) {
   const quantity = Number.isInteger(rawQuantity)
     ? Math.min(Math.max(rawQuantity, 1), MAX_QUANTITY)
     : 1;
-  const rawDuration = Number(form.get("durationSeconds"));
-  const durationSeconds = (DURATIONS.includes(rawDuration) ? rawDuration : 4) as 4 | 8;
 
   const sceneDetails = optionalString(form, "sceneDetails")?.slice(0, SCENE_DETAILS_MAX);
   const model = optionalString(form, "model"); // choix utilisateur (optionnel)
-  const motionPrompt = optionalString(form, "motionPrompt"); // Animate : texte libre du mouvement (optionnel)
 
   // --- Projet cible : sélection studio, sinon le projet par défaut ---
   const user = await getDevUser();
@@ -159,7 +148,7 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Coût affiché = coût facturé, quel que soit le modèle servant ---
-  const cost = await computeCost({ feature: feature as Feature, quality, resolution, quantity, durationSeconds });
+  const cost = await computeCost({ feature: feature as Feature, quality, resolution, quantity });
   const balance = await getBalance();
   if (balance < cost) {
     // Le client affiche le détail chiffré (sans rien révéler du backend).
@@ -194,22 +183,6 @@ export async function POST(req: NextRequest) {
     referenceFiles.map(async (file) => asDataUri(Buffer.from(await file.arrayBuffer()), file.type))
   );
 
-  // Image de FIN optionnelle pour Animate : traitée comme l'image principale
-  // (data URI si upload, URL worker si asset historique).
-  let endImageUrl: string | null = null;
-  if (hasEndImageUrl && typeof endImageUrlField === "string") {
-    endImageUrl = endImageUrlField.trim();
-  } else if (validImageFile(endImage, MAX_PRIMARY_SIZE)) {
-    const buffer = Buffer.from(await endImage.arrayBuffer());
-    endImageUrl = asDataUri(buffer, endImage.type);
-    try {
-      const storagePath = await uploadSource(buffer, endImage.type);
-      await insertSourceAsset({ userId: user.id, projectId: project.id, type: "image", storagePath });
-    } catch {
-      // best-effort : l'asset source est un confort, pas un prérequis.
-    }
-  }
-
   // --- Création du job + démarrage côté worker ---
   const jobId = await insertJob({
     userId: user.id,
@@ -218,13 +191,11 @@ export async function POST(req: NextRequest) {
     jobInput: {
       feature,
       imageUrl,
-      endImageUrl,
       referenceUrls,
       quality,
       aspectRatio,
       resolution,
       quantity,
-      durationSeconds,
       sceneDetails,
       optionId: optionalString(form, "optionId"),
       sceneTypeId: optionalString(form, "sceneTypeId"),
@@ -232,17 +203,12 @@ export async function POST(req: NextRequest) {
       lightingId: optionalString(form, "lightingId"),
       motionId: optionalString(form, "motionId"),
       model,
-      motionPrompt,
       creditCost: cost,
     },
   });
 
   try {
-    if (feature === "animate") {
-      await startVideoJob(jobId);
-    } else {
-      await startImageJob(jobId);
-    }
+    await startImageJob(jobId);
   } catch (err) {
     await markJobFailed(jobId);
     if (err instanceof WorkerNotConfiguredError) {

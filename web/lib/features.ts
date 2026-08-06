@@ -11,7 +11,6 @@ export type StudioTab =
   | "mood_swap"
   | "exterior_to_interior"
   | "plan_to_render"
-  | "animate"
   | "multi_angle"
   | "upscale";
 
@@ -20,22 +19,6 @@ export const STUDIO_TABS: Array<{ id: StudioTab; label: string }> = [
   { id: "mood_swap", label: "Mood" },
   { id: "exterior_to_interior", label: "Exterior → Interior" },
   { id: "plan_to_render", label: "Plan to Render" },
-  { id: "animate", label: "Animate" },
   { id: "multi_angle", label: "Multi-Angle" },
   { id: "upscale", label: "Upscale" },
 ];
-
-export interface FeatureMeta {
-  id: StudioTab;
-  name: string;
-}
-
-export const FEATURES: Record<StudioTab, FeatureMeta> = {
-  print_render: { id: "print_render", name: "Print Render" },
-  mood_swap: { id: "mood_swap", name: "Mood Shift" },
-  exterior_to_interior: { id: "exterior_to_interior", name: "Exterior to Interior" },
-  plan_to_render: { id: "plan_to_render", name: "Plan to Render" },
-  animate: { id: "animate", name: "Animate" },
-  multi_angle: { id: "multi_angle", name: "Multi-Angle" },
-  upscale: { id: "upscale", name: "Upscale" },
-};

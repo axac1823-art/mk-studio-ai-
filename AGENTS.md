@@ -31,9 +31,8 @@ voix off / lip-sync, presets non liés au bâti, et **tout sélecteur de
 modèle IA visible** — le routage entre modèles est 100% serveur, le
 fallback automatique et invisible.
 
-Refonte en cours d'un ancien backend FastAPI : celui-ci est archivé dans
-`legacy/` (conservé comme référence pour les presets et le registre, non
-fonctionnel en l'état). Le nouveau stack est **Next.js full-stack**.
+Le stack actuel est **Next.js full-stack** ; l'ancien backend FastAPI a
+été retiré du dépôt.
 
 Trois principes d'architecture à respecter dans toute modification :
 
@@ -135,10 +134,7 @@ lib/
   jobs/store.ts               # jobs en mémoire (remplaçable par BullMQ)
   utils.ts                    # cn() (clsx + tailwind-merge)
 scripts/
-  simulate-fallback.ts        # tests hors-ligne du routeur (npm run test:fallback)
-  smoke-comfyui.ts            # test de l'adaptateur ComfyUI contre un serveur
-                              #   mock, image + vidéo (npm run test:comfyui)
-legacy/                       # ancien backend FastAPI (référence, non utilisé)
+  purge-trash.ts              # nettoyage programmé des assets en corbeille
 ```
 
 ### Flux d'une génération (jalon actuel)
@@ -162,15 +158,14 @@ cp .env.example .env.local   # puis renseigner au moins UN fournisseur
                              # (ex. BFL_API_KEY + GOOGLE_API_KEY)
 npm run dev                  # http://localhost:3000 -> /app/dashboard
 npm run build                # vérif compile + lint + types
-npm run test:fallback        # tests hors-ligne du routeur (fallback, tri)
-npm run test:comfyui         # test hors-ligne de l'adaptateur ComfyUI (mock)
+npm run lint                 # lint ESLint
 ```
 
 Vérification rapide : `GET /app/dashboard` → 200 ; `POST /api/generate`
 sans aucune clé fournisseur → JSON d'erreur explicite (503).
 
-Il n'y a ni Dockerfile, ni CI : seuls le lancement local et la simulation
-du fallback ci-dessus sont définis.
+Il n'y a ni Dockerfile, ni CI : seuls le lancement local et le build sont
+définis.
 
 ## Configuration
 
@@ -271,4 +266,3 @@ Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
   persistance arrive avec la DB.
 - Le dépôt est versionné (git). ⚠️ `.env` (clés réelles) ne doit jamais
   être committé — il est listé dans `.gitignore`.
-- `legacy/` n'est pas destiné à être exécuté ; ne pas importer depuis.

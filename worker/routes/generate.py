@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 import db
 from providers import is_any_provider_configured
-from workflows import image_render, video_generation
+from workflows import image_render, video
 
 router = APIRouter()
 
@@ -30,6 +30,17 @@ def _load_pending_job(job_id: str) -> dict:
     return job
 
 
+def _load_pending_video_job(job_id: str) -> dict:
+    """Charge un video_job et vérifie qu'il est démarrable."""
+    with db.connect() as conn:
+        job = conn.execute("SELECT * FROM video_jobs WHERE id = %s", (job_id,)).fetchone()
+    if not job:
+        raise HTTPException(404, "video job not found")
+    if job["status"] != "pending":
+        raise HTTPException(409, "video job already started")
+    return job
+
+
 @router.post("/generate/image")
 def generate_image(payload: StartJob, background: BackgroundTasks):
     """Démarre un job image (5 features image du scope MVP)."""
@@ -44,11 +55,9 @@ def generate_image(payload: StartJob, background: BackgroundTasks):
 
 @router.post("/generate/video")
 def generate_video(payload: StartJob, background: BackgroundTasks):
-    """Démarre un job vidéo (animate)."""
+    """Démarre un job vidéo unifié (Video Generator)."""
     if not is_any_provider_configured():
         raise HTTPException(503, "no provider configured on worker")
-    job = _load_pending_job(payload.job_id)
-    if job["type"] != "animate":
-        raise HTTPException(400, f"not a video job: {job['type']}")
-    background.add_task(video_generation.run, job)
+    job = _load_pending_video_job(payload.job_id)
+    background.add_task(video.run, job)
     return {"ok": True}

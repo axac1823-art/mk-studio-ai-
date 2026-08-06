@@ -5,8 +5,11 @@
 // /api/config/costs ; la formule appliquée ici est la même que côté
 // serveur pour que le coût affiché soit EXACTEMENT le coût facturé.
 
+import { computeVideoCost, type VideoMode } from "@/lib/video-utils";
+
 export interface CostsConfig {
   baseCosts: Record<string, number>;
+  videoCosts: Record<string, number>;
   qualityMultiplier: Record<string, number>;
   resolutionSurcharge: Record<string, number>;
   durationMultiplier: Record<string, number>;
@@ -28,6 +31,10 @@ export async function fetchCostsConfig(): Promise<CostsConfig> {
 }
 
 /** Même formule que lib/credits.computeCost (affiché = facturé). */
+export function computeVideoDisplayCost(config: CostsConfig, mode: VideoMode, shotCount: number): number {
+  return computeVideoCost(config.videoCosts, mode, shotCount);
+}
+
 export function computeDisplayCost(config: CostsConfig, input: DisplayCostInput): number {
   if (input.feature === "animate") {
     const duration = config.durationMultiplier[String(input.durationSeconds ?? 4)] ?? 1;

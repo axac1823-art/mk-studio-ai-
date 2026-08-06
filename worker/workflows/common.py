@@ -4,6 +4,7 @@ fichiers stockés, et écritures DB communes (asset, completion, débit).
 Règle non négociable : `error_message` côté job reste GÉNÉRIQUE (destiné
 au client) — l'erreur réelle est loggée côté serveur (analytics interne).
 """
+import json
 import logging
 
 import db
@@ -51,6 +52,16 @@ def insert_asset(conn, job: dict, type_: str, storage_path: str) -> str:
     return str(row["id"])
 
 
+def insert_video_asset(conn, job_id: str, user_id: str, project_id: str, type_: str, storage_path: str) -> str:
+    """Crée un asset lié à un video_job."""
+    row = conn.execute(
+        """INSERT INTO assets (project_id, user_id, type, generation_id, video_job_id, storage_path)
+           VALUES (%s, %s, %s, NULL, %s, %s) RETURNING id""",
+        (project_id, user_id, type_, job_id, storage_path),
+    ).fetchone()
+    return str(row["id"])
+
+
 def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int, model_used: str | None = None) -> None:
     """Succès : job complete + modèle utilisé + débit IDEMPOTENT du coût
     calculé par /web (UNIQUE(ref_job_id, reason) — jamais deux 'spend' pour
@@ -68,10 +79,52 @@ def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int, mo
         )
 
 
-def set_model_used(conn, job_id: str, model_used: str) -> None:
-    """Enregistre le modèle utilisé dès qu'il est connu (avant la fin du job
-    si besoin)."""
-    conn.execute("UPDATE jobs SET model_used = %s WHERE id = %s", (model_used, job_id))
+def complete_video_job(
+    conn,
+    job: dict,
+    result_url: str,
+    credits_charged: int,
+    model_used: str | None = None,
+) -> None:
+    """Succès d'un video_job : complétion + débit idempotent via ref_video_job_id."""
+    conn.execute(
+        """UPDATE video_jobs
+           SET status = 'complete', result_url = %s, credits_charged = %s, model_used = %s
+           WHERE id = %s""",
+        (result_url, credits_charged, model_used, job["id"]),
+    )
+    if credits_charged > 0:
+        conn.execute(
+            """INSERT INTO credit_ledger (user_id, delta, reason, ref_video_job_id)
+               VALUES (%s, %s, 'spend', %s)
+               ON CONFLICT (ref_video_job_id, reason) DO NOTHING""",
+            (job["user_id"], -credits_charged, job["id"]),
+        )
+
+
+def fail_video_job(conn, job: dict, err: Exception) -> None:
+    """Échec d'un video_job : message générique côté client."""
+    log.error("video_job %s failed: %s", job["id"], err)
+    conn.execute(
+        "UPDATE video_jobs SET status = 'failed', error_message = %s WHERE id = %s",
+        ("Generation failed, please try again.", job["id"]),
+    )
+
+
+def mark_video_processing(conn, job_id: str) -> None:
+    """pending -> processing pour un video_job."""
+    conn.execute(
+        "UPDATE video_jobs SET status = 'processing' WHERE id = %s AND status = 'pending'",
+        (job_id,),
+    )
+
+
+def set_video_progress(conn, job_id: str, progress: dict) -> None:
+    """Met à jour le JSON de progression d'un video_job."""
+    conn.execute(
+        "UPDATE video_jobs SET progress = %s, updated_at = now() WHERE id = %s",
+        (json.dumps(progress), job_id),
+    )
 
 
 def fail_job(conn, job: dict, err: Exception) -> None:

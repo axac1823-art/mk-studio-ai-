@@ -36,11 +36,11 @@ export async function isWorkerConfigured(): Promise<boolean> {
   }
 }
 
-async function postStartJob(path: string, jobId: string): Promise<void> {
+async function postStartJob(path: string, jobId: string, bodyKey: string = "job_id"): Promise<void> {
   const res = await fetch(`${baseUrl()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ job_id: jobId }),
+    body: JSON.stringify({ [bodyKey]: jobId }),
   });
   if (res.status === 503) throw new WorkerNotConfiguredError();
   if (!res.ok) throw new Error(`worker ${path} failed (${res.status})`);
@@ -50,8 +50,8 @@ export function startImageJob(jobId: string): Promise<void> {
   return postStartJob("/generate/image", jobId);
 }
 
-export function startVideoJob(jobId: string): Promise<void> {
-  return postStartJob("/generate/video", jobId);
+export function startVideoJob(videoJobId: string): Promise<void> {
+  return postStartJob("/generate/video", videoJobId, "video_job_id");
 }
 
 export function startUpscaleJob(jobId: string): Promise<void> {

@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 
 import { DURATION_MULTIPLIER, QUALITY_MULTIPLIER, RESOLUTION_SURCHARGE } from "@/lib/credits";
-import { getActionCosts } from "@/lib/db/queries";
+import { getActionCosts, getVideoActionCosts } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 
@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const baseCosts = await getActionCosts();
+  const videoCosts = await getVideoActionCosts();
   return NextResponse.json({
     baseCosts,
+    videoCosts,
     qualityMultiplier: QUALITY_MULTIPLIER,
     resolutionSurcharge: RESOLUTION_SURCHARGE,
     durationMultiplier: DURATION_MULTIPLIER,
