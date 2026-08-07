@@ -6,7 +6,6 @@ import { Loader2, Mic, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/config/action-costs";
-import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_TEXT_LENGTH = 5000;

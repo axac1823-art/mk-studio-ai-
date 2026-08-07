@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { computeCost, getBalance } from "@/lib/credits";
-import { getAsset, getDefaultProject, getDevUser, getProject, insertJob } from "@/lib/db/queries";
+import { getAsset, getDevUser, getProject, insertJob } from "@/lib/db/queries";
 import { WorkerNotConfiguredError, isWorkerConfigured, startVideoUpscaleJob } from "@/lib/worker-client";
 
 export const runtime = "nodejs";

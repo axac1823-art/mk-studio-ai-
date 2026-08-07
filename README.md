@@ -15,6 +15,8 @@ Ce dépôt est organisé en **deux services** et une base de données partagée 
 - Docker Desktop (ou Docker Engine) pour la base de données.
 - Node.js 20+ et npm.
 - Python 3.11+.
+- **ffmpeg** (et idéalement **ffprobe**) installé sur le système, requis pour
+  le montage vidéo (Clip Editor, Video Project Editor) et l'upscaling vidéo.
 
 ---
 

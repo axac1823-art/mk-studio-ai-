@@ -25,7 +25,7 @@ export interface DbAsset {
   id: string;
   project_id: string;
   user_id: string;
-  type: "image" | "video";
+  type: "image" | "video" | "audio";
   generation_id: string | null;
   storage_path: string;
   is_favorite: boolean;
@@ -235,7 +235,7 @@ export async function listAssets(
   userId: string,
   filters: {
     projectId?: string;
-    type?: "image" | "video";
+    type?: "image" | "video" | "audio";
     favorite?: boolean;
     trashed?: boolean;
     uploadsOnly?: boolean;

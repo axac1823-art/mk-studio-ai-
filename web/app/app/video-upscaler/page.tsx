@@ -6,7 +6,6 @@ import { Loader2, Maximize2, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/config/action-costs";
-import { publicUrl } from "@/lib/worker-client";
 import { cn } from "@/lib/utils";
 
 interface AssetSummary {

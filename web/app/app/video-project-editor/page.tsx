@@ -173,10 +173,8 @@ export default function VideoProjectEditorPage() {
                 <div className="flex flex-col gap-1.5">
                   <span className="text-sm font-medium">Order</span>
                   <div className="flex flex-col gap-1 rounded-md border p-2">
-                    {selectedIds.map((id, index) => {
-                      const asset = assets.find((a) => a.id === id);
-                      return (
-                        <div key={id} className="flex items-center justify-between gap-2 text-sm">
+                    {selectedIds.map((id, index) => (
+                      <div key={id} className="flex items-center justify-between gap-2 text-sm">
                           <span className="truncate">{index + 1}. {id.slice(0, 8)}</span>
                           <div className="flex items-center gap-1">
                             <button
@@ -204,8 +202,7 @@ export default function VideoProjectEditorPage() {
                             </button>
                           </div>
                         </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
               )}
