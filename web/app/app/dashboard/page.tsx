@@ -1,615 +1,340 @@
 "use client";
 
-// Studio — orchestration des panneaux. Scope MVP : agrégateur IA VERTICAL
-// pour architectes / archviz / décorateurs / agents immobiliers — 6
-// fonctions image, une par onglet. La génération vidéo vit désormais sur
-// la page dédiée /app/video. Chaque génération est rattachée à un PROJET
-// (sélecteur ci-dessous, création inline) ; la galerie de droite est lue
-// depuis la DB (assets du projet actif).
-import { useCallback, useEffect, useRef, useState } from "react";
+// Home / Dashboard — portail d'entrée de la section /app.
+// Layout inspiré de la référence : header (Pricing/Customize), greeting,
+// barre de recherche Ctrl+K, ligne de catégories, puis panneaux Projects
+// et "Create a space". Les actions mènent au studio, au video generator,
+// ou aux pages projets via le ToolPickerPopover partagé et la palette.
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  Box,
+  FolderOpen,
+  Image as ImageIcon,
+  LayoutTemplate,
+  Palette,
+  Plus,
+  Search,
+  Video,
+  Wand2,
+} from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GenerationControls } from "@/components/studio/generation-controls";
-import { ImageFeaturePanel } from "@/components/studio/image-feature-panel";
-import { ProjectPicker, type ProjectOption } from "@/components/studio/project-picker";
-import { ReferencesPanel, type ReferenceImage } from "@/components/studio/references-panel";
-import { ResultPanel, type ResultState } from "@/components/studio/result-panel";
-import { SceneDetails } from "@/components/studio/scene-details";
-import { SceneTypePicker } from "@/components/studio/scene-type-picker";
-import { SettingsAccordion } from "@/components/studio/settings-accordion";
-import { UpscalePanel } from "@/components/studio/upscale-panel";
-import { UploadDropzone } from "@/components/upload-dropzone";
-import {
-  computeDisplayCost,
-  fetchCostsConfig,
-  type CostsConfig,
-} from "@/lib/config/action-costs";
-import { STUDIO_TABS, type StudioTab } from "@/lib/features";
-import {
-  ANGLE_PRESETS,
-  LIGHTING_PRESETS,
-  MATERIAL_PRESETS,
-  MOOD_PRESETS,
-  PLAN_RENDER_PRESETS,
-  SCENE_TYPE_PRESETS,
-  UPSCALE_FACTORS,
-  type PresetMeta,
-  type UpscaleFactor,
-} from "@/lib/presets";
-import type { AspectRatio, QualityTier, Resolution } from "@/lib/ai/types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CommandPalette, useCommandPaletteShortcut } from "@/components/navigation/CommandPalette";
+import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
+import { cn } from "@/lib/utils";
 
-const POLL_INTERVAL_MS = 2500;
-
-/** Modèle affichable dans le sélecteur UI (key/name/description). */
-interface ModelOption {
-  key: string;
-  name: string;
-  description: string;
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 6) return "Good night";
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
 }
 
-/** Asset tel que renvoyé par GET /api/assets (galerie du projet actif). */
-interface AssetItem {
+interface ProjectSummary {
   id: string;
-  type: "image" | "video";
-  url: string;
-  isFavorite: boolean;
+  name: string;
+  assetCount: number;
 }
 
-type RightView = "compare" | "gallery";
-
-/** Fonctions image "simples" (hors Print Render et Upscale) : même panneau générique,
- *  seuls les presets dédiés changent. */
-type SimpleImageTab = Exclude<StudioTab, "print_render" | "upscale">;
-
-interface SimpleImageState {
-  file: File | null;
-  previewUrl: string | null;
-  optionId: string;
-  sceneDetails: string;
-}
-
-const SIMPLE_TAB_CONFIG: Record<SimpleImageTab, { options?: PresetMeta[]; optionsLabel?: string }> = {
-  mood_swap: { options: MOOD_PRESETS, optionsLabel: "Atmosphere" },
-  exterior_to_interior: {},
-  plan_to_render: { options: PLAN_RENDER_PRESETS, optionsLabel: "Render style" },
-  multi_angle: { options: ANGLE_PRESETS, optionsLabel: "Camera angle" },
-};
-
-function initialSimpleState(optionId: string): SimpleImageState {
-  return { file: null, previewUrl: null, optionId, sceneDetails: "" };
+function CategoryTrigger({
+  icon: Icon,
+  label,
+  colorClass,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  colorClass: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className={cn(
+          "flex h-14 w-14 items-center justify-center rounded-2xl transition-transform hover:scale-105",
+          colorClass
+        )}
+      >
+        <Icon className="h-7 w-7" />
+      </div>
+      <span className="text-sm font-medium text-muted-foreground">{label}</span>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
-  // --- Navigation ---
-  const [tab, setTab] = useState<StudioTab>("print_render");
-  const [rightView, setRightView] = useState<RightView>("compare");
-
-  // --- Crédits + config des coûts (fetchés une fois au chargement) ---
-  const [balance, setBalance] = useState<number | null>(null);
-  const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
-
-  // --- Projet actif + galerie DB de ses assets ---
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [assets, setAssets] = useState<AssetItem[]>([]);
-
-  // --- Print Render ---
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [references, setReferences] = useState<ReferenceImage[]>([]);
-  const [sceneTypeId, setSceneTypeId] = useState(SCENE_TYPE_PRESETS[0].id);
-  const [materialId, setMaterialId] = useState(MATERIAL_PRESETS[0].id);
-  const [lightingId, setLightingId] = useState(LIGHTING_PRESETS[0].id);
-  const [sceneDetails, setSceneDetails] = useState("");
-
-  // --- Fonctions image simples (Mood, Ext->Int, Plan, Multi-Angle) ---
-  const [simpleTabs, setSimpleTabs] = useState<Record<SimpleImageTab, SimpleImageState>>({
-    mood_swap: initialSimpleState(MOOD_PRESETS[0].id),
-    exterior_to_interior: initialSimpleState(""),
-    plan_to_render: initialSimpleState(PLAN_RENDER_PRESETS[0].id),
-    multi_angle: initialSimpleState(ANGLE_PRESETS[0].id),
-  });
-
-  // --- Contrôles de génération (partagés par toutes les fonctions image) ---
-  const [quantity, setQuantity] = useState(1);
-  const [quality, setQuality] = useState<QualityTier>("standard");
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("4:3");
-  const [resolution, setResolution] = useState<Resolution>("1K");
-
-  // --- Modèles disponibles (fetchés au chargement) ---
-  const [imageModels, setImageModels] = useState<ModelOption[]>([]);
-  const [upscaleModels, setUpscaleModels] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>(""); // "" = default worker behavior
-
-  // --- Upscale ---
-  const [upscaleFile, setUpscaleFile] = useState<File | null>(null);
-  const [upscalePreviewUrl, setUpscalePreviewUrl] = useState<string | null>(null);
-  const [upscaleFactor, setUpscaleFactor] = useState<UpscaleFactor>(UPSCALE_FACTORS[0].id);
-  const [upscaleEnhance, setUpscaleEnhance] = useState(false);
-  const [selectedUpscaleModel, setSelectedUpscaleModel] = useState<string>("");
-
-  // --- Job courant ---
-  const [result, setResult] = useState<ResultState>({ status: "idle" });
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
+  const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [createBusy, setCreateBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isBusy = result.status === "busy";
+  useCommandPaletteShortcut(() => setCommandPaletteOpen(true));
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => stopPolling, [stopPolling]);
-
-  const refreshBalance = useCallback(() => {
-    fetch("/api/credits/balance")
-      .then((res) => res.json())
-      .then((data) => setBalance(typeof data.balance === "number" ? data.balance : null))
-      .catch(() => setBalance(null));
-  }, []);
-
-  const refreshProjects = useCallback(async (): Promise<string | null> => {
+  const fetchProjects = useCallback(async () => {
     try {
       const res = await fetch("/api/projects");
-      const data = await res.json();
-      setProjects(
-        (data.projects ?? []).map((project: { id: string; name: string }) => ({
-          id: project.id,
-          name: project.name,
-        }))
-      );
-      return typeof data.defaultProjectId === "string" ? data.defaultProjectId : null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { projects: ProjectSummary[] };
+      setProjects(data.projects);
     } catch {
-      return null;
+      setError("Could not load projects.");
     }
   }, []);
 
-  const refreshAssets = useCallback((projectId: string | null) => {
-    if (!projectId) return;
-    fetch(`/api/assets?project_id=${projectId}`)
-      .then((res) => res.json())
-      .then((data) => setAssets(Array.isArray(data.assets) ? data.assets : []))
-      .catch(() => setAssets([]));
+  const fetchAssets = useCallback(async () => {
+    try {
+      const res = await fetch("/api/assets");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { assets: AssetSummary[] };
+      setAssets(data.assets.slice().reverse().slice(0, 4));
+    } catch {
+      setError("Could not load recent work.");
+    }
   }, []);
 
-  // Chargement initial : solde, coûts, projets, modèles (le projet par défaut est
-  // présélectionné — la galerie suit via l'effet ci-dessous).
   useEffect(() => {
-    refreshBalance();
-    fetchCostsConfig()
-      .then(setCostsConfig)
-      .catch(() => setCostsConfig(null));
-    void refreshProjects().then((defaultId) => {
-      if (defaultId) setSelectedProjectId((current) => current ?? defaultId);
-    });
-    fetch("/api/models")
-      .then((res) => (res.ok ? res.json() : { image: [], upscale: [] }))
-      .then((data: { image?: ModelOption[]; upscale?: ModelOption[] }) => {
-        setImageModels(Array.isArray(data.image) ? data.image : []);
-        setUpscaleModels(Array.isArray(data.upscale) ? data.upscale : []);
-      })
-      .catch(() => {
-        setImageModels([]);
-        setUpscaleModels([]);
-      });
-  }, [refreshBalance, refreshProjects]);
+    void fetchProjects();
+    void fetchAssets();
+  }, [fetchProjects, fetchAssets]);
 
-  // La galerie suit le projet sélectionné.
-  useEffect(() => {
-    refreshAssets(selectedProjectId);
-  }, [selectedProjectId, refreshAssets]);
-
-  // Upscale : simple upload flow — pas de pré-sélection d'asset.
-  // La galerie du projet permet de retrouver l'historique.
-  // (pas d'effet ici)
-
-  const handleCreateProject = useCallback(
-    async (name: string) => {
+  const createProject = async () => {
+    const trimmed = newProjectName.trim();
+    if (!trimmed || createBusy) return;
+    setCreateBusy(true);
+    try {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name: trimmed }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "failed");
-      await refreshProjects();
-      setSelectedProjectId(data.project.id);
-    },
-    [refreshProjects]
-  );
-
-  const pollJob = useCallback(
-    (jobId: string, kind: "image" | "video", beforeUrl: string | null) => {
-      stopPolling();
-      pollRef.current = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/generate/${jobId}`);
-          const data = await res.json();
-          if (data.status === "done") {
-            stopPolling();
-            const outputUrls: string[] = data.outputUrls ?? [];
-            setResult({ status: "done", kind: data.kind ?? kind, beforeUrl, outputUrls });
-            // Débit réel au succès + nouvel asset : on rafraîchit les deux.
-            refreshBalance();
-            setSelectedProjectId((current) => {
-              refreshAssets(current);
-              return current;
-            });
-            setRightView("compare");
-          } else if (data.status === "error") {
-            stopPolling();
-            setResult({ status: "idle" });
-            setError(data.error ?? "Generation failed, please try again.");
-          } else {
-            setResult((current) =>
-              current.status === "busy" ? { ...current, stage: data.stage } : current
-            );
-          }
-        } catch {
-          // Erreur réseau transitoire : on retente au prochain tick.
-        }
-      }, POLL_INTERVAL_MS);
-    },
-    [stopPolling, refreshAssets, refreshBalance]
-  );
-
-  const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
-    setError(null);
-    setResult({ status: "busy" });
-    setRightView("compare");
-    if (selectedProjectId) form.append("projectId", selectedProjectId);
-    try {
-      const res = await fetch("/api/generate", { method: "POST", body: form });
-      const data = await res.json();
-      if (res.status === 402) {
-        setBalance(typeof data.balance === "number" ? data.balance : balance);
-        setResult({ status: "idle" });
-        setError("You don't have enough credits for this generation.");
-        return;
-      }
-      if (!res.ok) {
-        setResult({ status: "idle" });
-        setError(data.error ?? "Generation failed, please try again.");
-        return;
-      }
-      pollJob(data.jobId, kind, beforeUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setNewProjectName("");
+      setCreating(false);
+      await fetchProjects();
     } catch {
-      setResult({ status: "idle" });
-      setError("Network error — please try again.");
+      setError("Could not create project.");
+    } finally {
+      setCreateBusy(false);
     }
   };
 
-  const updateSimpleTab = (id: SimpleImageTab, patch: Partial<SimpleImageState>) =>
-    setSimpleTabs((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
-
-  const appendSharedSettings = (form: FormData) => {
-    form.append("quality", quality);
-    form.append("aspectRatio", aspectRatio);
-    form.append("resolution", resolution);
-    form.append("quantity", String(quantity));
-  };
-
-  const handleGenerateRender = () => {
-    if (!file) return;
-    const form = new FormData();
-    form.append("feature", "print_render");
-    form.append("image", file);
-    for (const reference of references) form.append("reference", reference.file);
-    form.append("sceneTypeId", sceneTypeId);
-    form.append("materialId", materialId);
-    form.append("lightingId", lightingId);
-    form.append("sceneDetails", sceneDetails);
-    if (selectedModel) form.append("model", selectedModel);
-    appendSharedSettings(form);
-    void submitGeneration(form, "image", previewUrl);
-  };
-
-  const handleGenerateSimpleImage = () => {
-    if (tab === "print_render" || tab === "upscale") return;
-    const state = simpleTabs[tab];
-    if (!state.file) return;
-    const form = new FormData();
-    form.append("feature", tab);
-    form.append("image", state.file);
-    if (SIMPLE_TAB_CONFIG[tab].options && state.optionId) {
-      form.append("optionId", state.optionId);
-    }
-    form.append("sceneDetails", state.sceneDetails);
-    if (selectedModel) form.append("model", selectedModel);
-    appendSharedSettings(form);
-    void submitGeneration(form, "image", state.previewUrl);
-  };
-
-  const handleUpscale = async () => {
-    if (!upscaleFile) return;
-    setError(null);
-    setResult({ status: "busy" });
-    setRightView("compare");
-    try {
-      const form = new FormData();
-      form.append("feature", "upscale");
-      form.append("image", upscaleFile);
-      form.append("factor", String(upscaleFactor));
-      form.append("enhance", upscaleEnhance ? "1" : "0");
-      if (selectedUpscaleModel) form.append("model", selectedUpscaleModel);
-      if (selectedProjectId) form.append("projectId", selectedProjectId);
-      const res = await fetch("/api/upscale", { method: "POST", body: form });
-      const data = await res.json();
-      if (res.status === 402) {
-        setBalance(typeof data.balance === "number" ? data.balance : balance);
-        setResult({ status: "idle" });
-        setError("You don't have enough credits for this upscale.");
-        return;
-      }
-      if (!res.ok) {
-        setResult({ status: "idle" });
-        setError(data.error ?? "Upscale failed, please try again.");
-        return;
-      }
-      pollJob(data.jobId, "image", upscalePreviewUrl);
-    } catch {
-      setResult({ status: "idle" });
-      setError("Network error — please try again.");
-    }
-  };
-
-  const handleAddReferences = (files: File[]) => {
-    setReferences((current) => [
-      ...current,
-      ...files.map((file) => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-      })),
-    ]);
-  };
-
-
-  // Coût et état du bouton pour la fonction image active (Render compris) —
-  // la config des coûts est fetchée une fois (affiché = facturé côté serveur).
-  const activeImageCost = !costsConfig
-    ? 0
-    : computeDisplayCost(costsConfig, { feature: tab, quality, resolution, quantity });
-  const activeImageFile =
-    tab === "print_render" ? file : tab === "upscale" ? null : simpleTabs[tab].file;
-
-  const upscaleCost = costsConfig
-    ? computeDisplayCost(costsConfig, { feature: "upscale", quality, resolution: "1K", quantity: 1, upscaleFactor })
-    : 0;
+  const greeting = `${getGreeting()}, start creating!`;
+  const recentProjects = projects?.slice(0, 5) ?? [];
 
   return (
-    <main className="flex min-h-screen w-full flex-col gap-5 p-4 pb-0 sm:p-6 sm:pb-0">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">RenderStudio</h1>
-          <p className="text-sm text-muted-foreground">
-            AI renders for architecture, archviz &amp; real estate.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <a href="/app/video">
-            <Button type="button" variant="outline" size="sm">
-              Video Generator
-            </Button>
-          </a>
-          <Badge variant="secondary" className="gap-1">
-            {balance === null ? "…" : balance} credits
-          </Badge>
+    <main className="flex min-h-screen w-full flex-col gap-8 px-4 py-4 sm:px-6 lg:px-8">
+      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+
+      <header className="flex w-full items-center justify-between">
+        <Link href="/app/dashboard" className="flex items-center gap-2 text-foreground">
+          <Box className="h-6 w-6" />
+          <span className="hidden font-semibold md:inline">RenderStudio</span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="link" className="text-foreground">
+            <Link href="/app/pricing">Pricing</Link>
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Palette className="h-4 w-4" />
+            Customize
+          </Button>
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
-          <TabsList>
-            {STUDIO_TABS.map((studioTab) => (
-              <TabsTrigger key={studioTab.id} value={studioTab.id}>
-                {studioTab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-        <a
-          href="/app/video"
-          className="inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
-        >
-          <span className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-            Video
-          </span>
-        </a>
-      </div>
+      <div className="flex w-full flex-col items-center gap-8">
+        <h1 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">{greeting}</h1>
 
-      <div className="grid flex-1 gap-6 lg:grid-cols-[400px_1fr]">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Project</span>
-            <ProjectPicker
-              projects={projects}
-              value={selectedProjectId}
-              onChange={setSelectedProjectId}
-              onCreateProject={handleCreateProject}
-            />
-          </div>
-
-          <Card>
-            <CardContent className="flex flex-col gap-4 p-4">
-              {tab === "print_render" ? (
-                <>
-                  <UploadDropzone
-                    previewUrl={previewUrl}
-                    onFileSelected={(selected) => {
-                      setFile(selected);
-                      setPreviewUrl(URL.createObjectURL(selected));
-                      setError(null);
-                    }}
-                  />
-                  <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
-                  <ReferencesPanel
-                    references={references}
-                    onAdd={handleAddReferences}
-                    onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
-                  />
-                  <SettingsAccordion
-                    materialId={materialId}
-                    lightingId={lightingId}
-                    onMaterialChange={setMaterialId}
-                    onLightingChange={setLightingId}
-                  />
-                  <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
-                </>
-              ) : tab === "upscale" ? (
-                <UpscalePanel
-                  models={upscaleModels}
-                  selectedModel={selectedUpscaleModel}
-                  uploadFile={upscaleFile}
-                  uploadPreviewUrl={upscalePreviewUrl}
-                  factor={upscaleFactor}
-                  enhance={upscaleEnhance}
-                  cost={upscaleCost}
-                  balance={balance}
-                  isBusy={isBusy}
-                  onModelChange={setSelectedUpscaleModel}
-                  onUploadFileSelected={(file, previewUrl) => {
-                    setUpscaleFile(file);
-                    setUpscalePreviewUrl(previewUrl);
-                    setError(null);
-                  }}
-                  onClearUpload={() => {
-                    setUpscaleFile(null);
-                    setUpscalePreviewUrl(null);
-                  }}
-                  onFactorChange={setUpscaleFactor}
-                  onEnhanceChange={setUpscaleEnhance}
-                  onGenerate={handleUpscale}
-                />
-              ) : (
-                <ImageFeaturePanel
-                  previewUrl={simpleTabs[tab].previewUrl}
-                  onFileSelected={(selected) => {
-                    updateSimpleTab(tab, {
-                      file: selected,
-                      previewUrl: URL.createObjectURL(selected),
-                    });
-                    setError(null);
-                  }}
-                  options={SIMPLE_TAB_CONFIG[tab].options}
-                  optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
-                  optionId={simpleTabs[tab].optionId}
-                  onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
-                  sceneDetails={simpleTabs[tab].sceneDetails}
-                  onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
-                />
-              )}
-
-              {error && (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex flex-col gap-6 pb-6">
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant={rightView === "compare" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setRightView("compare")}
-            >
-              Result
-            </Button>
-            <Button
-              type="button"
-              variant={rightView === "gallery" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setRightView("gallery")}
-            >
-              Results
-            </Button>
-          </div>
-
-          {rightView === "compare" ? (
-            <ResultPanel result={result} />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Results</CardTitle>
-                <CardDescription>Assets of the selected project.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {assets.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nothing generated yet.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {assets.map((asset) => (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        onClick={() => {
-                          setResult({
-                            status: "done",
-                            kind: asset.type,
-                            beforeUrl: null,
-                            outputUrls: [asset.url],
-                          });
-                          setRightView("compare");
-                        }}
-                        className="group rounded-lg border p-1.5 text-left transition-colors hover:border-primary/60"
-                      >
-                        {asset.type === "video" ? (
-                          <video
-                            src={asset.url}
-                            muted
-                            className="aspect-[4/3] w-full rounded-md object-cover"
-                          />
-                        ) : (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={asset.url}
-                            alt="Generated asset"
-                            className="aspect-[4/3] w-full rounded-md object-cover"
-                          />
-                        )}
-                        <span className="mt-1 block px-0.5 text-xs capitalize text-muted-foreground">
-                          {asset.type}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        <button
+          type="button"
+          onClick={() => setCommandPaletteOpen(true)}
+          className={cn(
+            "flex h-12 w-full max-w-xl items-center gap-3 rounded-xl border bg-card px-4 text-sm transition-colors",
+            "hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           )}
+        >
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <span className="flex-1 text-left text-muted-foreground">Ask RenderStudio or find tutorials</span>
+          <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Ctrl K</kbd>
+        </button>
+
+        <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-8">
+          <ToolPickerPopover defaultTab="image">
+            <CategoryTrigger icon={ImageIcon} label="Image" colorClass="bg-indigo-500/15 text-indigo-400" />
+          </ToolPickerPopover>
+
+          <ToolPickerPopover defaultTab="video">
+            <CategoryTrigger icon={Video} label="Video" colorClass="bg-emerald-500/15 text-emerald-400" />
+          </ToolPickerPopover>
+
+          <Link href="/app/projects" className="flex flex-col items-center gap-2">
+            <CategoryTrigger
+              icon={FolderOpen}
+              label="Projects"
+              colorClass="bg-amber-500/15 text-amber-400"
+            />
+          </Link>
         </div>
       </div>
 
-      {tab !== "upscale" && (
-        <GenerationControls
-          quantity={quantity}
-          quality={quality}
-          aspectRatio={aspectRatio}
-          resolution={resolution}
-          model={selectedModel}
-          models={imageModels}
-          onModelChange={setSelectedModel}
-          cost={activeImageCost}
-          balance={balance}
-          isBusy={isBusy}
-          canGenerate={activeImageFile !== null}
-          onQuantityChange={setQuantity}
-          onQualityChange={setQuality}
-          onAspectRatioChange={setAspectRatio}
-          onResolutionChange={setResolution}
-          onGenerate={tab === "print_render" ? handleGenerateRender : handleGenerateSimpleImage}
-        />
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
       )}
+
+      <div className="grid w-full max-w-5xl gap-6 self-center lg:grid-cols-2">
+        <Card className="flex flex-col">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Projects</CardTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setCreating(true)}
+              aria-label="Create new project"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {creating && (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={newProjectName}
+                  onChange={(event) => setNewProjectName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void createProject();
+                    if (event.key === "Escape") {
+                      setCreating(false);
+                      setNewProjectName("");
+                    }
+                  }}
+                  placeholder="Project name"
+                  className="h-9 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!newProjectName.trim() || createBusy}
+                  onClick={() => void createProject()}
+                >
+                  Create
+                </Button>
+              </div>
+            )}
+
+            <Link
+              href="/app/projects"
+              className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent"
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-yellow-500/20">
+                <span className="text-sm font-semibold text-yellow-500">P</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">Personal</span>
+                <span className="text-xs text-muted-foreground">Your private space</span>
+              </div>
+            </Link>
+
+            {projects === null ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              recentProjects.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/app/projects/${project.id}`}
+                  className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
+                    <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium">{project.name}</span>
+                    <span className="text-xs text-muted-foreground">{project.assetCount} assets</span>
+                  </div>
+                </Link>
+              ))
+            )}
+
+            <Button
+              asChild
+              variant="ghost"
+              className="mt-1 w-full justify-start gap-2 text-muted-foreground"
+            >
+              <Link href="/app/projects">
+                <FolderOpen className="h-4 w-4" />
+                View all projects
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle className="text-base">Create a space</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-1 flex-col items-center justify-center gap-4 py-10 text-center">
+            <div className="relative flex aspect-video w-full max-w-xs items-center justify-center rounded-xl border border-dashed bg-muted/50">
+              <LayoutTemplate className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Create a space</p>
+              <p className="text-xs text-muted-foreground">
+                Build creative workflows on an infinite canvas.
+              </p>
+            </div>
+            <ToolPickerPopover defaultTab="image">
+              <Button type="button" variant="outline" size="sm">
+                <Plus className="mr-1 h-4 w-4" />
+                New space
+              </Button>
+            </ToolPickerPopover>
+          </CardContent>
+        </Card>
+      </div>
+
+      <section className="w-full max-w-5xl self-center">
+        <h2 className="mb-4 text-base font-semibold">Recent work</h2>
+        {assets === null ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={index} className="aspect-[4/3] w-full" />
+            ))}
+          </div>
+        ) : assets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-xl border bg-card py-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
+              <Wand2 className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Start a new generation</p>
+              <p className="text-xs text-muted-foreground">
+                Generate your first render to see it here.
+              </p>
+            </div>
+            <ToolPickerPopover defaultTab="image">
+              <Button type="button" variant="outline" size="sm">
+                Create something
+              </Button>
+            </ToolPickerPopover>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {assets.map((asset) => (
+              <AssetCard key={asset.id} asset={asset} onChanged={fetchAssets} />
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

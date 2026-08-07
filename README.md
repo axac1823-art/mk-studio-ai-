@@ -53,7 +53,10 @@ Le worker expose :
 - `http://127.0.0.1:8000/health` — santé.
 - `POST /generate/image` — génération image (Render, Mood, Ext→Int, Plan, Multi-Angle).
 - `POST /generate/video` — génération vidéo (Animate).
-- `POST /upscale` — upscaler un asset existant.
+- `POST /upscale` — upscaling d'image.
+- `POST /video/upscale` — upscaling de vidéo.
+- `POST /video/edit` — montage simple de vidéo (découpe / concaténation).
+- `POST /audio/generate` — génération de voix (ElevenLabs).
 - `GET /jobs/{id}` — état d'un job.
 - `GET /storage/{path}` — fichiers générés.
 
@@ -76,6 +79,9 @@ Ouvrir `http://localhost:3000/app/dashboard`.
 
 ## Variables d'environnement
 
+Voir [`ENVIRONMENT.md`](./ENVIRONMENT.md) pour la répartition complète.
+En résumé :
+
 ### `/web/.env.local`
 
 ```env
@@ -84,7 +90,7 @@ WORKER_BASE_URL=http://127.0.0.1:8000
 WORKER_PUBLIC_URL=http://127.0.0.1:8000
 ```
 
-Aucune clé de provider IA ici.
+Aucune clé de provider IA ici — le frontend ne parle jamais aux providers.
 
 ### `/worker/.env`
 
@@ -98,11 +104,14 @@ GOOGLE_API_KEY=
 OPENAI_API_KEY=
 MAGIC_HOUR_API_KEY=
 
-# Provider vidéos
+# Providers vidéo
 KLING_SECRET_KEY=
 RUNWAY_API_KEY=
 OPENAI_API_KEY=
 MAGIC_HOUR_API_KEY=
+
+# Voice Generator (ElevenLabs)
+ELEVENLABS_API_KEY=
 
 # ComfyUI local (optionnel, dev/test)
 COMFYUI_BASE_URL=http://127.0.0.1:8188
@@ -128,36 +137,40 @@ Un provider non configuré est simplement sauté par le fallback.
 ## Structure du dépôt
 
 ```
-/                    <- racine : docker-compose, schéma DB, README
+/                    <- racine : docker-compose, schéma DB, README, ENVIRONMENT.md
 ├── web/             <- Next.js 14 : UI, pages, routes API, appels worker
-│   ├── app/         <- App Router (page studio, dashboard, pages projets)
-│   ├── components/  <- Composants React (studio, projets, sidebar)
+│   ├── app/         <- App Router (dashboard, outils image/vidéo/audio, modèles)
+│   ├── components/  <- Composants React (studio, projets, sidebar, popover)
 │   ├── lib/         <- DB, crédits, client worker, configs, presets
 │   ├── scripts/     <- purge-trash.ts (nettoyage corbeille)
 │   └── .env.example
 ├── worker/          <- FastAPI Python : toute la logique IA
-│   ├── providers/   <- un fichier = un provider (bfl, google, kling, runway, openai, magichour, comfyui, upscale)
-│   ├── workflows/     <- image_render.py, video.py, upscale.py, common.py
-│   ├── routes/      <- endpoints FastAPI (generate, jobs, upscale, storage)
+│   ├── providers/   <- un fichier = un provider (bfl, google, kling, runway, openai, magichour, comfyui, upscale, elevenlabs)
+│   ├── workflows/   <- image_render.py, video.py, upscale.py, audio.py, video_edit.py, video_upscale.py
+│   ├── routes/      <- endpoints FastAPI (generate, jobs, models, upscale, storage, audio, video/edit, video/upscale)
 │   ├── storage/     <- fichiers générés en local (dev)
 │   ├── tests/       <- test_fallback.py, test_video_modes.py
 │   └── .env.example
-├── db/              <- schema.sql (source unique de vérité Postgres)
+├── db/              <- schema.sql (source unique de vérité Postgres) + migrations
 ```
 
 ---
 
 ## Features V1
 
-Les 7 onglets du studio :
+Les 10 onglets/outils du studio :
 
 1. **Render** : screenshot 3D → rendu photoréaliste.
 2. **Mood** : variation jour/nuit/saison/météo de la même scène.
 3. **Exterior → Interior** : vue intérieure plausible depuis une vue extérieure.
 4. **Plan to Render** : plan 2D technique → rendu meublé/paysagé.
-5. **Animate** : image → vidéo courte 4-8 s. Le panneau expose un champ de texte libre pour décrire le mouvement, un sélecteur de modèle vidéo, et une image de fin optionnelle (start/end frame). Pas de presets de caméra.
+5. **Animate** : image → vidéo courte 4-8 s. Le panneau expose un champ de texte libre pour décrire le mouvement, un sélecteur de modèle vidéo, et une image de fin optionnelle (start/end frame).
 6. **Multi-Angle** : 2-3 angles additionnels de la même scène (best-effort).
 7. **Upscale** : amélioration d'une image existante (upload ou asset), facteur 2×/4×, modèle au choix.
+8. **Video Upscaler** : amélioration d'une vidéo existante (frame par frame puis ré-encodage ffmpeg), facteur 2×/4×.
+9. **Clip Editor / Video Project Editor** : découpe et assemblage de clips vidéo via ffmpeg.
+10. **Voice Generator (Speak)** : génération audio / voix off à partir d'un texte (ElevenLabs).
+11. **Models** : page de découverte des modèles disponibles pour chaque type de génération.
 
 ### Upscale
 
@@ -180,10 +193,10 @@ Les 7 onglets du studio :
 ## Ajouter un nouveau provider IA
 
 1. Créer `worker/providers/<nom>.py` avec une fonction `generate(input) -> dict` (voir `bfl.py` ou `google.py` comme modèle).
-2. L'enregistrer dans `worker/providers/__init__.py`.
-3. L'ajouter dans la liste de fallback du workflow concerné (`workflows/image_render.py` ou `workflows/video_generation.py`).
-4. Ajouter la clé dans `worker/.env.example` et `worker/config.py` si nécessaire.
-5. **Ne rien modifier côté `/web` :** les clés providers restent dans `/worker` uniquement.
+2. L'enregistrer dans `worker/providers/__init__.py` et dans `PROVIDER_ENV_KEYS`.
+3. L'ajouter dans la liste de fallback du workflow concerné (`workflows/image_render.py`, `workflows/video.py`, `workflows/audio.py`, etc.).
+4. Ajouter la clé dans `worker/.env.example`.
+5. **Ne rien modifier côté `/web` :** les clés providers restent dans `/worker` uniquement. Voir `ENVIRONMENT.md`.
 
 ---
 

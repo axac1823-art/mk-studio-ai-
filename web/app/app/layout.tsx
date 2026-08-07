@@ -1,7 +1,7 @@
 // Layout de la section /app : sidebar fixe à gauche, contenu à droite.
-// Le studio existant (/app/dashboard) s'y insère tel quel — ses pages
-// gardent leur propre <main> interne, le layout ne fournit que le cadre.
-import { AppSidebar } from "@/components/app-sidebar";
+// Le home (/app/dashboard) et les pages projet/studio s'y insèrent telles
+// quelles — le layout ne fournit que le cadre et la navigation latérale.
+import { AppSidebar } from "@/components/navigation/Sidebar";
 
 export default function AppLayout({
   children,

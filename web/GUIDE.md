@@ -38,8 +38,9 @@ npm run dev                  # http://localhost:3000 -> /app/dashboard
 
 ### Vérifications rapides
 
-- `GET http://localhost:3000/` → redirection 307 vers `/app/dashboard`
-- `GET /app/dashboard` → 200
+- `GET http://localhost:3000/` → redirection 307 vers `/app/dashboard` (home)
+- `GET /app/dashboard` → 200 (home)
+- `GET /app/studio` → 200 (studio image)
 - `POST /api/generate` sans aucune clé → 503 JSON explicite (c'est le
   garde-fou `isAnyProviderConfigured()`)
 
@@ -48,7 +49,11 @@ npm run dev                  # http://localhost:3000 -> /app/dashboard
 ## 2. Comment ça fonctionne (flux d'une génération)
 
 ```
-Navigateur — app/app/dashboard/page.tsx (studio, 6 onglets)
+Navigateur — app/app/dashboard/page.tsx (home : greeting, recherche, lanceur d'outils)
+   │  Clique sur Image/Video → ToolPickerPopover → ouvre une page d'outil
+   ▼
+app/app/ai-image-generator | ambiance-change | exterior-to-interior |
+plan-to-render | upscale | multi-angle | ai-video-generator
    │  POST /api/generate (multipart : image + feature + presets + réglages)
    ▼
 app/api/generate/route.ts
@@ -102,10 +107,21 @@ Cas particuliers :
 
 | Fichier | Rôle |
 | --- | --- |
-| `app/page.tsx` | Redirige `/` → `/app/dashboard` |
+| `app/page.tsx` | Redirige `/` → `/app/dashboard` (home) |
 | `app/layout.tsx` | Fonts Geist, metadata, thème sombre |
 | `app/globals.css` | Variables CSS shadcn (light + dark) |
-| `app/app/dashboard/page.tsx` | **Le studio** : 6 onglets, état des panneaux, soumission, polling, historique session |
+| `app/app/dashboard/page.tsx` | **Home / Dashboard** : greeting, recherche Ctrl+K, header Pricing/Customize, lanceurs Image/Video/Projects, panneaux Projects + Create a space + Recent work |
+| `app/app/ai-image-generator/page.tsx` | **Screenshot-to-Render** |
+| `app/app/ambiance-change/page.tsx` | **Ambiance Change** |
+| `app/app/exterior-to-interior/page.tsx` | **Exterior → Interior** |
+| `app/app/plan-to-render/page.tsx` | **Plan → Furnished Render** |
+| `app/app/upscale/page.tsx` | **Upscale** |
+| `app/app/multi-angle/page.tsx` | **Multi-Angle** |
+| `app/app/ai-video-generator/page.tsx` | **Video Generator** : génération vidéo unifiée |
+| `app/app/studio/page.tsx` | Route legacy avec `?tab=...` (utilise `ImageStudioWorkspace` avec onglets) |
+| `app/app/video/page.tsx` | Redirection vers `/app/ai-video-generator` |
+| `app/app/pricing/page.tsx` | Plans tarifaires (placeholder) |
+| `app/app/account/page.tsx` | Compte utilisateur (placeholder) |
 | `app/api/generate/route.ts` | POST multipart → validation, coût, prompt, job, orchestration |
 | `app/api/generate/[id]/route.ts` | GET → statut du job (`pending/processing/done/error`) |
 | `app/api/credits/balance/route.ts` | GET → solde (stub 100 jusqu'au jalon DB) |
@@ -115,8 +131,13 @@ Cas particuliers :
 
 | Fichier | Rôle |
 | --- | --- |
+| `components/navigation/ToolPickerPopover.tsx` | Popover partagé dashboard/sidebar : tabs Image/Video, recherche, grid d'outils |
+| `components/navigation/ToolCard.tsx` | Carte d'un outil (icône, nom, description, onClick) |
+| `components/navigation/Sidebar.tsx` | Sidebar persistente (Home, Projects, catégories Image/Video, settings/account) |
+| `components/navigation/CommandPalette.tsx` | Palette de commandes Ctrl+K (stub) |
 | `components/upload-dropzone.tsx` | Drag & drop + aperçu (PNG/JPEG/WebP, 10 Mo max) |
 | `components/compare-slider.tsx` | Comparateur avant/après (clip-path + pointer events) |
+| `components/studio/image-studio-workspace.tsx` | Workspace image réutilisable (state, onglets optionnels, génération, polling) |
 | `components/studio/animate-panel.tsx` | Panneau Animate (source, mouvement, durée 4/8 s, bouton Generate propre) |
 | `components/studio/image-feature-panel.tsx` | Panneau générique des 4 fonctions image simples (upload + presets + détails) |
 | `components/studio/generation-controls.tsx` | Barre basse : quantité/qualité/ratio/résolution + Generate avec coût |
@@ -151,6 +172,12 @@ Cas particuliers :
 | `lib/download.ts` | Téléchargement client d'un résultat (blob → `<a download>`) |
 | `lib/jobs/store.ts` | Jobs en mémoire (globalThis ; remplaçable par BullMQ/DB) |
 | `lib/utils.ts` | `cn()` (clsx + tailwind-merge) |
+
+### `config/` — catalogue produit
+
+| Fichier | Rôle |
+| --- | --- |
+| `config/tools.ts` | Source unique des outils IA (nom, description, icône Lucide, route) pour le popover et le dashboard |
 
 ### `scripts/`
 
@@ -189,7 +216,7 @@ d'autre. Vérifier le nom exact dans la doc du fournisseur (les versions
 1. Métadonnées UI dans `lib/presets.ts` (id, label, swatch).
 2. Fragment correspondant dans `lib/ai/prompt-templates.ts`.
 3. Si nouveau sélecteur : déclarer dans `SIMPLE_TAB_CONFIG`
-   (`app/app/dashboard/page.tsx`) ou le panneau dédié.
+   (`components/studio/image-studio-workspace.tsx`) ou le panneau dédié.
 
 ### Changer les coûts
 
@@ -215,8 +242,10 @@ surcharge résolution). Migrera vers la table `action_costs` au jalon DB.
 3. Builder de prompt dans `lib/ai/prompt-templates.ts` (+ fragment/preset).
 4. Route : `SUPPORTED_FEATURES` + branche du `switch` de
    `buildFeaturePrompt`.
-5. Onglet dans `lib/features.ts` + état/config dans le dashboard
-   (`SIMPLE_TAB_CONFIG` si panneau générique suffit).
+5. Onglet dans `lib/features.ts` + état/config dans le workspace
+   (`components/studio/image-studio-workspace.tsx` ; `SIMPLE_TAB_CONFIG` si
+   panneau générique suffit), puis nouvelle page dans `app/app/<outil>/page.tsx`
+   et entrée dans `config/tools.ts`.
 
 ### ComfyUI local (gratuit, hors-ligne)
 
