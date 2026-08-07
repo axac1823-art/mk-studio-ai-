@@ -120,7 +120,7 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
             Generate something in the studio to fill this project.
           </p>
           <Button asChild variant="outline" size="sm" className="mt-2">
-            <Link href="/app/dashboard">Open the studio</Link>
+            <Link href="/app/ai-image-generator">Open the studio</Link>
           </Button>
         </div>
       ) : (

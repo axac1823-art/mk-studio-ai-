@@ -28,6 +28,10 @@ export async function computeCost(input: CostInput): Promise<number> {
     if (base === undefined) throw new Error(`unknown feature cost: ${key}`);
     return base;
   }
+  // Nouvelles actions à coût fixe (table action_costs) : voice, video edit/upscale.
+  const fixedCost = costs[input.feature];
+  if (fixedCost !== undefined) return fixedCost;
+
   const base = costs[input.feature];
   if (base === undefined) throw new Error(`unknown feature cost: ${input.feature}`);
   const unit = base * QUALITY_MULTIPLIER[input.quality] + RESOLUTION_SURCHARGE[input.resolution];

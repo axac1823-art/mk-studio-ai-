@@ -1,11 +1,24 @@
 import type { LucideIcon } from "lucide-react";
-import { Camera, DoorOpen, Images, Map, Maximize, Sun, Video } from "lucide-react";
+import {
+  Camera,
+  DoorOpen,
+  Images,
+  Map,
+  Maximize,
+  Maximize2,
+  Mic,
+  MonitorPlay,
+  Scissors,
+  Sun,
+  Video,
+  Wand2,
+} from "lucide-react";
 
 // Catalogue unique des outils IA du vertical architecture / archviz.
 // Tous les libellés, descriptions, icônes et routes vivent ici pour éviter
 // la duplication entre le popover, la future page "All tools" et le dashboard.
 
-export type ToolCategory = "image" | "video";
+export type ToolCategory = "image" | "video" | "audio";
 
 export interface ToolDefinition {
   id: string;
@@ -17,13 +30,14 @@ export interface ToolDefinition {
 }
 
 export const TOOLS: ToolDefinition[] = [
+  // --- Image ---
   {
     id: "screenshot-to-render",
     category: "image",
     name: "Screenshot-to-Render",
     description: "Turn 3D viewport captures into photorealistic renders",
     icon: Camera,
-    route: "/app/studio?tab=print_render",
+    route: "/app/ai-image-generator",
   },
   {
     id: "ambiance-change",
@@ -31,7 +45,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "Ambiance Change",
     description: "Change lighting, time of day, or season on an existing render",
     icon: Sun,
-    route: "/app/studio?tab=mood_swap",
+    route: "/app/ambiance-change",
   },
   {
     id: "exterior-to-interior",
@@ -39,7 +53,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "Exterior → Interior",
     description: "Generate a plausible interior view from an exterior render",
     icon: DoorOpen,
-    route: "/app/studio?tab=exterior_to_interior",
+    route: "/app/exterior-to-interior",
   },
   {
     id: "plan-to-furnished-render",
@@ -47,15 +61,15 @@ export const TOOLS: ToolDefinition[] = [
     name: "Plan → Furnished Render",
     description: "Turn a technical floor plan into a furnished, landscaped render",
     icon: Map,
-    route: "/app/studio?tab=plan_to_render",
+    route: "/app/plan-to-render",
   },
   {
     id: "upscale",
     category: "image",
     name: "Upscale",
-    description: "Enhance resolution and detail on any result",
+    description: "Enhance resolution and detail on any image result",
     icon: Maximize,
-    route: "/app/studio?tab=upscale",
+    route: "/app/upscale",
   },
   {
     id: "multi-angle",
@@ -63,15 +77,49 @@ export const TOOLS: ToolDefinition[] = [
     name: "Multi-Angle",
     description: "Generate 2–3 coherent alternate camera angles from a render",
     icon: Images,
-    route: "/app/studio?tab=multi_angle",
+    route: "/app/multi-angle",
   },
+  // --- Video ---
   {
     id: "video-generator",
     category: "video",
     name: "Video Generator",
     description: "Turn a render into a short presentation video",
     icon: Video,
-    route: "/app/video",
+    route: "/app/ai-video-generator",
+  },
+  {
+    id: "video-upscaler",
+    category: "video",
+    name: "Video Upscaler",
+    description: "Enhance resolution and detail on an existing video",
+    icon: Maximize2,
+    route: "/app/video-upscaler",
+  },
+  {
+    id: "clip-editor",
+    category: "video",
+    name: "Clip Editor",
+    description: "Trim, cut, and merge video clips",
+    icon: Scissors,
+    route: "/app/clip-editor",
+  },
+  {
+    id: "video-project-editor",
+    category: "video",
+    name: "Video Project Editor",
+    description: "Edit multi-clip video projects",
+    icon: MonitorPlay,
+    route: "/app/video-project-editor",
+  },
+  // --- Audio ---
+  {
+    id: "voice-generator",
+    category: "audio",
+    name: "Voice Generator",
+    description: "Generate realistic voiceovers from text",
+    icon: Mic,
+    route: "/app/voice-generator",
   },
 ];
 
@@ -81,6 +129,7 @@ export const TOOL_CATEGORIES: Array<{
 }> = [
   { id: "image", label: "Image" },
   { id: "video", label: "Video" },
+  { id: "audio", label: "Audio" },
 ];
 
 export function toolsByCategory(category: ToolCategory): ToolDefinition[] {

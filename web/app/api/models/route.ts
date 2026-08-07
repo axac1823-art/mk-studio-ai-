@@ -12,15 +12,16 @@ export async function GET() {
   try {
     const res = await fetch(`${baseUrl()}/models`, { cache: "no-store" });
     if (!res.ok) throw new Error(`worker /models failed (${res.status})`);
-    const data = (await res.json()) as { image?: unknown[]; video?: unknown[]; upscale?: unknown[] };
+    const data = (await res.json()) as { image?: unknown[]; video?: unknown[]; upscale?: unknown[]; audio?: unknown[] };
     return NextResponse.json({
       image: Array.isArray(data.image) ? data.image : [],
       video: Array.isArray(data.video) ? data.video : [],
       upscale: Array.isArray(data.upscale) ? data.upscale : [],
+      audio: Array.isArray(data.audio) ? data.audio : [],
     });
   } catch (err) {
     if (err instanceof WorkerNotConfiguredError) {
-      return NextResponse.json({ image: [], video: [] }, { status: 503 });
+      return NextResponse.json({ image: [], video: [], upscale: [], audio: [] }, { status: 503 });
     }
     return NextResponse.json({ error: "Failed to load models." }, { status: 502 });
   }

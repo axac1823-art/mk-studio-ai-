@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS assets (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id    uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type          text NOT NULL CHECK (type IN ('image','video')),
+  type          text NOT NULL CHECK (type IN ('image','video','audio')),
   generation_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
   storage_path  text NOT NULL, -- chemin public relatif servi par le worker (/storage/...)
   is_favorite   boolean NOT NULL DEFAULT false,
@@ -185,7 +185,12 @@ INSERT INTO action_costs (feature_type, credit_cost) VALUES
   ('multi_angle', 15),
   ('animate', 30),
   ('upscale_2x', 8),
-  ('upscale_4x', 15)
+  ('upscale_4x', 15),
+  ('video_upscale_2x', 20),
+  ('video_upscale_4x', 35),
+  ('video_edit_trim', 5),
+  ('video_edit_concat', 8),
+  ('voice_generator', 6)
 ON CONFLICT (feature_type) DO NOTHING;
 
 INSERT INTO video_action_costs (mode, credit_cost) VALUES

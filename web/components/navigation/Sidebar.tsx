@@ -3,13 +3,15 @@
 // Sidebar persistente de la section /app.
 // Réutilise le même ToolPickerPopover que le dashboard pour les déclencheurs
 // "+" rapide et les catégories Image/Video, afin d'éviter toute divergence.
+// Image et Video sont intégrés dans la liste principale, juste après les
+// entrées de navigation classiques (Home, Search, Projects…).
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Box,
   FolderOpen,
   Home,
-  Image,
+  Image as ImageIcon,
   Plus,
   Search,
   Settings,
@@ -22,8 +24,12 @@ import {
 
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
 import { cn } from "@/lib/utils";
+import { TOOLS } from "@/config/tools";
 
-const NAV_ITEMS = [
+const IMAGE_ROUTES = TOOLS.filter((tool) => tool.category === "image").map((tool) => tool.route);
+const VIDEO_ROUTE = TOOLS.find((tool) => tool.category === "video")?.route ?? "/app/ai-video-generator";
+
+const TOP_LINK_ITEMS = [
   { href: "/app/dashboard", label: "Home", icon: Home },
   { href: "/app/search", label: "Search", icon: Search },
   { href: "/app/projects", label: "Projects", icon: FolderOpen },
@@ -32,8 +38,35 @@ const NAV_ITEMS = [
   { href: "/app/trash", label: "Trash", icon: Trash2 },
 ] as const;
 
+interface NavLinkProps {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  active: boolean;
+}
+
+function NavLink({ href, icon: Icon, label, active }: NavLinkProps) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:justify-start",
+        active
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="hidden md:inline">{label}</span>
+    </Link>
+  );
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
+  const isImageActive = IMAGE_ROUTES.some((route) => pathname.startsWith(route));
+  const isVideoActive = pathname.startsWith(VIDEO_ROUTE);
 
   return (
     <aside className="flex w-16 shrink-0 flex-col border-r bg-background md:w-56">
@@ -59,42 +92,22 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex flex-col gap-1 p-3">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:justify-start",
-                active
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="hidden md:inline">{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+        {TOP_LINK_ITEMS.map(({ href, label, icon }) => (
+          <NavLink key={href} href={href} icon={icon} label={label} active={pathname.startsWith(href)} />
+        ))}
 
-      <div className="mx-3 my-2 h-px bg-border" />
-
-      <div className="flex flex-col gap-1 p-3">
         <ToolPickerPopover defaultTab="image" placement="right">
           <button
             type="button"
             className={cn(
               "flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:justify-start",
-              pathname.startsWith("/app/studio")
+              isImageActive
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
             )}
             aria-label="Image tools"
           >
-            <Image className="h-4 w-4" />
+            <ImageIcon className="h-4 w-4" />
             <span className="hidden md:inline">Image</span>
           </button>
         </ToolPickerPopover>
@@ -104,7 +117,7 @@ export function AppSidebar() {
             type="button"
             className={cn(
               "flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors md:justify-start",
-              pathname.startsWith("/app/video")
+              isVideoActive
                 ? "bg-accent text-foreground"
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
             )}
@@ -114,7 +127,7 @@ export function AppSidebar() {
             <span className="hidden md:inline">Video</span>
           </button>
         </ToolPickerPopover>
-      </div>
+      </nav>
 
       <div className="mt-auto flex flex-col gap-1 p-3">
         <Link

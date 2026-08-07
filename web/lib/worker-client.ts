@@ -54,6 +54,18 @@ export function startVideoJob(videoJobId: string): Promise<void> {
   return postStartJob("/generate/video", videoJobId, "video_job_id");
 }
 
+export function startAudioJob(jobId: string): Promise<void> {
+  return postStartJob("/audio/generate", jobId);
+}
+
+export function startVideoEditJob(jobId: string): Promise<void> {
+  return postStartJob("/video/edit", jobId);
+}
+
+export function startVideoUpscaleJob(jobId: string): Promise<void> {
+  return postStartJob("/video/upscale", jobId);
+}
+
 export function startUpscaleJob(jobId: string): Promise<void> {
   return postStartJob("/upscale", jobId);
 }

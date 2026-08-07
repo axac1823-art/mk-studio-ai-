@@ -56,7 +56,7 @@ export default function UploadsPage() {
             Upload a source image in the studio to start generating.
           </p>
           <Button asChild variant="outline" size="sm" className="mt-2">
-            <Link href="/app/dashboard">Open the studio</Link>
+            <Link href="/app/ai-image-generator">Open the studio</Link>
           </Button>
         </div>
       ) : (

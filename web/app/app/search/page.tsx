@@ -137,7 +137,7 @@ export default function SearchPage() {
       )}
 
       <Button asChild variant="outline" size="sm" className="w-fit">
-        <Link href="/app/dashboard">Open the studio</Link>
+        <Link href="/app/ai-image-generator">Open the studio</Link>
       </Button>
     </main>
   );

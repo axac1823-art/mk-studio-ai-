@@ -45,6 +45,10 @@ export function computeDisplayCost(config: CostsConfig, input: DisplayCostInput)
     const key = factor === 4 ? "upscale_4x" : "upscale_2x";
     return config.baseCosts[key] ?? 0;
   }
+  // Coûts fixes des nouvelles actions (pas de multiplicateur qualité/résolution en V1).
+  const fixed = config.baseCosts[input.feature];
+  if (fixed !== undefined) return fixed;
+
   const base = config.baseCosts[input.feature] ?? 0;
   const unit =
     base * (config.qualityMultiplier[input.quality] ?? 1) +

@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Image as ImageIcon,
   LayoutTemplate,
+  Mic,
   Palette,
   Plus,
   Search,
@@ -170,6 +171,10 @@ export default function DashboardPage() {
 
           <ToolPickerPopover defaultTab="video">
             <CategoryTrigger icon={Video} label="Video" colorClass="bg-emerald-500/15 text-emerald-400" />
+          </ToolPickerPopover>
+
+          <ToolPickerPopover defaultTab="audio">
+            <CategoryTrigger icon={Mic} label="Audio" colorClass="bg-violet-500/15 text-violet-400" />
           </ToolPickerPopover>
 
           <Link href="/app/projects" className="flex flex-col items-center gap-2">

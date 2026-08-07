@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Trash2 } from "lucide-react";
 
 interface ShotEditorProps {
   index: number;
@@ -10,11 +11,12 @@ interface ShotEditorProps {
   tags: string[];
   onPromptChange: (value: string) => void;
   disabled?: boolean;
+  onDelete?: () => void;
 }
 
 const MAX_PROMPT_LENGTH = 1999;
 
-export function ShotEditor({ index, prompt, tags, onPromptChange, disabled }: ShotEditorProps) {
+export function ShotEditor({ index, prompt, tags, onPromptChange, disabled, onDelete }: ShotEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -95,9 +97,22 @@ export function ShotEditor({ index, prompt, tags, onPromptChange, disabled }: Sh
     <div className="relative flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Shot {index + 1}</span>
-        <span className={cn("text-xs", prompt.length > MAX_PROMPT_LENGTH ? "text-destructive" : "text-muted-foreground")}>
-          {prompt.length}/{MAX_PROMPT_LENGTH}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={cn("text-xs", prompt.length > MAX_PROMPT_LENGTH ? "text-destructive" : "text-muted-foreground")}>
+            {prompt.length}/{MAX_PROMPT_LENGTH}
+          </span>
+          {onDelete && (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={disabled}
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50"
+              aria-label="Remove shot"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
       <Textarea
         ref={textareaRef}

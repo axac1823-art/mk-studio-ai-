@@ -12,7 +12,7 @@ architectes, professionnels de l'archviz, décorateurs d'intérieur et
 agents immobiliers. Ce n'est PAS un outil généraliste de création de
 contenu (type Magnific/Higgsfield visant pub, cinéma, réseaux sociaux).
 
-Scope MVP : **6 fonctions métier**, une par onglet du studio —
+Scope MVP : **10 fonctions métier** —
 
 1. **Render** : screenshot 3D (SketchUp, Revit, 3ds Max) -> rendu
    photoréaliste, géométrie préservée ;
@@ -21,18 +21,30 @@ Scope MVP : **6 fonctions métier**, une par onglet du studio —
    depuis un rendu extérieur ;
 4. **Plan to Render** : plan technique 2D -> rendu meublé/paysagé ;
 5. **Animate** : vidéo courte de présentation (4-8 s, mouvement de caméra
-   simple, SANS narration en V1) ;
+   simple) ;
 6. **Multi-Angle** : 2-3 angles de caméra additionnels (cohérence
-   best-effort) — le plus lourd, en dernier.
+   best-effort) ;
+7. **Video Upscaler** : amélioration de la résolution d'une vidéo ;
+8. **Clip Editor / Video Project Editor** : découpe, assemblage et montage
+   simple de clips ;
+9. **Voice Generator (Speak)** : génération audio / voix off à partir d'un
+   texte ;
+10. **Models** : page de découverte des modèles disponibles (image, vidéo,
+    audio, upscaling).
 
-Exclusions V1 (ne pas implémenter, retiré du code le cas échéant) :
-édition conversationnelle par chat, swap d'objets/mobilier, narration /
-voix off / lip-sync, presets non liés au bâti, et **tout sélecteur de
-modèle IA visible** — le routage entre modèles est 100% serveur, le
-fallback automatique et invisible.
+Exclusions V1 (ne pas implémenter, retirer le cas échéant) :
+édition conversationnelle par chat, swap d'objets/mobilier, presets non liés
+au bâti, et **tout sélecteur de modèle IA visible** — le routage entre
+modèles est 100% serveur, le fallback automatique et invisible. La narration
+/voix off a été temporairement réintégrée à la demande explicite pour le
+Voice Generator.
 
-Le stack actuel est **Next.js full-stack** ; l'ancien backend FastAPI a
-été retiré du dépôt.
+Le stack actuel est **Next.js 14 full-stack** ; le backend FastAPI n'a pas
+été retiré — il a été déplacé dans le service **`/worker`** qui détient
+toute la logique IA, les clés providers et le stockage local. `/web` et
+`/worker` partagent la base PostgreSQL via `DATABASE_URL`.
+
+Les deux fichiers d'environnement sont documentés dans `ENVIRONMENT.md`.
 
 Trois principes d'architecture à respecter dans toute modification :
 
@@ -74,68 +86,58 @@ Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 ## Structure du code
 
 ```
-app/
-  page.tsx                    # redirige vers /app/dashboard (la landing
-                              #   marketing arrive en dernier)
-  layout.tsx                  # fonts Geist, metadata, thème sombre
-  globals.css                 # variables CSS shadcn (zinc, light+dark)
-  app/dashboard/page.tsx      # STUDIO : 6 onglets métier câblés, upload,
-                              #   type de scène, presets, génération,
-                              #   polling 2,5 s, comparateur avant/après,
-                              #   historique session
-  api/generate/route.ts       # POST multipart (image + feature + sceneTypeId/
-                              #   motionId + réglages) -> crée le job et lance
-                              #   l'orchestration -> { jobId }
-  api/generate/[id]/route.ts  # GET -> statut du job -> { status, outputUrls? }
-  api/credits/balance/route.ts# GET -> solde de crédits (stub jusqu'au jalon DB)
-  api/media/[name]/route.ts   # sert les vidéos stockées en local
-components/
-  compare-slider.tsx          # comparateur avant/après (clip-path + pointer events)
-  upload-dropzone.tsx         # drag & drop + aperçu (PNG/JPEG/WebP, 10 Mo max)
-  studio/scene-type-picker.tsx# "Customize Scene" : 3 types de scène préparés
-  studio/generation-controls.tsx # barre basse : quantité/qualité/ratio/
-                              #   résolution + bouton Generate (PAS de
-                              #   sélecteur de modèle — routage 100% serveur)
-  studio/animate-panel.tsx    # panneau Animate (source, motion, durée 4-8 s)
-  studio/image-feature-panel.tsx # panneau générique Mood/Ext->Int/Plan/
-                              #   Multi-Angle (upload + presets + détails)
-  studio/preset-grid.tsx      # vignettes cliquables (matériau, éclairage)
-  studio/...                  # result-panel, references-panel, scene-details,
-                              #   settings-accordion
-  ui/                         # composants shadcn/ui (button, card, tabs,
-                              #   badge, skeleton, textarea, switch, select)
-lib/
-  ai/catalog.ts               # LE fichier central : feature -> candidats
-                              #   (provider, modelId officiel, coût interne) ;
-                              #   les features pas encore câblées ont une
-                              #   liste VIDE (pattern upscale)
-  ai/providers/               # un adaptateur par API officielle (bfl, google,
-                              #   kling, runway, openai + magichour,
-                              #   agrégateur — exception §1 ; comfyui — serveur
-                              #   local de test : img2img + i2v) + index.ts
-                              #   (registre + contrôle de configuration) et
-                              #   http.ts (helpers polling/JSON/base64)
-  ai/router.ts                # orchestration : tri par tier, fallback,
-                              #   post-traitement upscale du pipeline image
-  ai/prompt-templates.ts      # prompts VERSIONNÉS (fragments par preset)
-  ai/media.ts                 # stockage temp local des vidéos (Sora, ComfyUI)
-  ai/logger.ts                # trace des tentatives (analytics interne)
-  ai/types.ts                 # schéma interne normalisé (Feature, Provider,
-                              #   GenerationRequest/Result) — le client ne
-                              #   connaît jamais les fournisseurs
-  presets.ts                  # métadonnées UI des presets (types de scène,
-                              #   matériaux, éclairage, motion, bornes)
-  costs.ts                    # coûts en crédits affichés/facturés
-  credits.ts                  # solde (stub jusqu'au jalon DB)
-  features.ts                 # métadonnées d'affichage des 6 onglets/features
-                              #   (noms PRODUIT) — CLIENT-SAFE
-  download.ts                 # téléchargement client d'un résultat (blob ->
-                              #   <a download>, repli nouvel onglet)
-  jobs/store.ts               # jobs en mémoire (remplaçable par BullMQ)
-  utils.ts                    # cn() (clsx + tailwind-merge)
-scripts/
-  purge-trash.ts              # nettoyage programmé des assets en corbeille
+/                         <- racine : docker-compose, schéma DB, README
+├── web/                  <- Next.js 14 App Router + routes API
+│   ├── app/
+│   │   ├── page.tsx                 # redirect vers /app/dashboard
+│   │   ├── layout.tsx               # fonts, metadata, thème sombre
+│   │   ├── app/dashboard/page.tsx   # home / dashboard
+│   │   ├── app/ai-image-generator/  # Screenshot-to-Render
+│   │   ├── app/ambiance-change/     # Mood
+│   │   ├── app/exterior-to-interior/# Ext -> Int
+│   │   ├── app/plan-to-render/      # Plan -> Furnished Render
+│   │   ├── app/multi-angle/         # Multi-Angle
+│   │   ├── app/upscale/             # Image Upscale
+│   │   ├── app/ai-video-generator/ # Video Generator
+│   │   ├── app/video-upscaler/      # Video Upscaler
+│   │   ├── app/clip-editor/         # Clip Editor
+│   │   ├── app/video-project-editor/# Video Project Editor
+│   │   ├── app/voice-generator/      # Voice Generator (Speak)
+│   │   ├── app/models/               # Modèles disponibles
+│   │   └── api/                      # routes API Next.js
+│   ├── components/
+│   │   ├── navigation/    # ToolPickerPopover, AppSidebar, ToolCard, CommandPalette
+│   │   ├── video-generator/# composants du Video Generator
+│   │   ├── studio/        # workspaces image réutilisables
+│   │   └── ui/            # composants shadcn/ui
+│   ├── lib/
+│   │   ├── config/tools.ts           # catalogue unique des outils
+│   │   ├── credits/index.ts          # coûts et solde
+│   │   ├── db/                       # client et requêtes Postgres
+│   │   ├── worker-client.ts          # client HTTP vers le worker
+│   │   ├── video-utils.ts            # modes vidéo et coûts
+│   │   └── presets.ts                # métadonnées des presets UI
+│   └── .env.example      # DB + worker URLs uniquement, AUCUNE clé IA
+│
+├── worker/               <- FastAPI Python : logique IA, providers, stockage
+│   ├── main.py           # application FastAPI + routers
+│   ├── config.py         # variables d'environnement
+│   ├── catalog.py        # MODEL_CATALOG feature -> candidats
+│   ├── providers/        # un fichier = un provider officiel (bfl, google,
+│   │                     #   kling, runway, openai, magichour, comfyui,
+│   │                     #   upscale, elevenlabs)
+│   ├── workflows/        # image_render.py, video.py, upscale.py, audio.py,
+│   │                     #   video_edit.py, video_upscale.py, common.py
+│   ├── routes/           # endpoints FastAPI (generate, jobs, models,
+│   │                     #   upscale, storage, audio, video/edit, video/upscale)
+│   ├── storage/          # fichiers générés en local (dev)
+│   └── .env.example      # clés providers + DB + worker URLs
+│
+└── db/                   <- schéma PostgreSQL unique (web + worker)
+    ├── schema.sql
+    └── migrations/
 ```
+
 
 ### Flux d'une génération (jalon actuel)
 
@@ -153,36 +155,50 @@ scripts/
 ## Commandes
 
 ```bash
+# 1. Base de données
+docker compose up -d db
+docker compose exec -T db psql -U renderstudio -d renderstudio < db/schema.sql
+
+# 2. Worker FastAPI
+cd worker
+python -m venv .venv
+./.venv/Scripts/python -m pip install -r requirements.txt
+cp .env.example .env   # renseigner les clés providers
+./.venv/Scripts/python -m uvicorn main:app --port 8000
+
+# 3. Web Next.js
+cd web
 npm install
-cp .env.example .env.local   # puis renseigner au moins UN fournisseur
-                             # (ex. BFL_API_KEY + GOOGLE_API_KEY)
+cp .env.example .env.local   # DB + worker URLs uniquement, aucune clé IA
 npm run dev                  # http://localhost:3000 -> /app/dashboard
 npm run build                # vérif compile + lint + types
 npm run lint                 # lint ESLint
 ```
 
 Vérification rapide : `GET /app/dashboard` → 200 ; `POST /api/generate`
-sans aucune clé fournisseur → JSON d'erreur explicite (503).
+sans aucune clé fournisseur → JSON d'erreur explicite (503). Voir
+`ENVIRONMENT.md` pour la répartition des variables d'environnement.
 
 Il n'y a ni Dockerfile, ni CI : seuls le lancement local et le build sont
 définis.
 
 ## Configuration
 
-Toutes les clés sont côté serveur via `.env.local` (voir `.env.example`,
-chaque entrée y est documentée) : `BFL_API_KEY` (Flux Kontext),
-`GOOGLE_API_KEY` (Nano Banana),
+Toutes les clés sont côté serveur via `.env` du worker (voir
+`ENVIRONMENT.md` et `worker/.env.example`, chaque entrée y est documentée) :
+`BFL_API_KEY` (Flux Kontext), `GOOGLE_API_KEY` (Nano Banana),
 `KLING_SECRET_KEY` (Kling), `RUNWAY_API_KEY` (Gen-4),
-`OPENAI_API_KEY` (GPT Image + Sora),
-`MAGIC_HOUR_API_KEY` (agrégateur — exception §1),
-`COMFYUI_CHECKPOINT` et/ou `COMFYUI_VIDEO_WORKFLOW_FILE` (serveur local de
-test : img2img et/ou i2v — voir .env.example).
-Un fournisseur non configuré échoue vite
-et le routeur bascule sur le suivant — configurer au moins un fournisseur
-image et un fournisseur vidéo pour couvrir les deux fonctionnalités.
-À venir : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_PRICE_*`.
+`OPENAI_API_KEY` (GPT Image + Sora), `MAGIC_HOUR_API_KEY` (agrégateur —
+exception §1), `ELEVENLABS_API_KEY` (Voice Generator), `COMFYUI_CHECKPOINT`
+et/ou `COMFYUI_VIDEO_WORKFLOW_FILE` / `COMFYUI_UPSCALE_WORKFLOW_FILE`
+(serveur local de test : img2img, i2v, upscale).
+
+`web/.env.local` ne contient que `DATABASE_URL`, `WORKER_BASE_URL` et
+`WORKER_PUBLIC_URL` — aucune clé provider. Voir `ENVIRONMENT.md`.
+
+Un fournisseur non configuré est simplement sauté par le fallback.
+Configurer au moins un fournisseur image, un fournisseur vidéo et, si le
+Voice Generator est utilisé, `ELEVENLABS_API_KEY`.
 
 ## Conventions de code
 
@@ -243,21 +259,24 @@ Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
 
 ## État d'avancement et pièges connus
 
-- **Pivot fournisseurs fait** : fal.ai retiré, chaque modèle est appelé sur
-  l'API officielle de son éditeur via `lib/ai/providers/`. `npm run build`
-  et `npm run test:fallback` passent ; smoke test dev OK (redirect
-  `/` → `/app/dashboard`, 503 propre sans clé).
+- **Architecture actuelle** : Next.js `/web` + FastAPI `/worker` + PostgreSQL
+  partagée. Les clés providers vivent uniquement dans `worker/.env`. Voir
+  `ENVIRONMENT.md`.
+- **Navigation home + popover d'outils** : outils image (`/app/ai-image-generator`,
+  `/app/ambiance-change`, `/app/exterior-to-interior`, `/app/plan-to-render`,
+  `/app/upscale`, `/app/multi-angle`), vidéo (`/app/ai-video-generator`,
+  `/app/video-upscaler`, `/app/clip-editor`, `/app/video-project-editor`),
+  audio (`/app/voice-generator`), et modèles (`/app/models`). Le dashboard
+  `/app/dashboard` est le portail d'entrée avec `ToolPickerPopover` partagé.
 - ⚠️ **Les adaptateurs fournisseurs n'ont pas encore été validés contre les
   API réelles** (aucune clé configurée au moment de l'écriture) : chaque
   `modelId` est indicatif — vérifier la doc du fournisseur au premier
-  branchement de clé (le fallback absorbe un id invalide, mais le coût
-  d'appel reste réel). Le `model_name` exact de **Kling v3** est à
+  branchement de clé. Le `model_name` exact de **Kling v3** est à
   confirmer dans la console Kling.
-- **Recadrage MVP (juillet 2026)** : agrégateur vertical archviz/immobilier
-  — narration (ElevenLabs), object swap, sélecteur de modèle visible et
-  onglets/icônes génériques RETIRÉS du code ; 6 onglets métier TOUS câblés
-  (les 5 fonctions image partagent `IMAGE_EDIT_CANDIDATES` dans le
-  catalogue ; multi-angle = cohérence best-effort).
+- **Recadrage MVP** : agrégateur vertical archviz/immobilier — les outils
+  ajoutés (Voice Generator, Video Editor, Video Upscaler) restent orientés
+  production multimédia de présentation. Le sélecteur de modèle reste
+  invisible côté client (routage 100% serveur).
 - Pas d'auth : la route `/api/generate` est **ouverte** — ne pas exposer
   telle quelle en production.
 - L'image transite en data URI base64 (10 Mo max) ; S3/Supabase Storage

@@ -10,9 +10,18 @@ import { cn } from "@/lib/utils";
 interface UploadDropzoneProps {
   previewUrl: string | null;
   onFileSelected: (file: File) => void;
+  title?: string;
+  description?: string;
+  icon?: React.ComponentType<{ className?: string }>;
 }
 
-export function UploadDropzone({ previewUrl, onFileSelected }: UploadDropzoneProps) {
+export function UploadDropzone({
+  previewUrl,
+  onFileSelected,
+  title = "Drop your 3D screenshot here",
+  description = "or click to browse — PNG, JPEG, WebP up to 10 MB",
+  icon: Icon = ImagePlus,
+}: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -61,9 +70,9 @@ export function UploadDropzone({ previewUrl, onFileSelected }: UploadDropzonePro
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2 p-6 text-center">
-          <ImagePlus className="h-8 w-8 text-muted-foreground" />
-          <p className="text-sm font-medium">Drop your 3D screenshot here</p>
-          <p className="text-xs text-muted-foreground">or click to browse — PNG, JPEG, WebP up to 10 MB</p>
+          {Icon ? <Icon className="h-8 w-8 text-muted-foreground" /> : null}
+          <p className="text-sm font-medium">{title}</p>
+          {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         </div>
       )}
       <input

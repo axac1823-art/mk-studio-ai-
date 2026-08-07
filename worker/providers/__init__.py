@@ -12,7 +12,7 @@ SAUF ComfyUI local qui écrit directement pour éviter une data URI vidéo) :
 """
 import os
 
-from providers import bfl, comfyui, google, kling, magichour, openai, runway
+from providers import bfl, comfyui, elevenlabs, google, kling, magichour, openai, runway
 
 PROVIDERS = {
     "bfl": bfl,
@@ -22,6 +22,7 @@ PROVIDERS = {
     "openai": openai,
     "magichour": magichour,
     "comfyui": comfyui,
+    "elevenlabs": elevenlabs,
 }
 
 # Groupes alternatifs de variables d'env : un groupe complet suffit
@@ -33,6 +34,7 @@ PROVIDER_ENV_KEYS = {
     "runway": [["RUNWAY_API_KEY"]],
     "openai": [["OPENAI_API_KEY"]],
     "magichour": [["MAGIC_HOUR_API_KEY"]],
+    "elevenlabs": [["ELEVENLABS_API_KEY"]],
     "comfyui": [
         ["COMFYUI_CHECKPOINT"],
         ["COMFYUI_VIDEO_WORKFLOW_FILE"],
