@@ -124,7 +124,7 @@ Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 │   ├── config.py         # variables d'environnement
 │   ├── catalog.py        # MODEL_CATALOG feature -> candidats
 │   ├── providers/        # un fichier = un provider officiel (bfl, google,
-│   │                     #   kling, runway, openai, magichour, comfyui,
+│   │                     #   kling, runway, openai, magichour, upscale, elevenlabs),
 │   │                     #   upscale, elevenlabs)
 │   ├── workflows/        # image_render.py, video.py, upscale.py, audio.py,
 │   │                     #   video_edit.py, video_upscale.py, common.py
@@ -189,9 +189,7 @@ Toutes les clés sont côté serveur via `.env` du worker (voir
 `BFL_API_KEY` (Flux Kontext), `GOOGLE_API_KEY` (Nano Banana),
 `KLING_SECRET_KEY` (Kling), `RUNWAY_API_KEY` (Gen-4),
 `OPENAI_API_KEY` (GPT Image + Sora), `MAGIC_HOUR_API_KEY` (agrégateur —
-exception §1), `ELEVENLABS_API_KEY` (Voice Generator), `COMFYUI_CHECKPOINT`
-et/ou `COMFYUI_VIDEO_WORKFLOW_FILE` / `COMFYUI_UPSCALE_WORKFLOW_FILE`
-(serveur local de test : img2img, i2v, upscale).
+exception §1), `ELEVENLABS_API_KEY` (Voice Generator).
 
 `web/.env.local` ne contient que `DATABASE_URL`, `WORKER_BASE_URL` et
 `WORKER_PUBLIC_URL` — aucune clé provider. Voir `ENVIRONMENT.md`.

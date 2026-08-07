@@ -1,18 +1,17 @@
-"""Registre des providers — port de lib/ai/providers/index.ts.
+"""Registre des providers.
 
 Chaque module expose generate(model_id, input, timeout_ms) -> dict avec la
 même forme de sortie : {"images": [{"url": ...}]} ou {"video": {"url": ...}}.
 
 Formes d'URL acceptées en sortie (les WORKFLOWS les normalisent ensuite en
-fichiers stockés via storage.py — un provider ne décide pas du stockage,
-SAUF ComfyUI local qui écrit directement pour éviter une data URI vidéo) :
+fichiers stockés via storage.py) :
 - data URI (image ou petite vidéo) ;
 - URL http(s) (CDN du provider) ;
 - chemin "/storage/<nom>" (déjà sur disque côté worker).
 """
 import os
 
-from providers import bfl, comfyui, elevenlabs, google, kling, magichour, openai, runway
+from providers import bfl, elevenlabs, google, kling, magichour, openai, runway
 
 PROVIDERS = {
     "bfl": bfl,
@@ -21,12 +20,10 @@ PROVIDERS = {
     "runway": runway,
     "openai": openai,
     "magichour": magichour,
-    "comfyui": comfyui,
     "elevenlabs": elevenlabs,
 }
 
-# Groupes alternatifs de variables d'env : un groupe complet suffit
-# (comfyui : image OU vidéo OU upscale). Port de PROVIDER_ENV_KEYS.
+# Groupes alternatifs de variables d'env : un groupe complet suffit.
 PROVIDER_ENV_KEYS = {
     "bfl": [["BFL_API_KEY"]],
     "google": [["GOOGLE_API_KEY"]],
@@ -35,11 +32,6 @@ PROVIDER_ENV_KEYS = {
     "openai": [["OPENAI_API_KEY"]],
     "magichour": [["MAGIC_HOUR_API_KEY"]],
     "elevenlabs": [["ELEVENLABS_API_KEY"]],
-    "comfyui": [
-        ["COMFYUI_CHECKPOINT"],
-        ["COMFYUI_VIDEO_WORKFLOW_FILE"],
-        ["COMFYUI_UPSCALE_WORKFLOW_FILE"],
-    ],
 }
 
 

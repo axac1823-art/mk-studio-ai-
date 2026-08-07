@@ -46,12 +46,6 @@ MAGIC_HOUR_API_KEY=
 
 # Audio / voix (ElevenLabs)
 ELEVENLABS_API_KEY=
-
-# ComfyUI local (dev/test)
-COMFYUI_BASE_URL=http://127.0.0.1:8188
-COMFYUI_CHECKPOINT=
-# COMFYUI_VIDEO_WORKFLOW_FILE=
-# COMFYUI_UPSCALE_WORKFLOW_FILE=
 ```
 
 ## Règles de sécurité

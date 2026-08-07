@@ -38,8 +38,7 @@ providers/                 # un fichier = un provider officiel
   kling.py                 # Kling (vidéo)
   runway.py                # Runway Gen-4
   magichour.py             # Magic Hour (agrégateur — exception assumée)
-  comfyui.py               # ComfyUI local (img2img / i2v / upscale)
-  upscale.py               # provider dédié image upscale (ComfyUI/Magic Hour)
+  upscale.py               # provider dédié image upscale (Magic Hour)
   elevenlabs.py            # ElevenLabs (Voice Generator)
 workflows/                 # logique métier exécutée en BackgroundTasks
   common.py                # helpers DB + stockage + completion/fail idempotents
@@ -64,7 +63,6 @@ tests/                     # tests hors-ligne / smoke
   test_fallback.py        # moteur de fallback
   test_video_modes.py     # détection des modes vidéo
   test_elevenlabs.py      # provider ElevenLabs (mocké)
-  smoke_comfyui.py        # smoke test ComfyUI
 ```
 
 ## Endpoints exposés
@@ -85,7 +83,6 @@ tests/                     # tests hors-ligne / smoke
 cd worker
 ./.venv/Scripts/python -m tests.test_fallback
 ./.venv/Scripts/python -m tests.test_elevenlabs
-./.venv/Scripts/python -m tests.smoke_comfyui
 ```
 
 ## Ajouter un provider IA

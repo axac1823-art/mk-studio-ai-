@@ -59,7 +59,7 @@ def get_json(url: str, headers: dict, timeout_s: int = DEFAULT_TIMEOUT_S):
 
 def get_bytes(url: str, headers: dict | None = None, timeout_s: int = 300) -> tuple[bytes, str]:
     """GET -> (octets, content-type) — téléchargement des sorties (CDN des
-    providers, /view de ComfyUI...)."""
+    providers, URLs locales /storage/...)."""
     response = httpx.get(url, headers=headers or {}, timeout=timeout_s, follow_redirects=True)
     if response.status_code >= 400:
         raise ProviderError(f"GET {url} failed ({response.status_code})", response.status_code)

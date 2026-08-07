@@ -15,7 +15,6 @@ import {
   Mic,
   Palette,
   Plus,
-  Search,
   Video,
   Wand2,
 } from "lucide-react";
@@ -24,7 +23,7 @@ import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CommandPalette, useCommandPaletteShortcut } from "@/components/navigation/CommandPalette";
+import { DashboardSearch } from "@/components/navigation/DashboardSearch";
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
 import { cn } from "@/lib/utils";
 
@@ -67,15 +66,12 @@ function CategoryTrigger({
 }
 
 export default function DashboardPage() {
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useCommandPaletteShortcut(() => setCommandPaletteOpen(true));
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -130,15 +126,13 @@ export default function DashboardPage() {
 
   return (
     <main className="flex min-h-screen w-full flex-col gap-8 px-4 py-4 sm:px-6 lg:px-8">
-      <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-
       <header className="flex w-full items-center justify-between">
         <Link href="/app/dashboard" className="flex items-center gap-2 text-foreground">
           <Box className="h-6 w-6" />
-          <span className="hidden font-semibold md:inline">RenderStudio</span>
+          <span className="hidden font-semibold md:inline">MKStudios </span>
         </Link>
         <div className="flex items-center gap-2">
-          <Button asChild variant="link" className="text-foreground">
+          <Button asChild variant="outline" className="text-foreground">
             <Link href="/app/pricing">Pricing</Link>
           </Button>
           <Button variant="outline" size="sm" className="gap-2">
@@ -151,18 +145,7 @@ export default function DashboardPage() {
       <div className="flex w-full flex-col items-center gap-8">
         <h1 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">{greeting}</h1>
 
-        <button
-          type="button"
-          onClick={() => setCommandPaletteOpen(true)}
-          className={cn(
-            "flex h-12 w-full max-w-xl items-center gap-3 rounded-xl border bg-card px-4 text-sm transition-colors",
-            "hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          )}
-        >
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <span className="flex-1 text-left text-muted-foreground">Ask RenderStudio or find tutorials</span>
-          <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Ctrl K</kbd>
-        </button>
+        <DashboardSearch />
 
         <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-8">
           <ToolPickerPopover defaultTab="image">

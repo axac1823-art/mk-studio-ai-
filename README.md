@@ -5,7 +5,7 @@
 Ce dépôt est organisé en **deux services** et une base de données partagée :
 
 - `/web` : interface Next.js 14 + TypeScript, pages, auth, facturation, studio, gestion des projets.
-- `/worker` : service Python FastAPI qui détient **toute** la logique IA (appels providers, ComfyUI, upscale, ffmpeg, stockage local).
+- `/worker` : service Python FastAPI qui détient **toute** la logique IA (appels providers, upscale, ffmpeg, stockage local).
 - `/db` : schéma PostgreSQL unique, utilisé par les deux services.
 
 ---
@@ -114,12 +114,6 @@ MAGIC_HOUR_API_KEY=
 
 # Voice Generator (ElevenLabs)
 ELEVENLABS_API_KEY=
-
-# ComfyUI local (optionnel, dev/test)
-COMFYUI_BASE_URL=http://127.0.0.1:8188
-COMFYUI_CHECKPOINT=
-# COMFYUI_VIDEO_WORKFLOW_FILE=
-# COMFYUI_UPSCALE_WORKFLOW_FILE=
 ```
 
 Un provider non configuré est simplement sauté par le fallback.
@@ -147,7 +141,7 @@ Un provider non configuré est simplement sauté par le fallback.
 │   ├── scripts/     <- purge-trash.ts (nettoyage corbeille)
 │   └── .env.example
 ├── worker/          <- FastAPI Python : toute la logique IA
-│   ├── providers/   <- un fichier = un provider (bfl, google, kling, runway, openai, magichour, comfyui, upscale, elevenlabs)
+│   ├── providers/   <- un fichier = un provider (bfl, google, kling, runway, openai, magichour, upscale, elevenlabs)
 │   ├── workflows/   <- image_render.py, video.py, upscale.py, audio.py, video_edit.py, video_upscale.py
 │   ├── routes/      <- endpoints FastAPI (generate, jobs, models, upscale, storage, audio, video/edit, video/upscale)
 │   ├── storage/     <- fichiers générés en local (dev)
@@ -202,27 +196,13 @@ Les 10 onglets/outils du studio :
 
 ---
 
-## ComfyUI (dev/test local)
-
-Le provider `worker/providers/comfyui.py` est un fournisseur de secours/dev local. Il attend un serveur ComfyUI sur `COMFYUI_BASE_URL` (défaut `127.0.0.1:8188`).
-
-- Image : `img2img` avec le checkpoint `COMFYUI_CHECKPOINT`.
-- Vidéo : workflow i2v personnalisé via `COMFYUI_VIDEO_WORKFLOW_FILE`.
-- Upscale : workflow personnalisé via `COMFYUI_UPSCALE_WORKFLOW_FILE`.
-
-Si vous n'avez pas de workflow JSON personnalisé, le provider comporte des workflows par défaut minimaux. Les fichiers de workflow JSON sont chargés, et les paramètres `denoise`, `fps`, etc. sont surchargés via des variables d'environnement.
-
-Pour lancer un serveur ComfyUI local, référez-vous à la documentation officielle : `https://github.com/comfyanonymous/ComfyUI`.
-
----
-
 ## Tests et vérifications
 
 ```bash
 # Worker
 cd worker
 ./.venv/Scripts/python -m tests.test_fallback
-./.venv/Scripts/python -m tests.smoke_comfyui
+./.venv/Scripts/python -m tests.test_elevenlabs
 
 # Web
 cd web

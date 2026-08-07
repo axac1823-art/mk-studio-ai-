@@ -1,6 +1,6 @@
 // Téléchargement côté client d'un résultat de génération (image ou vidéo).
-// Les sorties sont soit des data URIs (Google/OpenAI/ComfyUI), soit des URL
-// locales (/api/media), soit des URL distantes (CDN fournisseurs) : fetch ->
+// Les sorties sont soit des data URIs (Google/OpenAI), soit des URL
+// locales (/storage/...), soit des URL distantes (CDN fournisseurs) : fetch ->
 // blob -> object URL -> <a download> couvre les trois. Si le CDN refuse le
 // fetch (CORS), repli sur un nouvel onglet (Ctrl+S / clic droit pour
 // sauvegarder) — une route de téléchargement serveur prendra le relais au

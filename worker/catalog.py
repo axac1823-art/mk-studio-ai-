@@ -233,32 +233,6 @@ def magichour_video_input(req: dict) -> dict:
     return payload
 
 
-def comfyui_img2img_input(req: dict) -> dict:
-    """ComfyUI local : img2img (l'image est versée dans input/ par le provider)."""
-    return {"prompt": req["prompt"], "image": req["imageUrl"], "quantity": req["quantity"]}
-
-
-def comfyui_video_input(req: dict) -> dict:
-    """ComfyUI local : img2video — dimensions cibles modestes en multiples
-    de 16 (~480p standard, ~720p pro : la vidéo locale est LOURDE sur GPU
-    grand public) ; la durée est convertie en frames par le provider."""
-    pro = req["quality"] == "pro"
-    width, height = {
-        "16:9": (1280, 720) if pro else (832, 480),
-        "9:16": (720, 1280) if pro else (480, 832),
-        "4:3": (1088, 816) if pro else (768, 576),
-        "3:4": (816, 1088) if pro else (576, 768),
-    }.get(req["aspectRatio"], (960, 960) if pro else (640, 640))
-    return {
-        "prompt": req["prompt"],
-        "image": req["imageUrl"],
-        "endImage": req.get("endImageUrl"),
-        "duration": req.get("durationSeconds") or 4,
-        "width": width,
-        "height": height,
-    }
-
-
 # --- LE CATALOGUE ---
 
 # Candidats partagés par TOUTES les features d'édition image du scope MVP
@@ -274,9 +248,6 @@ IMAGE_EDIT_CANDIDATES: list[Candidate] = [
     # Agrégateur (exception assumée, AGENTS.md §1) : flux-2-klein ÉPINGLÉ
     # (seul modèle d'édition éligible au free tier).
     Candidate("magichour-flux-2-klein", "Magic Hour Flux 2 Klein", "Free tier friendly image edits", "magichour", "flux-2-klein", 5, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_edit_input, extract_image_urls),
-    # Provider LOCAL de test (GPU utilisateur, gratuit, hors-ligne) —
-    # dernier recours du routage auto (coût nul).
-    Candidate("comfyui-img2img", "ComfyUI Local", "Local GPU test pipeline", "comfyui", "img2img", 0, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), comfyui_img2img_input, extract_image_urls),
 ]
 
 ANIMATE_CANDIDATES: list[Candidate] = [
@@ -318,14 +289,6 @@ ANIMATE_CANDIDATES: list[Candidate] = [
         "magichour-video", "Magic Hour Video", "Aggregated video models, free tier available",
         "magichour", "default", 16, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
         magichour_video_input, extract_video_url,
-        supports_image_to_video=True,
-    ),
-    # Provider LOCAL de test : img2video via workflow custom OBLIGATOIRE
-    # (COMFYUI_VIDEO_WORKFLOW_FILE), sinon échec vite -> fallback.
-    Candidate(
-        "comfyui-i2v", "ComfyUI Local Video", "Local GPU test video pipeline",
-        "comfyui", "i2v", 0, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
-        comfyui_video_input, extract_video_url,
         supports_image_to_video=True,
     ),
 ]

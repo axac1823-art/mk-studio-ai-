@@ -1,10 +1,10 @@
 // Métadonnées d'affichage des presets — CLIENT-SAFE.
 // Aucun fragment de prompt ici : le prompt engineering vit côté serveur
-// dans lib/ai/prompt-templates.ts. Ici : ids, labels, vignettes, bornes UI.
+// dans worker/prompts.py. Ici : ids, labels, vignettes, bornes UI.
 
 // --- "Customize Scene" : type de scène (base qui débloque les bons
 //     réglages). Remplace l'ancien sélecteur de style — chaque type a son
-//     prompt préparé côté serveur (lib/ai/prompt-templates.ts). ---
+//     prompt préparé côté serveur (worker/prompts.py). ---
 
 export interface SceneTypeMeta {
   id: string;

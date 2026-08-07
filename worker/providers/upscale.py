@@ -1,17 +1,7 @@
-"""Provider upscale — liste de fallback EN CONFIG (env UPSCALE_PROVIDERS,
-défaut "comfyui,magichour"), même philosophie que le routeur de génération :
-chaque candidat échoue VITE, le suivant prend le relais.
+"""Provider upscale — Magic Hour AI Image Upscaler (agrégateur assumé,
+voir AGENTS.md §1).
 
-Candidats :
-- "comfyui" : workflow custom (Real-ESRGAN, Ultimate SD Upscale...) pointé
-  par COMFYUI_UPSCALE_WORKFLOW_FILE — placeholders "{{IMAGE}}", "{{PROMPT}}"
-  (VIDE quand enhance est off : upscale pur), "{{NEGATIVE}}", "{{SEED}}".
-  Le facteur 2x/4x est câblé dans le graphe (modèle chargé) ;
-- "magichour" : AI Image Upscaler de l'agrégateur assumé (AGENTS.md §1).
-  ⚠️ endpoint/payload à VÉRIFIER dans la doc Magic Hour à l'intégration —
-  un rejet échoue vite et le fallback bascule (le coût d'appel reste réel).
-
-Interface différente des autres providers : upscale(input, timeout_ms) —
+Interface : upscale(input, timeout_ms) -> {"images": [{"url": ...}]}
 l'upscale n'est pas un candidat du catalogue, c'est une action dédiée.
 """
 import base64
@@ -19,7 +9,6 @@ import os
 
 import httpx
 
-from providers import comfyui
 from providers.http_helpers import (
     ProviderError,
     get_json,
@@ -30,53 +19,16 @@ from providers.http_helpers import (
 )
 
 UPSCALE_TIMEOUT_MS = 10 * 60 * 1000
-DEFAULT_PROVIDERS = "comfyui,magichour"
-
 _MAGICHOUR_BASE = "https://api.magichour.ai"
 
 
-def _configured_providers() -> list[str]:
-    raw = os.environ.get("UPSCALE_PROVIDERS", DEFAULT_PROVIDERS)
-    return [name.strip() for name in raw.split(",") if name.strip()]
-
-
 def is_configured() -> bool:
-    """Au moins un candidat upscale configuré (la route /upscale refuse en
-    503 sinon — même garde-fou que pour la génération)."""
-    names = _configured_providers()
-    return ("comfyui" in names and bool(os.environ.get("COMFYUI_UPSCALE_WORKFLOW_FILE"))) or (
-        "magichour" in names and bool(os.environ.get("MAGIC_HOUR_API_KEY"))
-    )
-
-
-def _upscale_comfyui(input_: dict, timeout_ms: int) -> dict:
-    """Upscale local via workflow custom — gratuit, hors-ligne. Requiert
-    COMFYUI_UPSCALE_WORKFLOW_FILE (échec vite AVANT tout upload sinon)."""
-    workflow_file = require_env("COMFYUI_UPSCALE_WORKFLOW_FILE")
-    enhance = bool(input_.get("enhance"))
-    workflow = comfyui.load_workflow_file(
-        workflow_file,
-        {
-            # enhance on -> passe de détail guidée prompt ; off -> texte vide
-            # (upscale "pur", type Real-ESRGAN seul).
-            "prompt": "high quality architectural photography, sharp clean details" if enhance else "",
-            "image_name": comfyui.upload_image(str(input_.get("image") or "")),
-            "seed": comfyui.random_seed(),
-        },
-    )
-    outputs = comfyui.execute_workflow(workflow, timeout_ms)
-    image = comfyui.first_file(outputs, ("images",))
-    if not image:
-        raise ProviderError("comfyui upscale: history completed without output image")
-    data, mime = comfyui.fetch_view(image)
-    if not mime.startswith("image/"):
-        mime = "image/png"
-    return {"images": [{"url": f"data:{mime};base64,{base64.b64encode(data).decode()}"}]}
+    """Au moins Magic Hour configuré (la route /upscale refuse en 503 sinon)."""
+    return bool(os.environ.get("MAGIC_HOUR_API_KEY"))
 
 
 def _magichour_upload(data_uri: str, api_key: str) -> str:
-    """Verse une data URI chez Magic Hour (upload-urls -> PUT) -> file_path
-    — même flow que providers/magichour.py."""
+    """Verse une data URI chez Magic Hour (upload-urls -> PUT) -> file_path."""
     parsed = parse_data_uri(data_uri)
     if not parsed:
         # Une URL http passe telle quelle (Magic Hour la télécharge).
@@ -105,8 +57,7 @@ def _magichour_upload(data_uri: str, api_key: str) -> str:
 
 
 def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
-    """Magic Hour image upscaler — ⚠️ endpoint/payload à VÉRIFIER à
-    l'intégration (rejet -> échec vite -> fallback comfyui)."""
+    """Magic Hour image upscaler."""
     api_key = require_env("MAGIC_HOUR_API_KEY")
     file_path = _magichour_upload(str(input_.get("image") or ""), api_key)
     submit = post_json(
@@ -140,44 +91,24 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
     return {"images": [{"url": url}]}
 
 
-def _is_provider_ready(name: str) -> bool:
-    if name == "comfyui":
-        return bool(os.environ.get("COMFYUI_UPSCALE_WORKFLOW_FILE"))
-    if name == "magichour":
-        return bool(os.environ.get("MAGIC_HOUR_API_KEY"))
-    return False
-
-
 def list_models() -> list[dict]:
-    """Modèles upscalers disponibles côté worker (key/name/description)."""
+    """Modèles upscalers disponibles côté worker."""
+    if not is_configured():
+        return []
     return [
         {
-            "key": name,
-            "name": "ComfyUI Local Upscale" if name == "comfyui" else "Magic Hour AI Upscaler",
-            "description": "Local GPU upscaling workflow (Real-ESRGAN/USDU)" if name == "comfyui" else "Cloud AI upscaler with enhancement",
+            "key": "magichour",
+            "name": "Magic Hour AI Upscaler",
+            "description": "Cloud AI upscaler with enhancement",
         }
-        for name in _configured_providers()
-        if _is_provider_ready(name)
     ]
 
 
 def upscale(input_: dict, timeout_ms: int = UPSCALE_TIMEOUT_MS, provider: str | None = None) -> dict:
-    """Essaie les candidats dans l'ordre de UPSCALE_PROVIDERS jusqu'au
-    premier succès — toute erreur déclenche la bascule (comme le routeur).
-    Si `provider` est fourni, seul ce provider est utilisé (pas de fallback
-    silencieux vers un autre modèle choisi par l'utilisateur)."""
-    errors: list[str] = []
-    candidates = [provider] if provider else _configured_providers()
-    for name in candidates:
-        if name not in ("comfyui", "magichour"):
-            raise ProviderError(f"unknown upscale provider: {name}")
-        try:
-            if name == "comfyui":
-                return _upscale_comfyui(input_, timeout_ms)
-            if name == "magichour":
-                return _upscale_magichour(input_, timeout_ms)
-        except Exception as err:  # noqa: BLE001 — toute erreur = fallback
-            errors.append(f"{name}: {err}")
-    if not errors:
-        raise ProviderError("upscale: no provider configured")
-    raise ProviderError("upscale failed — " + " | ".join(errors))
+    """Upscale via Magic Hour.
+
+    Si `provider` est fourni, il est ignoré (un seul provider disponible).
+    """
+    if provider and provider != "magichour":
+        raise ProviderError(f"unknown upscale provider: {provider}")
+    return _upscale_magichour(input_, timeout_ms)
