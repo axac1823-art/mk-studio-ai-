@@ -1,6 +1,6 @@
 # RenderStudio Worker
 
-Service Python FastAPI qui détient **toute** la logique IA : appels providers, workflows, upscaling, stockage local.
+Service Python FastAPI qui détient **toute** la logique IA : appels providers officiels, workflows, upscaling, montage vidéo, génération audio, stockage local. Ce dossier est le seul à lire les **clés API des providers**.
 
 ## Lancer en local
 
@@ -12,31 +12,86 @@ python -m venv .venv
 ./.venv/Scripts/python -m pip install -r requirements.txt
 
 # Copier et renseigner AU MOINS une clé provider (voir .env.example)
+# Voir ENVIRONMENT.md à la racine pour la répartition complète.
 cp .env.example .env
 
 ./.venv/Scripts/python -m uvicorn main:app --reload --port 8000
 ```
 
-Le worker expose :
+## Prérequis système
 
-- `GET /health` — santé.
+- **ffmpeg** requis pour le montage vidéo (`/video/edit`) et l'upscaling vidéo (`/video/upscale`).
+- **ffprobe** recommandé pour conserver le FPS original lors de l'upscaling vidéo.
+
+## Structure des fichiers
+
+```
+main.py                      # application FastAPI + enregistrement des routers
+config.py                  # variables d'environnement (STORAGE_DIR, DATABASE_URL, PUBLIC_BASE_URL)
+catalog.py                 # MODEL_CATALOG : feature -> candidats ordonnés
+providers/                 # un fichier = un provider officiel
+  __init__.py              # registre PROVIDERS + vérification de configuration
+  http_helpers.py          # helpers POST/GET/polling/data URI
+  bfl.py                   # Black Forest Labs (Flux Kontext)
+  google.py                # Google Gemini
+  openai.py                # GPT Image + Sora
+  kling.py                 # Kling (vidéo)
+  runway.py                # Runway Gen-4
+  magichour.py             # Magic Hour (agrégateur — exception assumée)
+  comfyui.py               # ComfyUI local (img2img / i2v / upscale)
+  upscale.py               # provider dédié image upscale (ComfyUI/Magic Hour)
+  elevenlabs.py            # ElevenLabs (Voice Generator)
+workflows/                 # logique métier exécutée en BackgroundTasks
+  common.py                # helpers DB + stockage + completion/fail idempotents
+  engine.py                # fallback, ordonnancement par tier
+  image_render.py         # génération image (5 features image)
+  video.py                # génération vidéo (Animate)
+  upscale.py              # upscaling image
+  audio.py                # génération voix (ElevenLabs)
+  video_edit.py           # montage simple (trim / concat)
+  video_upscale.py        # upscaling vidéo frame par frame
+routes/                    # endpoints FastAPI
+  generate.py             # POST /generate/image, /generate/video
+  jobs.py                 # GET /jobs/{id}
+  models.py               # GET /models
+  upscale.py              # POST /upscale
+  audio.py                # POST /audio/generate
+  video_edit.py           # POST /video/edit
+  video_upscale.py        # POST /video/upscale
+  storage.py              # POST /storage/upload + GET /storage/{path}
+storage/                   # fichiers générés en local (dev)
+tests/                     # tests hors-ligne / smoke
+  test_fallback.py        # moteur de fallback
+  test_video_modes.py     # détection des modes vidéo
+  test_elevenlabs.py      # provider ElevenLabs (mocké)
+  smoke_comfyui.py        # smoke test ComfyUI
+```
+
+## Endpoints exposés
+
+- `GET /health` — santé + indicateur `providers_configured`.
 - `POST /generate/image` — génération image (Render, Mood, Ext→Int, Plan, Multi-Angle).
 - `POST /generate/video` — génération vidéo (Animate).
-- `POST /upscale` — upscaler un asset existant.
+- `POST /upscale` — upscaling image.
+- `POST /video/upscale` — upscaling vidéo.
+- `POST /video/edit` — montage vidéo (trim / concat).
+- `POST /audio/generate` — génération de voix (ElevenLabs).
 - `GET /jobs/{id}` — état d'un job.
 - `GET /storage/{path}` — fichiers générés.
 
 ## Tests
 
 ```bash
+cd worker
 ./.venv/Scripts/python -m tests.test_fallback
+./.venv/Scripts/python -m tests.test_elevenlabs
 ./.venv/Scripts/python -m tests.smoke_comfyui
 ```
 
 ## Ajouter un provider IA
 
-1. Créer `providers/<nom>.py` avec une fonction `generate(input) -> dict`.
-2. L'enregistrer dans `providers/__init__.py`.
-3. L'ajouter dans la liste de fallback du workflow concerné (`workflows/image_render.py`, `workflows/video_generation.py`, `workflows/upscale.py`).
-4. Ajouter la clé dans `config.py` et `.env.example` si nécessaire.
+1. Créer `providers/<nom>.py` avec une fonction `generate(input) -> dict` (voir `bfl.py` ou `google.py` comme modèle).
+2. L'enregistrer dans `providers/__init__.py` et dans `PROVIDER_ENV_KEYS`.
+3. L'ajouter dans la liste de fallback du workflow concerné (`workflows/image_render.py`, `workflows/video.py`, `workflows/audio.py`, ...).
+4. Ajouter la clé dans `.env.example`.
 5. Les clés providers ne vivent **jamais** côté `/web`.

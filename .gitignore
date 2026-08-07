@@ -8,6 +8,10 @@ __pycache__/
 # Next.js / web build outputs
 **/.next/
 **/out/
+*.tsbuildinfo
+
+# Screenshots marketing locales (non utilisées par l'app)
+web/screenshots/
 
 # Fichiers générés par le worker en dev local
 worker/storage/*
