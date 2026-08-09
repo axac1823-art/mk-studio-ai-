@@ -6,7 +6,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Box,
   FolderOpen,
   Home,
   Image as ImageIcon,
@@ -23,7 +22,9 @@ import {
   Bell,
 } from "lucide-react";
 
+import { RenderuimLogo } from "@/components/icons/renderuim";
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { TOOLS } from "@/config/tools";
 import { CreditAlert } from "@/components/billing/credit-alert";
@@ -109,8 +110,8 @@ export function AppSidebar({ user, balance, lowThreshold }: AppSidebarProps) {
           href="/app/dashboard"
           className="flex h-10 items-center justify-center gap-2 rounded-md text-foreground md:justify-start md:px-3"
         >
-          <Box className="h-6 w-6" />
-          <span className="hidden font-semibold md:inline">RenderStudio</span>
+          <RenderuimLogo className="h-6 w-6" />
+          <span className="hidden font-semibold md:inline">Renderuim</span>
         </Link>
 
         <ToolPickerPopover defaultTab="image" placement="right">
@@ -175,6 +176,11 @@ export function AppSidebar({ user, balance, lowThreshold }: AppSidebarProps) {
         </Link>
 
         <NotificationBell />
+
+        <div className="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground md:justify-start">
+          <ThemeToggle />
+          <span className="ml-3 hidden md:inline">Theme</span>
+        </div>
 
         <Link
           href="/app/settings"

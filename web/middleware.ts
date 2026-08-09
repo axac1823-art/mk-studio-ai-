@@ -66,7 +66,8 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (pathname === "/login" || pathname === "/signup")) {
-    return NextResponse.redirect(new URL("/app/dashboard", request.url));
+    const redirectTo = request.nextUrl.searchParams.get("redirectTo") ?? "/app/dashboard";
+    return NextResponse.redirect(new URL(redirectTo, request.url));
   }
 
   return response;

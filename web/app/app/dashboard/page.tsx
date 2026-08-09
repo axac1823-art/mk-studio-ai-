@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Box,
   FolderOpen,
   Image as ImageIcon,
   LayoutTemplate,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
+import { RenderuimLogo } from "@/components/icons/renderuim";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -128,8 +128,8 @@ export default function DashboardPage() {
     <main className="flex min-h-screen w-full flex-col gap-8 px-4 py-4 sm:px-6 lg:px-8">
       <header className="flex w-full items-center justify-between">
         <Link href="/app/dashboard" className="flex items-center gap-2 text-foreground">
-          <Box className="h-6 w-6" />
-          <span className="hidden font-semibold md:inline">MKStudios </span>
+          <RenderuimLogo className="h-6 w-6" />
+          <span className="hidden font-semibold md:inline">Renderuim</span>
         </Link>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" className="text-foreground">

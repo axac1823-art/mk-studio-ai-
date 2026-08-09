@@ -3,13 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Box } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GoogleIcon } from "@/components/icons/google";
-import { signInWithPassword, signInWithGoogle, signUp } from "./actions";
+import { RenderuimLogo } from "@/components/icons/renderuim";
+import { signInWithPassword, signInWithGoogle, signUp } from "@/app/(auth)/login/actions";
 
 export function AuthForm() {
   const searchParams = useSearchParams();
@@ -47,7 +47,6 @@ export function AuthForm() {
         setError(result.error ?? null);
         setBusy(false);
       }
-      // Successful login redirects server-side.
       return;
     }
 
@@ -77,14 +76,16 @@ export function AuthForm() {
 
   if (signupSuccess) {
     return (
-      <div className="w-full max-w-md space-y-6 text-center">
+      <div className="space-y-6 text-center">
         <div className="flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Box className="h-6 w-6 text-primary" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <RenderuimLogo className="h-8 w-8" />
           </div>
         </div>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Check your email</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Check your email
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             We sent you a confirmation link. Click it to finish creating your account.
           </p>
@@ -92,7 +93,7 @@ export function AuthForm() {
         <Button
           type="button"
           variant="outline"
-          className="w-full h-11"
+          className="w-full"
           onClick={() => {
             setMode("login");
             resetForm();
@@ -105,48 +106,43 @@ export function AuthForm() {
   }
 
   return (
-    <div className="w-full max-w-md space-y-6">
-      {/* Logo / heading */}
+    <div className="space-y-6">
       <div className="text-center">
         <div className="flex justify-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Box className="h-6 w-6" />
-          </div>
+          <RenderuimLogo showWordmark className="h-10 w-10" />
         </div>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-          {mode === "login" ? "Welcome to RenderStudio" : "Create your account"}
+        <h1 className="mt-5 text-3xl font-semibold tracking-tight text-foreground">
+          {mode === "login" ? "Welcome back" : "Create your account"}
         </h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          {mode === "login" ? "Sign in to continue" : "Start generating with RenderStudio"}
+          {mode === "login"
+            ? "Sign in to continue to Renderuim"
+            : "Start generating visuals with Renderuim"}
         </p>
       </div>
 
-      {/* OAuth providers */}
-      <div className="space-y-3">
-        <p className="text-center text-sm text-muted-foreground">Log in with</p>
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full h-11"
-          onClick={handleGoogle}
-          disabled={busy}
-        >
-          <GoogleIcon className="mr-2" />
-          Continue with Google
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={handleGoogle}
+        disabled={busy}
+      >
+        <GoogleIcon className="mr-2" />
+        Continue with Google
+      </Button>
 
-      {/* Divider */}
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
+          <span className="w-full border-t border-border" />
         </div>
-        <div className="relative flex justify-center text-sm uppercase">
-          <span className="bg-background px-2 text-muted-foreground">Or continue with email</span>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-surface px-3 text-muted-foreground tracking-wide">
+            Or continue with email
+          </span>
         </div>
       </div>
 
-      {/* Email form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         {mode === "signup" && (
           <div className="space-y-2">
@@ -160,7 +156,6 @@ export function AuthForm() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               disabled={busy}
-              className="h-11"
             />
           </div>
         )}
@@ -172,12 +167,11 @@ export function AuthForm() {
             name="email"
             type="email"
             required
-            autoComplete={mode === "login" ? "email" : "email"}
+            autoComplete="email"
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={busy}
-            className="h-11"
           />
         </div>
 
@@ -187,7 +181,7 @@ export function AuthForm() {
             {mode === "login" && (
               <Link
                 href="/forgot-password"
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-primary hover:text-foreground hover:underline transition-colors"
               >
                 Forgot password?
               </Link>
@@ -204,7 +198,6 @@ export function AuthForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={busy}
-            className="h-11"
           />
           {mode === "signup" && (
             <p className="text-xs text-muted-foreground">At least 6 characters.</p>
@@ -212,39 +205,43 @@ export function AuthForm() {
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-error">
             {error}
           </p>
         )}
 
-        <Button type="submit" className="w-full h-11" disabled={busy}>
+        <Button type="submit" className="w-full" disabled={busy}>
           {mode === "login" ? "Continue" : "Create account"}
         </Button>
       </form>
 
-      {/* Mode toggle */}
       <p className="text-center text-sm text-muted-foreground">
         {mode === "login" ? "Don't have an account? " : "Already have an account? "}
         <button
           type="button"
           onClick={toggleMode}
-          className="text-foreground hover:underline focus-visible:outline-none focus-visible:underline"
+          className="font-medium text-primary hover:text-foreground hover:underline focus-visible:outline-none focus-visible:underline transition-colors"
         >
           {mode === "login" ? "Sign up" : "Sign in"}
         </button>
       </p>
 
-      {/* Footer */}
       <p className="text-center text-xs text-muted-foreground">
-        This site is protected by reCAPTCHA and the Google{" "}
-        <a className="hover:text-foreground hover:underline" href="https://policies.google.com/privacy">
-          Privacy Policy
-        </a>{" "}
-        and{" "}
-        <a className="hover:text-foreground hover:underline" href="https://policies.google.com/terms">
+        By registering, you agree to our{" "}
+        <a
+          className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
+          href="https://policies.google.com/terms"
+        >
           Terms of Service
         </a>{" "}
-        apply.
+        and{" "}
+        <a
+          className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
+          href="https://policies.google.com/privacy"
+        >
+          Privacy Policy
+        </a>
+        .
       </p>
     </div>
   );
