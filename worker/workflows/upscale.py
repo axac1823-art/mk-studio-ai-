@@ -74,9 +74,12 @@ def run(job: dict) -> None:
     with db.connect() as conn:
         mark_processing(conn, job["id"])
         try:
-            asset = conn.execute("SELECT * FROM assets WHERE id = %s", (input_.get("assetId"),)).fetchone()
+            asset = conn.execute(
+                "SELECT * FROM assets WHERE id = %s AND user_id = %s",
+                (input_.get("assetId"), job["user_id"]),
+            ).fetchone()
             if not asset:
-                raise ValueError("source asset not found")
+                raise ValueError("source asset not found or not owned by user")
 
             result = upscale_provider.upscale(
                 {

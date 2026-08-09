@@ -5,15 +5,17 @@
 // (done/error), assets inclus pour la galerie et l'upscale.
 import { NextRequest, NextResponse } from "next/server";
 
-import { getJob, listAssetsForJob } from "@/lib/db/queries";
+import { getJobForUser, listAssetsForJob } from "@/lib/db/queries";
 import { publicUrl } from "@/lib/worker-client";
+import { requireAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const job = await getJob(params.id);
+  const { dbUser: user } = await requireAuth();
+  const job = await getJobForUser(params.id, user.id);
   if (!job) {
     return NextResponse.json(
       { status: "error", error: "Generation failed, please try again." },

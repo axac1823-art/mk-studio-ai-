@@ -309,11 +309,20 @@ export default function DashboardPage() {
                 Generate your first render to see it here.
               </p>
             </div>
-            <ToolPickerPopover defaultTab="image">
-              <Button type="button" variant="outline" size="sm">
-                Create something
+            <div className="flex items-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/app/ai-image-generator">
+                  <ImageIcon className="mr-1 h-4 w-4" />
+                  Image
+                </Link>
               </Button>
-            </ToolPickerPopover>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/app/ai-video-generator">
+                  <Video className="mr-1 h-4 w-4" />
+                  Video
+                </Link>
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

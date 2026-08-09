@@ -3,10 +3,10 @@
 // cover manuelle (un asset DU projet).
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireAuth } from "@/lib/auth";
 import {
   deleteProject,
   getAsset,
-  getDevUser,
   getProject,
   listAssets,
   renameProject,
@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const project = await getProject(user.id, params.id);
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body = (await req.json().catch(() => null)) as
     | { name?: unknown; coverAssetId?: unknown }
     | null;
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const project = await getProject(user.id, params.id);
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
@@ -71,7 +71,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const project = await getProject(user.id, params.id);
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });

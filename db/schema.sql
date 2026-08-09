@@ -9,6 +9,9 @@ CREATE TABLE IF NOT EXISTS users (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email        text NOT NULL UNIQUE,
   display_name text NOT NULL DEFAULT '',
+  avatar_url   text,
+  full_name    text,
+  preferences  jsonb NOT NULL DEFAULT '{}',
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 
@@ -95,6 +98,13 @@ CREATE TABLE IF NOT EXISTS action_costs (
   credit_cost  int NOT NULL CHECK (credit_cost >= 0)
 );
 
+CREATE TABLE IF NOT EXISTS app_config (
+  key        text PRIMARY KEY,
+  value_int  int,
+  value_text text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Ledger append-only : mint/spend/refund/expire. L'unicité
 -- (ref_job_id, reason) rend le débit IDEMPOTENT (le worker débite au
 -- succès ; jamais deux 'spend' pour le même job). Les mints (ref_job_id
@@ -105,15 +115,20 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
   delta      int NOT NULL,
   reason     text NOT NULL CHECK (reason IN ('mint','spend','refund','expire')),
   ref_job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
+  metadata   jsonb NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (ref_job_id, reason)
 );
+
+CREATE INDEX IF NOT EXISTS credit_ledger_user_created
+  ON credit_ledger(user_id, created_at DESC);
 
 -- Coquille pour le jalon Stripe (abonnements + webhooks).
 CREATE TABLE IF NOT EXISTS subscriptions (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id            uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status             text NOT NULL DEFAULT 'inactive',
+  plan               text,
   stripe_customer_id text,
   current_period_end timestamptz
 );
@@ -192,6 +207,11 @@ INSERT INTO action_costs (feature_type, credit_cost) VALUES
   ('video_edit_concat', 8),
   ('voice_generator', 6)
 ON CONFLICT (feature_type) DO NOTHING;
+
+INSERT INTO app_config (key, value_int) VALUES
+  ('signup_bonus_credits', 100),
+  ('low_credit_threshold', 10)
+ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO video_action_costs (mode, credit_cost) VALUES
   ('text_to_video', 25),

@@ -1,8 +1,9 @@
 // Route de création d'un job video_upscale.
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireAuth } from "@/lib/auth";
 import { computeCost, getBalance } from "@/lib/credits";
-import { getAsset, getDevUser, getProject, insertJob } from "@/lib/db/queries";
+import { getAsset, getProject, insertJob } from "@/lib/db/queries";
 import { WorkerNotConfiguredError, isWorkerConfigured, startVideoUpscaleJob } from "@/lib/worker-client";
 
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing assetId." }, { status: 400 });
   }
 
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const asset = await getAsset(user.id, assetId);
   if (!asset || asset.type !== "video" || asset.is_trashed) {
     return NextResponse.json({ error: "Invalid video asset." }, { status: 400 });

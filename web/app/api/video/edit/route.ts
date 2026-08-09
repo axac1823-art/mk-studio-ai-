@@ -1,8 +1,9 @@
 // Route de création d'un job video_edit (trim / concat).
 import { NextRequest, NextResponse } from "next/server";
 
+import { requireAuth } from "@/lib/auth";
 import { computeCost, getBalance } from "@/lib/credits";
-import { getAsset, getDefaultProject, getDevUser, getProject, insertJob } from "@/lib/db/queries";
+import { getAsset, getDefaultProject, getProject, insertJob } from "@/lib/db/queries";
 import { WorkerNotConfiguredError, isWorkerConfigured, startVideoEditJob } from "@/lib/worker-client";
 
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Operation must be 'trim' or 'concat'." }, { status: 400 });
   }
 
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const projectIdField = optionalString(form, "projectId");
   const project = projectIdField ? await getProject(user.id, projectIdField) : await getDefaultProject(user.id);
   if (!project) {

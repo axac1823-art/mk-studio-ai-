@@ -4,7 +4,7 @@
 // libellés PRODUIT génériques), comparateur avant/après pour les images,
 // lecteur vidéo pour Animate, et vignettes de variations si quantité > 1.
 import { useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Download, Loader2, MoveHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,23 @@ const STAGE_LABELS: Record<string, string> = {
 
 interface ResultPanelProps {
   result: ResultState;
+}
+
+function ExampleBeforeAfter() {
+  return (
+    <div className="relative aspect-video w-full max-w-xs overflow-hidden rounded-md border">
+      <div className="absolute inset-0 flex">
+        <div className="flex-1 bg-gradient-to-br from-muted to-muted-foreground/20" />
+        <div className="flex-1 bg-gradient-to-bl from-primary/20 to-muted" />
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/50" />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background p-1.5 shadow">
+        <MoveHorizontal className="h-3 w-3 text-muted-foreground" />
+      </div>
+      <div className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">Before</div>
+      <div className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">After</div>
+    </div>
+  );
 }
 
 export function ResultPanel({ result }: ResultPanelProps) {
@@ -59,8 +76,9 @@ export function ResultPanel({ result }: ResultPanelProps) {
         )}
 
         {result.status === "idle" && (
-          <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
-            Your result will appear here.
+          <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-lg border bg-muted/40 p-6 text-center">
+            <ExampleBeforeAfter />
+            <p className="text-sm text-muted-foreground">Your result will appear here.</p>
           </div>
         )}
 

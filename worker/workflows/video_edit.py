@@ -22,9 +22,12 @@ def _require_ffmpeg() -> None:
         raise RuntimeError("ffmpeg binary not found in PATH")
 
 
-def _resolve_storage_path(asset_id: str) -> str:
+def _resolve_storage_path(asset_id: str, user_id: str) -> str:
     with db.connect() as conn:
-        row = conn.execute("SELECT storage_path FROM assets WHERE id = %s", (asset_id,)).fetchone()
+        row = conn.execute(
+            "SELECT storage_path FROM assets WHERE id = %s AND user_id = %s",
+            (asset_id, user_id),
+        ).fetchone()
     if not row:
         raise ValueError(f"asset not found: {asset_id}")
     return row["storage_path"]
@@ -97,7 +100,7 @@ def run(job: dict) -> None:
             end = float(input_.get("endSeconds", 0))
             if end <= start:
                 raise ValueError("endSeconds must be greater than startSeconds")
-            storage_path = _resolve_storage_path(asset_id)
+            storage_path = _resolve_storage_path(asset_id, job["user_id"])
             input_abs = storage.resolve(storage_path)
             out_name = storage.save_file(b"", "mp4")
             out_abs = storage.resolve(out_name)
@@ -108,7 +111,7 @@ def run(job: dict) -> None:
             asset_ids = input_.get("assetIds") or []
             if len(asset_ids) < 2:
                 raise ValueError("concat requires at least two assets")
-            storage_paths = [_resolve_storage_path(aid) for aid in asset_ids]
+            storage_paths = [_resolve_storage_path(aid, job["user_id"]) for aid in asset_ids]
             input_abs_paths = [storage.resolve(p) for p in storage_paths]
             out_name = storage.save_file(b"", "mp4")
             out_abs = storage.resolve(out_name)

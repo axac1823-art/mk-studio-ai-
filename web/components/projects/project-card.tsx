@@ -41,7 +41,11 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-3">
                 <p className="truncate text-base font-semibold text-white">{project.name}</p>
-                <p className="text-xs text-white/80">{project.assetCount} assets</p>
+                {project.assetCount === 0 ? (
+                  <p className="text-xs text-white/90">Generate your first render</p>
+                ) : (
+                  <p className="text-xs text-white/80">{project.assetCount} assets</p>
+                )}
               </div>
             </>
           ) : (
@@ -49,7 +53,11 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
               <ImageIcon className="h-10 w-10" />
               <div>
                 <p className="truncate text-base font-semibold text-foreground">{project.name}</p>
-                <p className="text-xs text-muted-foreground">{project.assetCount} assets</p>
+                {project.assetCount === 0 ? (
+                  <p className="text-xs text-primary">Generate your first render</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{project.assetCount} assets</p>
+                )}
               </div>
             </div>
           )}

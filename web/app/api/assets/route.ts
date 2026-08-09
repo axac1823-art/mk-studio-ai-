@@ -3,7 +3,8 @@
 // public) : le navigateur n'a jamais à connaître l'adresse interne.
 import { NextRequest, NextResponse } from "next/server";
 
-import { getDevUser, listAssets } from "@/lib/db/queries";
+import { requireAuth } from "@/lib/auth";
+import { listAssets } from "@/lib/db/queries";
 import { publicUrl } from "@/lib/worker-client";
 
 export const runtime = "nodejs";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const params = new URL(req.url).searchParams;
   const typeParam = params.get("type");
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const assets = await listAssets(user.id, {
     projectId: params.get("project_id") ?? undefined,
     type: typeParam === "image" || typeParam === "video" || typeParam === "audio" ? typeParam : undefined,

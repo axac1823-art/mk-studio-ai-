@@ -5,10 +5,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { computeCost, getBalance } from "@/lib/credits";
+import { requireAuth } from "@/lib/auth";
 import {
   getAsset,
   getDefaultProject,
-  getDevUser,
   getProject,
   insertJob,
   insertSourceAsset,
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Upscale factor must be 2 or 4." }, { status: 400 });
   }
 
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
 
   // --- Résolution de l'asset source : upload direct -> storage + asset DB,
   //     sinon assetId fourni.

@@ -431,6 +431,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                       setPreviewUrl(URL.createObjectURL(selected));
                       setError(null);
                     }}
+                    showHint
                   />
                   <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
                   <ReferencesPanel

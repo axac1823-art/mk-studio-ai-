@@ -64,17 +64,17 @@ def insert_video_asset(conn, job_id: str, user_id: str, project_id: str, type_: 
 
 def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int, model_used: str | None = None) -> None:
     """Succès : job complete + modèle utilisé + débit IDEMPOTENT du coût
-    calculé par /web (UNIQUE(ref_job_id, reason) — jamais deux 'spend' pour
-    le même job)."""
+    calculé par /web (index partiel UNIQUE(ref_job_id, reason) WHERE
+    ref_video_job_id IS NULL — jamais deux 'spend' pour le même job)."""
     conn.execute(
         "UPDATE jobs SET status = 'complete', result_asset_id = %s, credits_charged = %s, model_used = %s WHERE id = %s",
         (result_asset_id, credits_charged, model_used, job["id"]),
     )
     if credits_charged > 0:
         conn.execute(
-            """INSERT INTO credit_ledger (user_id, delta, reason, ref_job_id)
-               VALUES (%s, %s, 'spend', %s)
-               ON CONFLICT (ref_job_id, reason) DO NOTHING""",
+            """INSERT INTO credit_ledger (user_id, delta, reason, ref_job_id, ref_video_job_id)
+               VALUES (%s, %s, 'spend', %s, NULL)
+               ON CONFLICT (ref_job_id, reason) WHERE ref_video_job_id IS NULL DO NOTHING""",
             (job["user_id"], -credits_charged, job["id"]),
         )
 
@@ -95,9 +95,9 @@ def complete_video_job(
     )
     if credits_charged > 0:
         conn.execute(
-            """INSERT INTO credit_ledger (user_id, delta, reason, ref_video_job_id)
-               VALUES (%s, %s, 'spend', %s)
-               ON CONFLICT (ref_video_job_id, reason) DO NOTHING""",
+            """INSERT INTO credit_ledger (user_id, delta, reason, ref_video_job_id, ref_job_id)
+               VALUES (%s, %s, 'spend', %s, NULL)
+               ON CONFLICT (ref_video_job_id, reason) WHERE ref_job_id IS NULL DO NOTHING""",
             (job["user_id"], -credits_charged, job["id"]),
         )
 

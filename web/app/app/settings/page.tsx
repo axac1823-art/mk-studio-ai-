@@ -1,23 +1,16 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireAuth } from "@/lib/auth";
+import SettingsPageClient from "./settings-page-client";
 
-export default function SettingsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function SettingsPage() {
+  const { supabaseUser, dbUser } = await requireAuth();
+
   return (
-    <main className="flex min-h-screen w-full flex-col gap-5 p-4 sm:p-6">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your account preferences.</p>
-      </header>
-      <Card>
-        <CardHeader>
-          <CardTitle>Coming soon</CardTitle>
-          <CardDescription>Settings will be available once auth and billing are wired.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            This page is a placeholder for the upcoming settings panel.
-          </p>
-        </CardContent>
-      </Card>
-    </main>
+    <SettingsPageClient
+      displayName={dbUser.display_name}
+      fullName={dbUser.full_name}
+      email={supabaseUser.email ?? dbUser.email}
+    />
   );
 }

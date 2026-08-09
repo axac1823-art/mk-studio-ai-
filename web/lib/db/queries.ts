@@ -10,6 +10,8 @@ export interface DbUser {
   id: string;
   email: string;
   display_name: string;
+  full_name: string | null;
+  avatar_url: string | null;
 }
 
 export interface DbProject {
@@ -76,16 +78,22 @@ const DEV_USER_EMAIL = "dev@renderstudio.local";
 
 /** Utilisateur unique de dev (placeholder auth). */
 export async function getDevUser(): Promise<DbUser> {
-  const rows = await sql<DbUser[]>`SELECT id, email, display_name FROM users WHERE email = ${DEV_USER_EMAIL} LIMIT 1`;
+  const rows = await sql<DbUser[]>`SELECT id, email, display_name, full_name, avatar_url FROM users WHERE email = ${DEV_USER_EMAIL} LIMIT 1`;
   if (!rows[0]) throw new Error("dev user missing — apply db/schema.sql");
   return rows[0];
 }
 
-/** Projet par défaut de l'utilisateur (le "General" seedé = le plus ancien). */
-export async function getDefaultProject(userId: string): Promise<DbProject> {
+/** Projet par défaut de l'utilisateur (le plus ancien). */
+export async function getDefaultProject(userId: string): Promise<DbProject | null> {
   const rows = await sql<DbProject[]>`SELECT * FROM projects WHERE user_id = ${userId} ORDER BY created_at ASC LIMIT 1`;
-  if (!rows[0]) throw new Error("default project missing — apply db/schema.sql");
-  return rows[0];
+  return rows[0] ?? null;
+}
+
+/** Crée un projet par défaut si l'utilisateur n'en a aucun (sécurité). */
+export async function ensureDefaultProject(userId: string): Promise<DbProject> {
+  const existing = await getDefaultProject(userId);
+  if (existing) return existing;
+  return createProject(userId, "General");
 }
 
 export interface DbProjectWithMeta extends DbProject {
@@ -189,6 +197,11 @@ export async function getVideoJob(jobId: string): Promise<DbVideoJob | null> {
   return rows[0] ?? null;
 }
 
+export async function getVideoJobForUser(jobId: string, userId: string): Promise<DbVideoJob | null> {
+  const rows = await sql<DbVideoJob[]>`SELECT * FROM video_jobs WHERE id = ${jobId} AND user_id = ${userId} LIMIT 1`;
+  return rows[0] ?? null;
+}
+
 /** Crée un asset SOURCE (upload utilisateur — generation_id NULL, visible
  *  dans la page Uploads, réutilisable comme entrée de génération). */
 export async function insertSourceAsset(input: {
@@ -206,6 +219,11 @@ export async function insertSourceAsset(input: {
 
 export async function getJob(jobId: string): Promise<DbJob | null> {
   const rows = await sql<DbJob[]>`SELECT * FROM jobs WHERE id = ${jobId} LIMIT 1`;
+  return rows[0] ?? null;
+}
+
+export async function getJobForUser(jobId: string, userId: string): Promise<DbJob | null> {
+  const rows = await sql<DbJob[]>`SELECT * FROM jobs WHERE id = ${jobId} AND user_id = ${userId} LIMIT 1`;
   return rows[0] ?? null;
 }
 
@@ -288,4 +306,25 @@ export async function getLedgerBalance(userId: string): Promise<number> {
   const rows = await sql<Array<{ balance: number | null }>>`
     SELECT COALESCE(SUM(delta), 0)::int AS balance FROM credit_ledger WHERE user_id = ${userId}`;
   return rows[0]?.balance ?? 0;
+}
+
+export interface DbSubscription {
+  id: string;
+  user_id: string;
+  status: string;
+  plan: string | null;
+  stripe_customer_id: string | null;
+  current_period_end: string | null;
+}
+
+export async function getSubscription(userId: string): Promise<DbSubscription | null> {
+  const rows = await sql<DbSubscription[]>`
+    SELECT * FROM subscriptions WHERE user_id = ${userId} LIMIT 1`;
+  return rows[0] ?? null;
+}
+
+export async function getAppConfigInt(key: string, fallback: number): Promise<number> {
+  const rows = await sql<Array<{ value_int: number | null }>>`
+    SELECT value_int FROM app_config WHERE key = ${key} LIMIT 1`;
+  return rows[0]?.value_int ?? fallback;
 }

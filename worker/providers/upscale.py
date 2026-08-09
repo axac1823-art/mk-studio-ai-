@@ -36,7 +36,7 @@ def _magichour_upload(data_uri: str, api_key: str) -> str:
     mime, data = parsed
     ext = mime.split("/")[1] if "/" in mime else "png"
     upload = post_json(
-        f"{_MAGIC_HOUR_BASE}/v1/files/upload-urls",
+        f"{_MAGICHOUR_BASE}/v1/files/upload-urls",
         {"x-api-key": api_key},
         {"items": [{"extension": ext}]},
     )
@@ -61,7 +61,7 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
     api_key = require_env("MAGIC_HOUR_API_KEY")
     file_path = _magichour_upload(str(input_.get("image") or ""), api_key)
     submit = post_json(
-        f"{_MAGIC_HOUR_BASE}/v1/ai-image-upscaler",
+        f"{_MAGICHOUR_BASE}/v1/ai-image-upscaler",
         {"x-api-key": api_key},
         {
             "image": file_path,
@@ -74,7 +74,7 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
         raise ProviderError(f"magichour upscale: no project id in response ({submit})")
 
     def fetch_status():
-        return get_json(f"{_MAGIC_HOUR_BASE}/v1/image-projects/{project_id}", {"x-api-key": api_key})
+        return get_json(f"{_MAGICHOUR_BASE}/v1/image-projects/{project_id}", {"x-api-key": api_key})
 
     def extract_done(status):
         if status.get("status") == "complete":

@@ -2,9 +2,7 @@
 
 // Sidebar persistente de la section /app.
 // Réutilise le même ToolPickerPopover que le dashboard pour les déclencheurs
-// "+" rapide et les catégories Image/Video, afin d'éviter toute divergence.
-// Image et Video sont intégrés dans la liste principale, juste après les
-// entrées de navigation classiques (Home, Search, Projects…).
+// "+" rapides et les catégories Image/Video.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -20,11 +18,17 @@ import {
   Upload,
   User,
   Video,
+  CreditCard,
+  LogOut,
+  Bell,
 } from "lucide-react";
 
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
 import { cn } from "@/lib/utils";
 import { TOOLS } from "@/config/tools";
+import { CreditAlert } from "@/components/billing/credit-alert";
+import { useJobNotifications } from "@/components/jobs/job-notifications";
+import type { DbUser } from "@/lib/db/queries";
 
 const IMAGE_ROUTES = TOOLS.filter((tool) => tool.category === "image").map((tool) => tool.route);
 const VIDEO_ROUTE = TOOLS.find((tool) => tool.category === "video")?.route ?? "/app/ai-video-generator";
@@ -63,13 +67,43 @@ function NavLink({ href, icon: Icon, label, active }: NavLinkProps) {
   );
 }
 
-export function AppSidebar() {
+function NotificationBell() {
+  const { unseenCount, markAllSeen } = useJobNotifications();
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        markAllSeen();
+        window.location.href = "/app/projects";
+      }}
+      className="relative flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:h-auto md:w-auto md:justify-start md:px-3"
+      aria-label="Notifications"
+    >
+      <Bell className="h-4 w-4" />
+      <span className="hidden md:ml-2 md:inline">Notifications</span>
+      {unseenCount > 0 && (
+        <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground md:relative md:right-auto md:top-auto md:ml-auto">
+          {unseenCount > 9 ? "9+" : unseenCount}
+        </span>
+      )}
+    </button>
+  );
+}
+
+interface AppSidebarProps {
+  user: DbUser;
+  balance: number;
+  lowThreshold: number;
+}
+
+export function AppSidebar({ user, balance, lowThreshold }: AppSidebarProps) {
   const pathname = usePathname();
   const isImageActive = IMAGE_ROUTES.some((route) => pathname.startsWith(route));
   const isVideoActive = pathname.startsWith(VIDEO_ROUTE);
 
   return (
-    <aside className="flex w-16 shrink-0 flex-col border-r bg-background md:w-56">
+    <aside className="flex w-16 shrink-0 flex-col border-r bg-background md:w-64">
       <div className="flex flex-col gap-2 p-3">
         <Link
           href="/app/dashboard"
@@ -129,7 +163,19 @@ export function AppSidebar() {
         </ToolPickerPopover>
       </nav>
 
-      <div className="mt-auto flex flex-col gap-1 p-3">
+      <div className="mt-auto flex flex-col gap-3 p-3">
+        <CreditAlert balance={balance} threshold={lowThreshold} />
+
+        <Link
+          href="/app/pricing"
+          className="flex items-center justify-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:justify-start"
+        >
+          <CreditCard className="h-4 w-4" />
+          <span className="hidden md:inline">{balance.toLocaleString()} credits</span>
+        </Link>
+
+        <NotificationBell />
+
         <Link
           href="/app/settings"
           className={cn(
@@ -153,6 +199,25 @@ export function AppSidebar() {
         >
           <User className="h-4 w-4" />
           <span className="hidden md:inline">Account</span>
+        </Link>
+
+        <div className="hidden flex-col gap-1 border-t pt-3 md:flex">
+          <p className="truncate px-3 text-xs text-muted-foreground">{user.email}</p>
+          <Link
+            href="/logout"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Link>
+        </div>
+
+        <Link
+          href="/logout"
+          className="flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:hidden"
+          aria-label="Sign out"
+        >
+          <LogOut className="h-4 w-4" />
         </Link>
       </div>
     </aside>

@@ -23,3 +23,7 @@ DATABASE_URL = os.environ.get(
 # URL publique du worker, utilisée pour construire les URLs des fichiers
 # servis depuis /storage (le navigateur doit pouvoir l'atteindre).
 PUBLIC_BASE_URL = os.environ.get("WORKER_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
+
+# Secret partagé entre /web et /worker pour authentifier les appels internes.
+# Optionnel en dev (aucune vérification), requis en production.
+WORKER_API_KEY = os.environ.get("WORKER_API_KEY", "")

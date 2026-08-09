@@ -22,9 +22,12 @@ def _require_binaries() -> None:
         raise RuntimeError("ffmpeg binary not found in PATH")
 
 
-def _resolve_storage_path(asset_id: str) -> str:
+def _resolve_storage_path(asset_id: str, user_id: str) -> str:
     with db.connect() as conn:
-        row = conn.execute("SELECT storage_path FROM assets WHERE id = %s", (asset_id,)).fetchone()
+        row = conn.execute(
+            "SELECT storage_path FROM assets WHERE id = %s AND user_id = %s",
+            (asset_id, user_id),
+        ).fetchone()
     if not row:
         raise ValueError(f"asset not found: {asset_id}")
     return row["storage_path"]
@@ -151,7 +154,7 @@ def run(job: dict) -> None:
         if not upscale_provider.is_configured():
             raise RuntimeError("no upscale provider configured")
 
-        storage_path = _resolve_storage_path(input_["assetId"])
+        storage_path = _resolve_storage_path(input_["assetId"], job["user_id"])
         video_path = storage.resolve(storage_path)
         fps = _fps(video_path)
 

@@ -77,9 +77,10 @@ Trois principes d'architecture à respecter dans toute modification :
   CSS, thème sombre par défaut via `class="dark"` sur `<html>`)
 - **Fetch natif + node:crypto** — appels directs aux API officielles des
   fournisseurs (submit + polling), aucune dépendance SDK propriétaire
-- Pas encore intégrés (jalons suivants, voir feuille de route) :
-  **Supabase** (auth + Postgres + storage), **Stripe** (Checkout +
-  Customer Portal + webhooks)
+- **Supabase Auth + Postgres** intégrés via `@supabase/ssr` ; sessions
+  validées côté serveur dans `middleware.ts`.
+- **Stripe** intégré (Checkout + Customer Portal + webhooks) pour
+  l'abonnement et le mint des crédits périodiques.
 
 Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 
@@ -90,7 +91,8 @@ Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 ├── web/                  <- Next.js 14 App Router + routes API
 │   ├── app/
 │   │   ├── page.tsx                 # redirect vers /app/dashboard
-│   │   ├── layout.tsx               # fonts, metadata, thème sombre
+│   │   ├── layout.tsx               # fonts, metadata, thème sombre, toaster
+│   │   ├── middleware.ts            # protection /app/* + Supabase SSR
 │   │   ├── app/dashboard/page.tsx   # home / dashboard
 │   │   ├── app/ai-image-generator/  # Screenshot-to-Render
 │   │   ├── app/ambiance-change/     # Mood
@@ -104,16 +106,30 @@ Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 │   │   ├── app/video-project-editor/# Video Project Editor
 │   │   ├── app/voice-generator/      # Voice Generator (Speak)
 │   │   ├── app/models/               # Modèles disponibles
-│   │   └── api/                      # routes API Next.js
+│   │   ├── app/account/              # profil, plan, crédits, suppression
+│   │   ├── app/settings/             # email / mot de passe / profil
+│   │   ├── app/pricing/              # plans + souscription Stripe
+│   │   ├── login/                    # connexion email/Google
+│   │   ├── signup/                   # inscription
+│   │   ├── forgot-password/          # demande reset
+│   │   ├── reset-password/           # nouveau mot de passe
+│   │   └── api/                      # routes API Next.js (auth, generate,
+│   │                                 #   credits, stripe, jobs/notifications)
 │   ├── components/
 │   │   ├── navigation/    # ToolPickerPopover, AppSidebar, ToolCard, CommandPalette
 │   │   ├── video-generator/# composants du Video Generator
 │   │   ├── studio/        # workspaces image réutilisables
+│   │   ├── billing/       # CreditAlert, boutons Stripe
+│   │   ├── jobs/          # notifications de fin de génération
 │   │   └── ui/            # composants shadcn/ui
 │   ├── lib/
 │   │   ├── config/tools.ts           # catalogue unique des outils
 │   │   ├── credits/index.ts          # coûts et solde
 │   │   ├── db/                       # client et requêtes Postgres
+│   │   ├── supabase/                 # clients client/server + middleware
+│   │   ├── auth.ts                   # requireAuth(), requireServiceRoleClient()
+│   │   ├── stripe.ts                 # getStripe() + helpers billing
+│   │   ├── rate-limit.ts             # rate-limit IP login/signup
 │   │   ├── worker-client.ts          # client HTTP vers le worker
 │   │   ├── video-utils.ts            # modes vidéo et coûts
 │   │   └── presets.ts                # métadonnées des presets UI
@@ -189,10 +205,14 @@ Toutes les clés sont côté serveur via `.env` du worker (voir
 `BFL_API_KEY` (Flux Kontext), `GOOGLE_API_KEY` (Nano Banana),
 `KLING_SECRET_KEY` (Kling), `RUNWAY_API_KEY` (Gen-4),
 `OPENAI_API_KEY` (GPT Image + Sora), `MAGIC_HOUR_API_KEY` (agrégateur —
-exception §1), `ELEVENLABS_API_KEY` (Voice Generator).
+exception §1), `ELEVENLABS_API_KEY` (Voice Generator), `WORKER_API_KEY`
+(protection mutuelle worker ↔ web).
 
-`web/.env.local` ne contient que `DATABASE_URL`, `WORKER_BASE_URL` et
-`WORKER_PUBLIC_URL` — aucune clé provider. Voir `ENVIRONMENT.md`.
+`web/.env.local` contient `DATABASE_URL`, `WORKER_BASE_URL`,
+`WORKER_PUBLIC_URL`, `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` et
+`NEXT_PUBLIC_APP_URL` — aucune clé provider IA. Voir `ENVIRONMENT.md`.
 
 Un fournisseur non configuré est simplement sauté par le fallback.
 Configurer au moins un fournisseur image, un fournisseur vidéo et, si le
@@ -233,8 +253,8 @@ juillet 2026) — **ne pas avancer sans validation de l'étape courante** :
 4. ~~Fonctions 2, 3, 4 et 6 — Mood, Exterior -> Interior, Plan to Render,
    Multi-Angle (même pipeline image, prompts dédiés ; multi-angle en
    cohérence best-effort)~~ — fait.
-5. Auth (Supabase Auth), schéma DB, système de crédits — **prochain jalon**.
-6. Abonnements Stripe + webhooks + mint des crédits.
+5. ~~Auth (Supabase Auth), schéma DB, système de crédits~~ — fait.
+6. ~~Abonnements Stripe + webhooks + mint des crédits~~ — fait.
 7. Landing page marketing en tout dernier.
 
 Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
@@ -275,8 +295,10 @@ Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
   ajoutés (Voice Generator, Video Editor, Video Upscaler) restent orientés
   production multimédia de présentation. Le sélecteur de modèle reste
   invisible côté client (routage 100% serveur).
-- Pas d'auth : la route `/api/generate` est **ouverte** — ne pas exposer
-  telle quelle en production.
+- **Auth** : toutes les routes `/app/*` sont protégées par `middleware.ts`
+  (Supabase SSR). Les routes API filtrent par `user_id` et le worker
+  exige `WORKER_API_KEY`. En local, `AUTH_DEBUG=true` fournit un fallback
+  dev (ne pas utiliser en production).
 - L'image transite en data URI base64 (10 Mo max) ; S3/Supabase Storage
   prendra le relais au jalon DB.
 - L'historique du studio est **en mémoire** (session navigateur) — la

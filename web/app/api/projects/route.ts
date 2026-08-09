@@ -1,9 +1,10 @@
-// Projets de l'utilisateur (dev user placeholder — auth au jalon suivant) :
-// GET liste (avec cover + compteur d'assets) et POST création (utilisée
-// aussi par le sélecteur de projet du studio, création inline).
+// Projets de l'utilisateur : GET liste (avec cover + compteur d'assets) et
+// POST création (utilisée aussi par le sélecteur de projet du studio,
+// création inline).
 import { NextRequest, NextResponse } from "next/server";
 
-import { createProject, getDefaultProject, getDevUser, listProjects } from "@/lib/db/queries";
+import { createProject, getDefaultProject, listProjects } from "@/lib/db/queries";
+import { requireAuth } from "@/lib/auth";
 import { publicUrl } from "@/lib/worker-client";
 
 export const runtime = "nodejs";
@@ -11,13 +12,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const [projects, defaultProject] = await Promise.all([
     listProjects(user.id),
     getDefaultProject(user.id),
   ]);
   return NextResponse.json({
-    defaultProjectId: defaultProject.id,
+    defaultProjectId: defaultProject?.id ?? null,
     projects: projects.map((project) => ({
       id: project.id,
       name: project.name,
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (!name) {
     return NextResponse.json({ error: "Project name required." }, { status: 400 });
   }
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const project = await createProject(user.id, name);
   return NextResponse.json({ project: { id: project.id, name: project.name } }, { status: 201 });
 }

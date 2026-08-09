@@ -48,9 +48,34 @@ MAGIC_HOUR_API_KEY=
 ELEVENLABS_API_KEY=
 ```
 
+## 3. Variables d'authentification et de facturation
+
+### `/web/.env.local`
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=         # URL du projet Supabase
+NEXT_PUBLIC_SUPABASE_ANON_KEY=    # clé publique (RLS-friendly)
+SUPABASE_SERVICE_ROLE_KEY=        # clé serveur — jamais exposée au navigateur
+STRIPE_SECRET_KEY=                # clé secrète Stripe
+STRIPE_WEBHOOK_SECRET=            # secret du endpoint webhook Stripe
+STRIPE_PRICE_STARTER=             # price ID Stripe du plan Starter
+STRIPE_PRICE_PRO=                 # price ID Stripe du plan Pro
+STRIPE_PRICE_STUDIO=              # price ID Stripe du plan Studio
+WORKER_API_KEY=                   # secret partagé /web ↔ /worker
+AUTH_DEBUG=false                  # fallback dev user si true (local only)
+```
+
+### `/worker/.env`
+
+```env
+WORKER_API_KEY=                   # même secret que dans /web/.env.local
+```
+
 ## Règles de sécurité
 
 - Aucune variable sensible ne doit être préfixée `NEXT_PUBLIC_`.
 - Le worker est le seul service autorisé à détenir les clés providers.
+- `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY` et `WORKER_API_KEY` sont
+  réservées au serveur ; elles ne doivent jamais être lues par du code client.
 - Les fichiers `.env` et `.env.local` sont listés dans `.gitignore` et ne
   doivent jamais être commités.

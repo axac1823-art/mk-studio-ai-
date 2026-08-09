@@ -3,7 +3,7 @@
 // Zone de dépôt : glisser-déposer ou clic pour choisir un screenshot 3D
 // (SketchUp, Revit, 3ds Max...). Affiche l'aperçu de l'image choisie.
 import { useCallback, useRef, useState } from "react";
-import { ImagePlus, RefreshCw } from "lucide-react";
+import { ImagePlus, Info, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,8 @@ interface UploadDropzoneProps {
   title?: string;
   description?: string;
   icon?: React.ComponentType<{ className?: string }>;
+  /** Affiche une bulle d'aide "3D screenshot" sous la zone (Image tools). */
+  showHint?: boolean;
 }
 
 export function UploadDropzone({
@@ -21,6 +23,7 @@ export function UploadDropzone({
   title = "Drop your 3D screenshot here",
   description = "or click to browse — PNG, JPEG, WebP up to 10 MB",
   icon: Icon = ImagePlus,
+  showHint = false,
 }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -82,6 +85,18 @@ export function UploadDropzone({
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
       />
+      {showHint && !previewUrl && (
+        <div className="flex items-start gap-2 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium text-foreground">What is a 3D screenshot?</span>
+            <span>
+              A raw viewport capture from SketchUp, Revit, 3ds Max or Blender. We keep the geometry
+              and turn it into a photorealistic render.
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

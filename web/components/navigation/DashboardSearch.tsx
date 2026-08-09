@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
-  Camera,
   Image as ImageIcon,
   LayoutGrid,
   Mic,
+  Plus,
   Search,
   Video,
   Wand2,
@@ -19,12 +19,12 @@ import { cn } from "@/lib/utils";
 const TOOL_BY_ID = new Map(TOOLS.map((tool) => [tool.id, tool]));
 
 const QUICK_ACTIONS: Array<{ id: string; label: string; shortcut: string }> = [
-  { id: "screenshot-to-render", label: "Create image", shortcut: "Ctrl⇧I" },
-  { id: "ambiance-change", label: "Edit image", shortcut: "Ctrl⇧E" },
-  { id: "upscale", label: "Image upscaler", shortcut: "Ctrl⇧U" },
-  { id: "video-generator", label: "Create video", shortcut: "Ctrl⇧V" },
-  { id: "clip-editor", label: "Edit clip", shortcut: "Ctrl⇧C" },
-  { id: "voice-generator", label: "Create voiceover", shortcut: "Ctrl⇧A" },
+  { id: "screenshot-to-render", label: "Create image", shortcut: "Ctrl + I" },
+  { id: "ambiance-change", label: "Edit image", shortcut: "Ctrl + E" },
+  { id: "upscale", label: "Image upscaler", shortcut: "Ctrl + U" },
+  { id: "video-generator", label: "Create video", shortcut: "Ctrl + V" },
+  { id: "clip-editor", label: "Edit clip", shortcut: "Ctrl + C" },
+  { id: "voice-generator", label: "Create voiceover", shortcut: "Ctrl + A" },
 ];
 
 const RECENT_KEY = "rs-recent-tools";
@@ -133,31 +133,7 @@ export function DashboardSearch() {
   };
 
   return (
-    <div ref={wrapperRef} className="relative z-50 w-full max-w-xl">
-      <div
-        className={cn(
-          "flex h-12 w-full items-center gap-3 rounded-xl border bg-card px-4 text-sm transition-colors",
-          open && "border-primary/40 ring-2 ring-ring",
-          "hover:border-primary/40 hover:bg-accent"
-        )}
-      >
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onFocus={() => setOpen(true)}
-          placeholder="Ask RenderStudio or find tutorials..."
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <div className="hidden items-center gap-2 sm:flex">
-          <Mic className="h-4 w-4 text-muted-foreground" />
-          <Camera className="h-4 w-4 text-muted-foreground" />
-          <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Ctrl K</kbd>
-        </div>
-      </div>
-
+    <>
       {open && (
         <div
           className="fixed inset-0 z-40 backdrop-blur-sm bg-black/20"
@@ -166,27 +142,131 @@ export function DashboardSearch() {
         />
       )}
 
-      {open && (
-        <div className="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border bg-popover shadow-2xl">
-          <div className="max-h-[60vh] overflow-auto p-2">
-            {normalizedQuery === "" ? (
-              <>
-                {recentTools.length > 0 && (
+      <div ref={wrapperRef} className="relative z-50 w-full max-w-xl">
+        <div
+          className={cn(
+            "flex h-12 w-full items-center gap-3 rounded-xl border bg-card px-4 text-sm transition-colors",
+            open && "border-primary/40 ring-2 ring-ring",
+            "hover:border-primary/40 hover:bg-accent"
+          )}
+        >
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => setOpen(true)}
+            placeholder="Ask RenderStudio or find tutorials..."
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <div className="hidden items-center gap-2 sm:flex">
+            
+            <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Ctrl + K</kbd>
+          </div>
+        </div>
+
+        {open && (
+          <div className="absolute top-full mt-2 w-full overflow-hidden rounded-xl border bg-popover shadow-2xl">
+            <div className="max-h-[60vh] overflow-auto p-2">
+              {normalizedQuery === "" ? (
+                <>
+                  {recentTools.length > 0 && (
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
+                        <span className="text-xs font-medium tracking-wide text-muted-foreground">
+                          RECENTS
+                        </span>
+                        <button
+                          type="button"
+                          onClick={clearRecents}
+                          className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      <div className="space-y-0.5">
+                        {recentTools.map((tool) => (
+                          <ResultRow
+                            key={tool.id}
+                            tool={tool}
+                            suffix={<Plus className="h-3.5 w-3.5" />}
+                            onClick={() => navigateToTool(tool)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mb-3">
-                    <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
-                      <span className="text-xs font-medium tracking-wide text-muted-foreground">
-                        RECENTS
-                      </span>
-                      <button
-                        type="button"
-                        onClick={clearRecents}
-                        className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        Clear
-                      </button>
+                    <div className="px-2 pb-1.5 pt-1 text-xs font-medium tracking-wide text-muted-foreground">
+                      QUICK ACTIONS
                     </div>
                     <div className="space-y-0.5">
-                      {recentTools.map((tool) => (
+                      {QUICK_ACTIONS.map((action) => {
+                        const tool = TOOL_BY_ID.get(action.id);
+                        if (!tool) return null;
+                        return (
+                          <ResultRow
+                            key={action.id}
+                            tool={tool}
+                            label={action.label}
+                            suffix={
+                              <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                {action.shortcut}
+                              </kbd>
+                            }
+                            onClick={() => {
+                              pushRecent(tool.id);
+                              navigate(tool.route);
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="border-t p-2">
+                    <div className="flex flex-wrap gap-2">
+                      <CategoryChip
+                        icon={ImageIcon}
+                        label="Image"
+                        onClick={() => navigate("/app/ai-image-generator")}
+                      />
+                      <CategoryChip
+                        icon={Video}
+                        label="Video"
+                        onClick={() => navigate("/app/ai-video-generator")}
+                      />
+                      <CategoryChip
+                        icon={Mic}
+                        label="Audio"
+                        onClick={() => navigate("/app/voice-generator")}
+                      />
+                      <CategoryChip
+                        icon={LayoutGrid}
+                        label="All tools"
+                        onClick={() => navigate("/app/models")}
+                      />
+                    </div>
+                    <p className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                      <Wand2 className="h-3 w-3" />
+                      Tools. RenderStudio, ChatGPT, Figma, Photoshop, After Effects, and more.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {filteredTools.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 px-3 py-8 text-center">
+                      <Search className="h-8 w-8 text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground">
+                        No tools match “{query}”.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {filteredTools.map((tool) => (
                         <ResultRow
                           key={tool.id}
                           tool={tool}
@@ -195,93 +275,14 @@ export function DashboardSearch() {
                         />
                       ))}
                     </div>
-                  </div>
-                )}
-
-                <div className="mb-3">
-                  <div className="px-2 pb-1.5 pt-1 text-xs font-medium tracking-wide text-muted-foreground">
-                    QUICK ACTIONS
-                  </div>
-                  <div className="space-y-0.5">
-                    {QUICK_ACTIONS.map((action) => {
-                      const tool = TOOL_BY_ID.get(action.id);
-                      if (!tool) return null;
-                      return (
-                        <ResultRow
-                          key={action.id}
-                          tool={tool}
-                          label={action.label}
-                          suffix={
-                            <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                              {action.shortcut}
-                            </kbd>
-                          }
-                          onClick={() => {
-                            pushRecent(tool.id);
-                            navigate(tool.route);
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="border-t p-2">
-                  <div className="flex flex-wrap gap-2">
-                    <CategoryChip
-                      icon={ImageIcon}
-                      label="Image"
-                      onClick={() => navigate("/app/ai-image-generator")}
-                    />
-                    <CategoryChip
-                      icon={Video}
-                      label="Video"
-                      onClick={() => navigate("/app/ai-video-generator")}
-                    />
-                    <CategoryChip
-                      icon={Mic}
-                      label="Audio"
-                      onClick={() => navigate("/app/voice-generator")}
-                    />
-                    <CategoryChip
-                      icon={LayoutGrid}
-                      label="All tools"
-                      onClick={() => navigate("/app/models")}
-                    />
-                  </div>
-                  <p className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
-                    <Wand2 className="h-3 w-3" />
-                    Tools. RenderStudio, ChatGPT, Figma, Photoshop, After Effects, and more.
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                {filteredTools.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center gap-2 px-3 py-8 text-center">
-                    <Search className="h-8 w-8 text-muted-foreground/50" />
-                    <p className="text-sm text-muted-foreground">
-                      No tools match “{query}”.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-0.5">
-                    {filteredTools.map((tool) => (
-                      <ResultRow
-                        key={tool.id}
-                        tool={tool}
-                        suffix={<ArrowUpRight className="h-3.5 w-3.5" />}
-                        onClick={() => navigateToTool(tool)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
 

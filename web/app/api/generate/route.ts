@@ -11,10 +11,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import type { AspectRatio, Feature, QualityTier, Resolution } from "@/lib/ai/types";
+import { requireAuth } from "@/lib/auth";
 import { computeCost, getBalance } from "@/lib/credits";
 import {
   getDefaultProject,
-  getDevUser,
   getProject,
   insertJob,
   insertSourceAsset,
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   const model = optionalString(form, "model"); // choix utilisateur (optionnel)
 
   // --- Projet cible : sélection studio, sinon le projet par défaut ---
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const projectIdField = optionalString(form, "projectId");
   const project = projectIdField
     ? await getProject(user.id, projectIdField)

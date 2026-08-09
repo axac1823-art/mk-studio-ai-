@@ -5,11 +5,11 @@
 // crée la ligne video_jobs et déclenche le workflow worker.
 import { NextRequest, NextResponse } from "next/server";
 
-import { computeVideoCost, resolveVideoMode } from "@/lib/video-utils";
+import { requireAuth } from "@/lib/auth";
 import { getBalance } from "@/lib/credits";
+import { computeVideoCost, resolveVideoMode } from "@/lib/video-utils";
 import {
   getDefaultProject,
-  getDevUser,
   getProject,
   getVideoActionCosts,
   insertVideoJob,
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     attachedMedia.push({ tag: meta.tag, asset_url: storagePath, type: meta.type });
   }
 
-  const user = await getDevUser();
+  const { dbUser: user } = await requireAuth();
   const projectIdField = typeof form.get("projectId") === "string" ? (form.get("projectId") as string) : undefined;
   const project = projectIdField ? await getProject(user.id, projectIdField) : await getDefaultProject(user.id);
   if (!project) {

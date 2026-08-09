@@ -36,10 +36,18 @@ export async function isWorkerConfigured(): Promise<boolean> {
   }
 }
 
+function workerHeaders(): Record<string, string> {
+  const key = process.env.WORKER_API_KEY;
+  return {
+    "Content-Type": "application/json",
+    ...(key ? { "X-Worker-Key": key } : {}),
+  };
+}
+
 async function postStartJob(path: string, jobId: string, bodyKey: string = "job_id"): Promise<void> {
   const res = await fetch(`${baseUrl()}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: workerHeaders(),
     body: JSON.stringify({ [bodyKey]: jobId }),
   });
   if (res.status === 503) throw new WorkerNotConfiguredError();
@@ -75,7 +83,10 @@ export function startUpscaleJob(jobId: string): Promise<void> {
 export async function uploadSource(data: Buffer, mime: string): Promise<string> {
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(data)], { type: mime }), `upload.${mime.split("/")[1] ?? "png"}`);
-  const res = await fetch(`${baseUrl()}/storage/upload`, { method: "POST", body: form });
+  const headers: Record<string, string> = {};
+  const key = process.env.WORKER_API_KEY;
+  if (key) headers["X-Worker-Key"] = key;
+  const res = await fetch(`${baseUrl()}/storage/upload`, { method: "POST", headers, body: form });
   if (!res.ok) throw new Error(`worker /storage/upload failed (${res.status})`);
   const payload = (await res.json()) as { path?: string };
   if (!payload.path) throw new Error("worker /storage/upload: no path");

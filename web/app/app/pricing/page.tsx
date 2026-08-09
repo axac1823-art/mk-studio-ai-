@@ -1,50 +1,60 @@
-import Link from "next/link";
-
-import { Button } from "@/components/ui/button";
+import { requireAuth } from "@/lib/auth";
+import { getLedgerBalance } from "@/lib/db/queries";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Check } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { SubscribeButton } from "./subscribe-button";
+
+export const dynamic = "force-dynamic";
 
 const PLANS = [
   {
     name: "Starter",
+    plan: "starter",
     price: "$19",
     period: "/month",
     description: "Try RenderStudio with a small monthly credit pack.",
     features: ["500 credits / month", "All image tools", "Video generator", "Email support"],
-    cta: "Get Started",
-    href: "/app/dashboard",
     highlighted: false,
   },
   {
     name: "Pro",
+    plan: "pro",
     price: "$49",
     period: "/month",
     description: "Best for freelancers and small studios.",
     features: ["2,000 credits / month", "Priority processing", "All image tools", "Video generator", "Priority support"],
-    cta: "Subscribe",
-    href: "/app/dashboard",
     highlighted: true,
   },
   {
     name: "Studio",
+    plan: "studio",
     price: "$129",
     period: "/month",
     description: "For teams with heavier archviz workflows.",
     features: ["6,000 credits / month", "Team projects", "Priority processing", "All image & video tools", "Dedicated support"],
-    cta: "Contact Sales",
-    href: "/app/dashboard",
     highlighted: false,
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const { dbUser, supabaseUser } = await requireAuth();
+  const balance = await getLedgerBalance(dbUser.id);
+  const displayName = dbUser.display_name || dbUser.full_name || supabaseUser.email || "User";
+
   return (
     <main className="flex min-h-screen w-full flex-col gap-8 p-4 sm:p-6">
-      <header className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight">Pricing</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Simple plans for architectural visualization professionals.
-        </p>
+      <header className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Pricing</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Simple plans for architectural visualization professionals.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{displayName}</span>
+          <Badge variant="secondary">{balance.toLocaleString()} credits</Badge>
+        </div>
       </header>
 
       <div className="grid w-full max-w-5xl gap-6 self-center sm:grid-cols-2 lg:grid-cols-3">
@@ -70,17 +80,11 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <Button asChild variant={plan.highlighted ? "default" : "outline"} className="w-full">
-                <Link href={plan.href}>{plan.cta}</Link>
-              </Button>
+              <SubscribeButton plan={plan.plan} highlighted={plan.highlighted} />
             </CardContent>
           </Card>
         ))}
       </div>
-
-      <p className="text-center text-xs text-muted-foreground">
-        Prices are illustrative — Stripe billing integration is coming in the next milestone.
-      </p>
     </main>
   );
 }
