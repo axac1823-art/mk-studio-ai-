@@ -53,6 +53,7 @@ export function JobNotificationsProvider({ children }: { children: React.ReactNo
     try {
       const res = await fetch("/api/jobs/notifications", { cache: "no-store" });
       if (!res.ok) return;
+      console.log("Fetched jobs notifications",res);
       const data = (await res.json()) as { jobs: JobNotification[] };
       const previous = initialLoadDone.current ? previousJobsRef.current : [];
       const previousById = new Map(previous.map((j) => [j.id, j]));
