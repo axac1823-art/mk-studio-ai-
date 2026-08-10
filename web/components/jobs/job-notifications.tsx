@@ -55,31 +55,36 @@ export function JobNotificationsProvider({ children }: { children: React.ReactNo
       if (!res.ok) return;
       console.log("Fetched jobs notifications",res);
       const data = (await res.json()) as { jobs: JobNotification[] };
-      const previous = initialLoadDone.current ? previousJobsRef.current : [];
-      const previousById = new Map(previous.map((j) => [j.id, j]));
+      const previous = previousJobsRef.current;
+      const previousById = new Map(previous.map((j) => [j.id, j.status]));
 
       previousJobsRef.current = data.jobs;
       setJobs(data.jobs);
       setIsLoading(false);
-      initialLoadDone.current = true;
 
       // Toasts uniquement pour les jobs qui viennent de passer à complete.
-      for (const job of data.jobs) {
-        if (job.status !== "complete") continue;
-        const prev = previousById.get(job.id);
-        if (!prev || prev.status !== "complete") {
-          const label = job.type === "video" ? "Video generation" : "Render";
-          toast.success(`${label} complete`, {
-            description: "Your result is ready in Projects.",
-            action: {
-              label: "View",
-              onClick: () => {
-                window.location.href = "/app/projects";
+      // On ignore le premier fetch (page fraîchement chargée) pour éviter
+      // d'inonder l'utilisateur de notifications historiques.
+      if (initialLoadDone.current) {
+        for (const job of data.jobs) {
+          if (job.status !== "complete") continue;
+          const prevStatus = previousById.get(job.id);
+          if (!prevStatus || prevStatus !== "complete") {
+            const label = job.type === "video" ? "Video generation" : "Render";
+            toast.success(`${label} complete`, {
+              description: "Your result is ready in Projects.",
+              action: {
+                label: "View",
+                onClick: () => {
+                  window.location.href = "/app/projects";
+                },
               },
-            },
-          });
+            });
+          }
         }
       }
+
+      initialLoadDone.current = true;
     } catch {
       // silent fail
     }
@@ -88,7 +93,7 @@ export function JobNotificationsProvider({ children }: { children: React.ReactNo
   useEffect(() => {
     setSeenIds(readSeenIds());
     fetchJobs();
-    const interval = setInterval(fetchJobs, 10000);
+    const interval = setInterval(fetchJobs, 100000);
     return () => clearInterval(interval);
   }, [fetchJobs]);
 

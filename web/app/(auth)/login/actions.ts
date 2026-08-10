@@ -21,7 +21,7 @@ export async function signInWithPassword(
 ): Promise<{ error?: string; field?: string } | void> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const redirectTo = String(formData.get("redirectTo") ?? "/app/dashboard");
+  const redirectTo = String(formData.get("redirectTo") ?? "/");
 
   if (!email || !password) {
     return { error: "Email and password are required." };

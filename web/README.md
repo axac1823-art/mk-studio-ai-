@@ -17,7 +17,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Ouvrir `http://localhost:3000/app/dashboard`.
+Ouvrir `http://localhost:3000`.
 
 ## Build + lint
 
@@ -37,7 +37,7 @@ npm run purge:trash
 
 ```
 app/
-  page.tsx                          # redirect vers /app/dashboard
+  page.tsx                          # landing si déconnecté, dashboard si connecté
   layout.tsx                        # fonts, metadata, thème sombre
   globals.css                       # variables CSS shadcn/ui
   app/

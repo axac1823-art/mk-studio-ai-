@@ -63,6 +63,7 @@ STRIPE_PRICE_PRO=                 # price ID Stripe du plan Pro
 STRIPE_PRICE_STUDIO=              # price ID Stripe du plan Studio
 WORKER_API_KEY=                   # secret partagé /web ↔ /worker
 AUTH_DEBUG=false                  # fallback dev user si true (local only)
+NEXT_PUBLIC_SESSION_TIMEOUT_MINUTES=30  # délai d'inactivité avant déconnexion auto (minutes)
 ```
 
 ### `/worker/.env`

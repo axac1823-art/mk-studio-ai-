@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/reset-password", request.url));
   }
 
-  return NextResponse.redirect(new URL("/app/dashboard", request.url));
+  return NextResponse.redirect(new URL("/", request.url));
 }
 
 async function syncUserFromAuth(authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) {

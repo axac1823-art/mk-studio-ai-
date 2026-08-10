@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Image, Mic, Maximize, Sparkles, Video } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ModelInfo {
   key: string;
@@ -53,8 +54,11 @@ export default function ModelsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {sections.map((s) => (
             <Card key={s.key}>
-              <CardContent className="p-6">
-                <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+              <CardHeader>
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-full" />
               </CardContent>
             </Card>
           ))}
@@ -74,10 +78,10 @@ export default function ModelsPage() {
                     <p className="text-sm text-muted-foreground">No models configured.</p>
                   ) : (
                     items.map((m) => (
-                      <div key={m.key} className="rounded-md border p-2">
+                      <Card key={m.key} className="bg-muted/40 p-2">
                         <p className="text-sm font-medium">{m.name}</p>
-                        <p className="text-xs text-muted-foreground">{m.description}</p>
-                      </div>
+                        <CardDescription>{m.description}</CardDescription>
+                      </Card>
                     ))
                   )}
                 </CardContent>

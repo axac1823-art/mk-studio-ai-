@@ -13,7 +13,7 @@ import { signInWithPassword, signInWithGoogle, signUp } from "@/app/(auth)/login
 
 export function AuthForm() {
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirectTo") ?? "/app/dashboard";
+  const redirectTo = searchParams.get("redirectTo") ?? "/";
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");

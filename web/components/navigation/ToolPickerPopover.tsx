@@ -18,16 +18,19 @@ interface ToolPickerPopoverProps {
   children: React.ReactNode;
   defaultTab?: ToolCategory;
   placement?: "bottom" | "right";
+  /** If set, only tools from this category are shown and tabs are hidden. */
+  category?: ToolCategory;
 }
 
 export function ToolPickerPopover({
   children,
   defaultTab = "image",
   placement = "bottom",
+  category,
 }: ToolPickerPopoverProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<ToolCategory>(defaultTab);
+  const [activeTab, setActiveTab] = useState<ToolCategory>(category ?? defaultTab);
   const [query, setQuery] = useState("");
   const [rect, setRect] = useState<DOMRect | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
@@ -35,10 +38,10 @@ export function ToolPickerPopover({
 
   useEffect(() => {
     if (open) {
-      setActiveTab(defaultTab);
+      setActiveTab(category ?? defaultTab);
       setQuery("");
     }
-  }, [open, defaultTab]);
+  }, [open, defaultTab, category]);
 
   useEffect(() => {
     if (!open) return;
@@ -124,23 +127,25 @@ export function ToolPickerPopover({
       aria-label="Tool picker"
     >
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          {TOOL_CATEGORIES.map((category) => (
-            <button
-              key={category.id}
-              type="button"
-              onClick={() => setActiveTab(category.id)}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                activeTab === category.id
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-            >
-              {category.label}
-            </button>
-          ))}
-        </div>
+        {!category && (
+          <div className="flex items-center gap-2">
+            {TOOL_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setActiveTab(cat.id)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  activeTab === cat.id
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                )}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

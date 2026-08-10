@@ -133,6 +133,9 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   current_period_end timestamptz
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_user_id_unique
+  ON subscriptions(user_id);
+
 -- Video Generator : jobs vidéo dédiés (mode détecté côté serveur).
 CREATE TABLE IF NOT EXISTS video_jobs (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),

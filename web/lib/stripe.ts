@@ -30,8 +30,24 @@ export async function getOrCreateStripeCustomer(
   const existing = await sql<Array<{ stripe_customer_id: string | null }>>`
     SELECT stripe_customer_id FROM subscriptions WHERE user_id = ${userId} LIMIT 1
   `;
-  const customerId = existing[0]?.stripe_customer_id;
-  if (customerId) return customerId;
+  const storedCustomerId = existing[0]?.stripe_customer_id;
+
+  // Vérifie que le customer stocké existe toujours dans le compte Stripe courant.
+  // Si la clé Stripe a changé (test/live ou autre compte), l'ID est invalide :
+  // on en recrée un nouveau et on met à jour la DB.
+  if (storedCustomerId) {
+    try {
+      await getStripe().customers.retrieve(storedCustomerId);
+      return storedCustomerId;
+    } catch (err) {
+      const stripeError = err as { code?: string; type?: string };
+      if (stripeError.code === "resource_missing" || stripeError.type === "StripeInvalidRequestError") {
+        console.warn("Stored Stripe customer not found, recreating:", storedCustomerId);
+      } else {
+        throw err;
+      }
+    }
+  }
 
   const customer = await getStripe().customers.create({
     email,
@@ -49,7 +65,14 @@ export async function getOrCreateStripeCustomer(
 
 interface SubscriptionLike {
   status: string;
-  current_period_end: number;
+  current_period_end: number | string | null | undefined;
+}
+
+function toUnixTimestamp(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "string" ? Number(value) : value;
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
 }
 
 export async function syncSubscriptionFromStripe(
@@ -59,11 +82,14 @@ export async function syncSubscriptionFromStripe(
   plan: string
 ) {
   const status = subscription.status;
-  const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+  const periodEndUnix = toUnixTimestamp(subscription.current_period_end);
+  const currentPeriodEnd = periodEndUnix
+    ? new Date(periodEndUnix * 1000).toISOString()
+    : null;
 
   await sql`
     INSERT INTO subscriptions (user_id, status, plan, stripe_customer_id, current_period_end)
-    VALUES (${userId}, ${status}, ${plan}, ${stripeCustomerId}, ${currentPeriodEnd}::timestamptz)
+    VALUES (${userId}, ${status}, ${plan}, ${stripeCustomerId}, ${currentPeriodEnd})
     ON CONFLICT (user_id) DO UPDATE SET
       status = EXCLUDED.status,
       plan = EXCLUDED.plan,

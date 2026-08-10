@@ -67,7 +67,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
       <CardContent className="flex flex-col gap-3">
         {result.status === "busy" && (
           <>
-            <Skeleton className="aspect-[4/3] w-full" />
+            <Skeleton className=" aspect-[4/3] w-full" />
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               {STAGE_LABELS[result.stage ?? ""] ?? "Working on it"} — this can take a moment.

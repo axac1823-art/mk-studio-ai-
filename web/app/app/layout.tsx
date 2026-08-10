@@ -1,8 +1,9 @@
-// Layout de la section /app : sidebar fixe à gauche, contenu à droite.
-// Le home (/app/dashboard) et les pages projet/studio s'y insèrent telles
-// quelles — le layout ne fournit que le cadre et la navigation latérale.
-import { AppSidebar } from "@/components/navigation/Sidebar";
+// Layout de la section /app : header fixe en haut, sidebar repliable à gauche.
+// Le shell gère l'état d'ouverture de la sidebar ; le reste du contenu
+// s'insère dans <main>.
 import { JobNotificationsProvider } from "@/components/jobs/job-notifications";
+import { AppShell } from "@/components/navigation/app-shell";
+import { SessionTimeout } from "@/components/auth/session-timeout";
 import { requireAuth } from "@/lib/auth";
 import { getLedgerBalance, getAppConfigInt } from "@/lib/db/queries";
 
@@ -21,10 +22,10 @@ export default async function AppLayout({
 
   return (
     <JobNotificationsProvider>
-      <div className="flex min-h-screen w-full">
-        <AppSidebar user={dbUser} balance={balance} lowThreshold={lowThreshold} />
-        <div className="min-w-0 flex-1">{children}</div>
-      </div>
+      <SessionTimeout />
+      <AppShell user={dbUser} balance={balance} lowThreshold={lowThreshold}>
+        {children}
+      </AppShell>
     </JobNotificationsProvider>
   );
 }

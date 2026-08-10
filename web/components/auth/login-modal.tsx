@@ -4,6 +4,9 @@ import { useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { AuthForm } from "./auth-form";
 import { cn } from "@/lib/utils";
 
@@ -54,21 +57,23 @@ export function LoginModal({ standalone = false, onClose }: LoginModalProps) {
       aria-modal="true"
       aria-label="Sign in"
     >
-      <div
+      <Card
         className={cn(
-          "relative z-10 mx-4 w-full max-w-5xl overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl",
+          "relative z-10 mx-4 w-full max-w-5xl overflow-hidden rounded-2xl border-border bg-card shadow-2xl",
           standalone ? "max-h-[min(640px,90vh)]" : "max-h-[90vh] overflow-y-auto"
         )}
       >
         {!standalone && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={handleClose}
-            className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-surface-light text-muted-foreground transition-colors hover:text-foreground"
+            className="absolute right-4 top-4 z-20 h-9 w-9 rounded-full text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
-          </button>
+          </Button>
         )}
 
         <div className="flex min-h-[560px]">
@@ -88,8 +93,10 @@ export function LoginModal({ standalone = false, onClose }: LoginModalProps) {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
             <div className="absolute bottom-10 left-8 right-8 text-foreground">
-              <p className="text-sm font-medium text-primary">New</p>
-              <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-tight">
+              <Badge variant="outline" className="mb-2">
+                New
+              </Badge>
+              <h2 className="text-2xl font-semibold leading-tight tracking-tight">
                 Photorealistic renders in seconds
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -98,7 +105,7 @@ export function LoginModal({ standalone = false, onClose }: LoginModalProps) {
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Click outside to close */}
       {!standalone && (

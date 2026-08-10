@@ -90,7 +90,7 @@ Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 /                         <- racine : docker-compose, schéma DB, README
 ├── web/                  <- Next.js 14 App Router + routes API
 │   ├── app/
-│   │   ├── page.tsx                 # redirect vers /app/dashboard
+│   │   ├── page.tsx                 # landing si déconnecté, dashboard si connecté
 │   │   ├── layout.tsx               # fonts, metadata, thème sombre, toaster
 │   │   ├── middleware.ts            # protection /app/* + Supabase SSR
 │   │   ├── app/dashboard/page.tsx   # home / dashboard
