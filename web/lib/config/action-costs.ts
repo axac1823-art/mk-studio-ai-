@@ -10,6 +10,10 @@ import { computeVideoCost, type VideoMode } from "@/lib/video-utils";
 export interface CostsConfig {
   baseCosts: Record<string, number>;
   videoCosts: Record<string, number>;
+  margins: Record<string, number>;
+  videoMargins: Record<string, number>;
+  creditConversionRate: number;
+  modelCosts: Record<string, Record<string, number>>;
   qualityMultiplier: Record<string, number>;
   resolutionSurcharge: Record<string, number>;
   durationMultiplier: Record<string, number>;
@@ -22,6 +26,7 @@ export interface DisplayCostInput {
   quantity: number;
   durationSeconds?: number;
   upscaleFactor?: 2 | 4;
+  selectedModel?: string;
 }
 
 export async function fetchCostsConfig(): Promise<CostsConfig> {
