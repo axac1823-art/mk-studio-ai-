@@ -15,7 +15,7 @@ from providers.http_helpers import ProviderError, require_env
 
 _BASE = "https://api.elevenlabs.io/v1"
 DEFAULT_MODEL = "eleven_multilingual_v2"
-DEFAULT_VOICE = "21m00Tcm4TlvDq8ikWAM"  # Rachel — voix par défaut publique
+DEFAULT_VOICE = "CwhRBWXzGAHq8TQ4Fs17"  # Roger — voix premade actuelle (vérifier via /v1/voices si la clé change)
 
 
 def is_configured() -> bool:
