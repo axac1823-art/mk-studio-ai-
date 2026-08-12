@@ -79,6 +79,77 @@ Ouvrir `http://localhost:3000/app/dashboard`.
 
 ---
 
+## Alternatives pour la base de données
+
+### PostgreSQL local (sans Docker)
+
+Si tu préfères utiliser une installation PostgreSQL native sur Windows :
+
+1. Installe PostgreSQL 16 : [https://www.postgresql.org/download/windows/](https://www.postgresql.org/download/windows/)
+2. Crée l’utilisateur et la base :
+
+```sql
+CREATE USER renderstudio WITH PASSWORD 'renderstudio' SUPERUSER;
+CREATE DATABASE renderstudio OWNER renderstudio;
+```
+
+3. Mets à jour `DATABASE_URL` dans les deux fichiers d’environnement :
+
+```env
+DATABASE_URL=postgresql://renderstudio:renderstudio@127.0.0.1:5432/renderstudio
+```
+
+4. Applique le schéma directement :
+
+```bash
+psql -U renderstudio -d renderstudio -h 127.0.0.1 -p 5432 -f db/schema.sql
+```
+
+Sous PowerShell, si `psql` n’est pas dans le PATH, utilise celui fourni avec PostgreSQL ou ajoute-le manuellement. Pas besoin de `docker compose` dans ce cas.
+
+### Supabase (production recommandée)
+
+Supabase fournit PostgreSQL + Auth + Storage. Le projet utilise déjà Supabase Auth, donc seule la connexion base de données change en production.
+
+1. Crée un projet sur [supabase.com](https://supabase.com) et note le **project ref**.
+2. Récupère la **Connection string** dans Project Settings → Database.
+3. Utilise le port **5432** (session directe) pour appliquer les migrations, et le port **6543** (pooler transactionnel) pour le runtime.
+
+**Appliquer le schéma sur Supabase :**
+
+```bash
+PGPASSWORD=<password> psql \
+  -h aws-0-eu-west-1.pooler.supabase.com \
+  -p 5432 \
+  -U postgres.<project_ref> \
+  -d postgres \
+  -f db/schema.sql
+```
+
+**Variables d’environnement production :**
+
+```env
+# /web/.env.local + /worker/.env
+DATABASE_URL=postgresql://postgres.<project_ref>:<password>@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+
+# /web/.env.local uniquement
+NEXT_PUBLIC_SUPABASE_URL=https://<project_ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+```
+
+4. Déploie le worker sur un hôte séparé (Render, Railway, Fly.io...) et ajuste :
+
+```env
+WORKER_BASE_URL=https://worker.yourdomain.com
+WORKER_PUBLIC_URL=https://worker.yourdomain.com
+WORKER_API_KEY=<secret-partagé-fort>
+```
+
+5. Pour le stockage des fichiers générés en production, remplace `worker/storage/` par **Supabase Storage** (bucket public `renders`) ou S3. Le fichier `worker/storage.py` est conçu pour être remplacé par un adaptateur distant sans toucher au reste du code.
+
+---
+
 ## Variables d'environnement
 
 Voir [`ENVIRONMENT.md`](./ENVIRONMENT.md) pour la répartition complète.
