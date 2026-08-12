@@ -66,6 +66,14 @@ export function startAudioJob(jobId: string): Promise<void> {
   return postStartJob("/audio/generate", jobId);
 }
 
+export function startLipSyncJob(jobId: string): Promise<void> {
+  return postStartJob("/lip-sync/generate", jobId);
+}
+
+export function start3DGeneratorJob(jobId: string): Promise<void> {
+  return postStartJob("/3d-generator/generate", jobId);
+}
+
 export function startVideoEditJob(jobId: string): Promise<void> {
   return postStartJob("/video/edit", jobId);
 }

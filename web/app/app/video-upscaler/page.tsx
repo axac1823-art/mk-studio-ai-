@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Maximize2, Video } from "lucide-react";
+import { Loader2, Maximize2, Upload, Video, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,16 +16,21 @@ interface AssetSummary {
 }
 
 const POLL_INTERVAL_MS = 2500;
+const VIDEO_MIME_TYPES = "video/mp4,video/webm,video/quicktime";
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
 
 export default function VideoUpscalerPage() {
   const [assets, setAssets] = useState<AssetSummary[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
   const [factor, setFactor] = useState<2 | 4>(2);
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedAsset = assets.find((a) => a.id === selectedAssetId);
@@ -55,6 +60,7 @@ export default function VideoUpscalerPage() {
     ? computeDisplayCost(costsConfig, { feature: "video_upscale", quality: "standard", resolution: "1K", quantity: 1, upscaleFactor: factor })
     : 0;
   const hasEnoughCredits = balance === null || balance >= cost;
+  const hasSource = Boolean(selectedAssetId || uploadedFile);
 
   const pollJob = useCallback(
     (jobId: string) => {
@@ -85,14 +91,51 @@ export default function VideoUpscalerPage() {
     [stopPolling, cost]
   );
 
+  const handleFileChange = (file: File | null) => {
+    setError(null);
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      setError("Please upload a video file (MP4, WebM or QuickTime).");
+      return;
+    }
+    if (file.size > MAX_VIDEO_SIZE_BYTES) {
+      setError("Video must be under 100 MB.");
+      return;
+    }
+    setSelectedAssetId(null);
+    setUploadedFile(file);
+    setUploadPreviewUrl(URL.createObjectURL(file));
+    setResultUrl(null);
+  };
+
+  const clearUpload = () => {
+    setUploadedFile(null);
+    setUploadPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSelectAsset = (id: string) => {
+    setSelectedAssetId(id);
+    clearUpload();
+    setResultUrl(null);
+    setError(null);
+  };
+
   const handleUpscale = async () => {
-    if (!selectedAssetId || isBusy || !hasEnoughCredits) return;
+    if (!hasSource || isBusy || !hasEnoughCredits) return;
     setError(null);
     setResultUrl(null);
 
     const form = new FormData();
-    form.append("assetId", selectedAssetId);
     form.append("factor", String(factor));
+    if (uploadedFile) {
+      form.append("video", uploadedFile);
+    } else if (selectedAssetId) {
+      form.append("assetId", selectedAssetId);
+    }
 
     try {
       const res = await fetch("/api/video/upscale", { method: "POST", body: form });
@@ -112,6 +155,12 @@ export default function VideoUpscalerPage() {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl);
+    };
+  }, [uploadPreviewUrl]);
+
   return (
     <main className="flex min-h-screen w-full flex-col">
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
@@ -128,18 +177,20 @@ export default function VideoUpscalerPage() {
             <CardContent className="flex flex-col gap-4 p-4">
               <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium">Select a video</span>
-                <div className="max-h-60 overflow-y-auto rounded-md border">
+                <div className={cn("max-h-60 overflow-y-auto rounded-md border", uploadedFile && "opacity-50")}>
                   {assets.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">No videos available. Generate one first.</p>
+                    <p className="p-3 text-sm text-muted-foreground">No videos available yet.</p>
                   ) : (
                     assets.map((asset) => (
                       <button
                         key={asset.id}
                         type="button"
-                        onClick={() => setSelectedAssetId(asset.id)}
+                        disabled={Boolean(uploadedFile) || isBusy}
+                        onClick={() => handleSelectAsset(asset.id)}
                         className={cn(
                           "flex w-full items-center gap-2 p-2 text-left text-sm transition-colors",
-                          selectedAssetId === asset.id ? "bg-accent" : "hover:bg-accent/60"
+                          selectedAssetId === asset.id ? "bg-accent" : "hover:bg-accent/60",
+                          (uploadedFile || isBusy) && "pointer-events-none"
                         )}
                       >
                         <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -148,6 +199,41 @@ export default function VideoUpscalerPage() {
                     ))
                   )}
                 </div>
+              </div>
+
+              <div className="relative flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Or upload a video</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={VIDEO_MIME_TYPES}
+                  disabled={isBusy}
+                  onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-md border border-dashed px-4 py-3 text-sm transition-colors hover:bg-accent",
+                    selectedAssetId && "opacity-50"
+                  )}
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadedFile ? uploadedFile.name : "Choose video file"}
+                </button>
+                {uploadedFile && (
+                  <button
+                    type="button"
+                    onClick={clearUpload}
+                    disabled={isBusy}
+                    className="absolute right-2 top-6 rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 100 MB</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -179,7 +265,7 @@ export default function VideoUpscalerPage() {
                 <Button
                   type="button"
                   onClick={handleUpscale}
-                  disabled={!selectedAssetId || isBusy || !hasEnoughCredits}
+                  disabled={!hasSource || isBusy || !hasEnoughCredits}
                   className="w-full gap-2"
                 >
                   {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Maximize2 className="h-4 w-4" />}
@@ -202,6 +288,11 @@ export default function VideoUpscalerPage() {
               <span className="text-sm font-medium">Result</span>
               <video src={resultUrl} controls className="w-full rounded-xl bg-black" />
             </div>
+          ) : uploadPreviewUrl ? (
+            <div className="flex w-full max-w-4xl flex-col gap-3">
+              <span className="text-sm font-medium">Source</span>
+              <video src={uploadPreviewUrl} controls className="w-full rounded-xl bg-black" />
+            </div>
           ) : selectedAsset ? (
             <div className="flex w-full max-w-4xl flex-col gap-3">
               <span className="text-sm font-medium">Source</span>
@@ -214,7 +305,7 @@ export default function VideoUpscalerPage() {
               </div>
               <div>
                 <p className="text-lg font-semibold">Upscale a video</p>
-                <p className="text-sm text-muted-foreground">Select a video from your assets and choose a factor.</p>
+                <p className="text-sm text-muted-foreground">Select a video from your assets or upload one.</p>
               </div>
             </div>
           )}

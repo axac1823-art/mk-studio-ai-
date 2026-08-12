@@ -10,8 +10,8 @@ import { ImageStudioWorkspace } from "@/components/studio/image-studio-workspace
 import { STUDIO_TABS, type StudioTab } from "@/lib/features";
 
 function resolveInitialTab(param: string | null): StudioTab {
-  if (!param) return "print_render";
-  return STUDIO_TABS.some((tab) => tab.id === param) ? (param as StudioTab) : "print_render";
+  if (!param) return "text_to_image";
+  return STUDIO_TABS.some((tab) => tab.id === param) ? (param as StudioTab) : "text_to_image";
 }
 
 function StudioWithParams() {

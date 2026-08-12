@@ -55,11 +55,15 @@ Trois principes d'architecture à respecter dans toute modification :
    juillet 2026) : Magic Hour, plateforme AGRÉGATRICE, est câblée comme
    fournisseur `magichour` (image : flux-2-klein épinglé, éligible free
    tier ; vidéo : routage `default`) — ne pas ajouter d'autre agrégateur
-   sans décision explicite. Le catalogue `lib/ai/catalog.ts`
+   sans décision explicite. Le catalogue `worker/catalog.py`
    (feature -> candidats
-   ordonnés) et les adaptateurs `lib/ai/providers/` sont le centre de
+   ordonnés) et les adaptateurs `worker/providers/` sont le centre de
    l'architecture : changer de fournisseur/modèle = modifier UNE entrée
    du catalogue (+ éventuellement son adaptateur), jamais de code ailleurs.
+   Chaque candidat porte un `cost_per_generation` (coût réel provider) et
+   la sélection "Auto" choisit le moins cher satisfaisant le tier qualité.
+   Le prix utilisateur en crédits découle de ce coût × `margin_multiplier`
+   (table `action_costs` / `video_action_costs`).
 2. **Les clés API ne quittent JAMAIS le serveur.** Tous les appels modèles
    passent par des Route Handlers (`app/api/...`) ; les clés fournisseurs
    (`BFL_API_KEY`, `GOOGLE_API_KEY`...) ne sont lues que par les
@@ -140,7 +144,7 @@ Il n'y a pas de `src/` : l'App Router est à la racine dans `app/`.
 │   ├── config.py         # variables d'environnement
 │   ├── catalog.py        # MODEL_CATALOG feature -> candidats
 │   ├── providers/        # un fichier = un provider officiel (bfl, google,
-│   │                     #   kling, runway, openai, magichour, upscale, elevenlabs),
+│   │                     #   kling, runway, openai, magichour, removebg,
 │   │                     #   upscale, elevenlabs)
 │   ├── workflows/        # image_render.py, video.py, upscale.py, audio.py,
 │   │                     #   video_edit.py, video_upscale.py, common.py
@@ -282,15 +286,17 @@ Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
   `ENVIRONMENT.md`.
 - **Navigation home + popover d'outils** : outils image (`/app/ai-image-generator`,
   `/app/ambiance-change`, `/app/exterior-to-interior`, `/app/plan-to-render`,
-  `/app/upscale`, `/app/multi-angle`), vidéo (`/app/ai-video-generator`,
+  `/app/upscale`, `/app/multi-angle`, `/app/image-extender`, `/app/variations`,
+  `/app/background-remover`), vidéo (`/app/ai-video-generator`,
   `/app/video-upscaler`, `/app/clip-editor`, `/app/video-project-editor`),
   audio (`/app/voice-generator`), et modèles (`/app/models`). Le dashboard
   `/app/dashboard` est le portail d'entrée avec `ToolPickerPopover` partagé.
-- ⚠️ **Les adaptateurs fournisseurs n'ont pas encore été validés contre les
-  API réelles** (aucune clé configurée au moment de l'écriture) : chaque
-  `modelId` est indicatif — vérifier la doc du fournisseur au premier
-  branchement de clé. Le `model_name` exact de **Kling v3** est à
-  confirmer dans la console Kling.
+- Un audit des adaptateurs providers a été réalisé et plusieurs corrections
+  appliquées (BFL : endpoint `.ai` et états de polling ; Google : modèle
+  `gemini-3-pro-image` ; Kling : corps de requête legacy et JWT ; Runway :
+  suppression de `endImage` non supporté ; ElevenLabs : voix par défaut
+  mise à jour). L'utilitaire `worker/scripts/audit_providers.py` permet de
+  relancer les tests end-to-end quand une clé ou un provider change.
 - **Recadrage MVP** : agrégateur vertical archviz/immobilier — les outils
   ajoutés (Voice Generator, Video Editor, Video Upscaler) restent orientés
   production multimédia de présentation. Le sélecteur de modèle reste

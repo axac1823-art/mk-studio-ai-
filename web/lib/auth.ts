@@ -27,9 +27,17 @@ export async function getSupabaseClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
+          // En Server Component les cookies sont en lecture seule ; seuls
+          // les Route Handlers / Server Actions peuvent écrire. On ignore
+          // silencieusement les écritures interdites pour éviter le crash
+          // lors du refresh implicite du token par Supabase SSR.
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {
+            // ignore
+          }
         },
       },
     }

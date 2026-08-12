@@ -12,6 +12,9 @@ import type { PresetMeta } from "@/lib/presets";
 interface ImageFeaturePanelProps {
   previewUrl: string | null;
   onFileSelected: (file: File) => void;
+  /** L'upload est-il optionnel ? (text-to-image : l'image guide le style). */
+  uploadOptional?: boolean;
+  uploadLabel?: string;
   /** Presets de la fonction (ex. ambiances Mood) — omis si la fonction
    *  n'en a pas (Exterior -> Interior en V1). */
   options?: PresetMeta[];
@@ -25,6 +28,8 @@ interface ImageFeaturePanelProps {
 export function ImageFeaturePanel({
   previewUrl,
   onFileSelected,
+  uploadOptional,
+  uploadLabel,
   options,
   optionsLabel,
   optionId,
@@ -34,7 +39,15 @@ export function ImageFeaturePanel({
 }: ImageFeaturePanelProps) {
   return (
     <div className="flex flex-col gap-4">
-      <UploadDropzone previewUrl={previewUrl} onFileSelected={onFileSelected} />
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">
+          {uploadLabel ?? "Source image"}
+          {uploadOptional && (
+            <span className="ml-1 text-xs font-normal text-muted-foreground">(optional)</span>
+          )}
+        </span>
+        <UploadDropzone previewUrl={previewUrl} onFileSelected={onFileSelected} />
+      </div>
       {options && optionId !== undefined && onOptionChange && (
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">{optionsLabel ?? "Preset"}</span>

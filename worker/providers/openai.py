@@ -85,6 +85,37 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
     return f"data:image/jpeg;base64,{b64}"
 
 
+def _run_image_generation(model_id: str, input_: dict) -> str:
+    """OpenAI text-to-image : POST /v1/images/generations (JSON)."""
+    response = httpx.post(
+        f"{BASE_URL}/images/generations",
+        headers={**_headers(), "Content-Type": "application/json"},
+        json={
+            "model": model_id,
+            "prompt": str(input_.get("prompt") or ""),
+            "size": str(input_.get("size") or "auto"),
+            "quality": str(input_.get("quality") or "auto"),
+            "n": 1,
+            "output_format": "png",
+        },
+        timeout=300,
+    )
+    if response.status_code >= 400:
+        raise ProviderError(
+            f"POST {BASE_URL}/images/generations failed ({response.status_code}): {response.text[:300]}",
+            response.status_code,
+        )
+    data = response.json()
+    items = data.get("data") or []
+    b64 = items[0].get("b64_json") if items else None
+    url = items[0].get("url") if items else None
+    if b64:
+        return f"data:image/png;base64,{b64}"
+    if url:
+        return url
+    raise ProviderError("openai: no image in images/generations response")
+
+
 def _run_video(model_id: str, input_: dict, timeout_ms: int) -> dict:
     job = post_json(
         f"{BASE_URL}/videos",
@@ -122,13 +153,17 @@ def _run_video(model_id: str, input_: dict, timeout_ms: int) -> dict:
 
 def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
     """Contrat provider : le model_id détermine l'endpoint officiel appelé
-    (images vs vidéos) — garde-fou si le catalogue évolue."""
+    (images edits/generations vs vidéos) — garde-fou si le catalogue évolue."""
     if model_id.startswith("sora"):
         return _run_video(model_id, input_, timeout_ms)
     try:
         count = max(1, int(input_.get("quantity") or 1))
     except (TypeError, ValueError):
         count = 1
+    # Text-to-image : aucune image d'entrée -> /images/generations.
+    images = input_.get("images")
+    has_images = isinstance(images, list) and len(images) > 0
+    runner = _run_image_edit if has_images else _run_image_generation
     with ThreadPoolExecutor(max_workers=count) as pool:
-        urls = list(pool.map(lambda _: _run_image_edit(model_id, input_), range(count)))
+        urls = list(pool.map(lambda _: runner(model_id, input_), range(count)))
     return {"images": [{"url": url} for url in urls]}

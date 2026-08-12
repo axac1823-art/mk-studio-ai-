@@ -37,6 +37,7 @@ def run(job: dict) -> None:
                 asset_id,
                 int(input_.get("creditCost") or 0),
                 model_used="elevenlabs",
+                provider_cost_cents=elevenlabs.COST_PER_GENERATION_CENTS,
             )
     except Exception as err:
         with db.connect() as conn:

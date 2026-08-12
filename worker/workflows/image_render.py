@@ -44,6 +44,7 @@ def run(job: dict) -> None:
                 result_asset_id,
                 int(input_.get("creditCost") or 0),
                 outcome["winner"].key,
+                outcome["winner"].cost_per_generation,
             )
         except Exception as err:  # AllModelsFailedError incluse
             fail_job(conn, job, err)

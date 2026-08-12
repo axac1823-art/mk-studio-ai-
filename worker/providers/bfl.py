@@ -20,7 +20,7 @@ from providers.http_helpers import (
     require_env,
 )
 
-BASE_URL = "https://api.bfl.ml"
+BASE_URL = "https://api.bfl.ai"
 
 
 def _headers() -> dict:
@@ -44,7 +44,10 @@ def _run_one(model_id: str, payload: dict, timeout_ms: int) -> str:
 
     def extract_error(status):
         state = status.get("status")
-        return f"bfl task {state}" if state and state not in ("Pending", "Ready") else None
+        # États terminaux d'erreur documentés ; "Reasoning" et "Generating"
+        # sont des états intermédiaires valides.
+        terminal_errors = ("Error", "Request Moderated", "Content Moderated", "Task not found")
+        return f"bfl task {state}" if state in terminal_errors else None
 
     return poll_until_done(fetch_status, extract_done, extract_error, timeout_ms)
 

@@ -13,10 +13,13 @@ export interface VideoModelOption {
   key: string;
   name: string;
   description: string;
+  configured: boolean;
   supportsTextToVideo: boolean;
   supportsImageToVideo: boolean;
   supportsStartEndFrame: boolean;
   supportsMultiReference: boolean;
+  supportsVideoToVideo: boolean;
+  supportsRelight: boolean;
 }
 
 interface ModelSelectProps {
@@ -32,6 +35,8 @@ const modeToFlag: Record<VideoMode, keyof VideoModelOption> = {
   start_end_frame: "supportsStartEndFrame",
   multi_reference: "supportsMultiReference",
   multi_shot: "supportsImageToVideo",
+  video_to_video: "supportsVideoToVideo",
+  relight: "supportsRelight",
 };
 
 export function ModelSelect({ models, selectedModel, mode, onChange }: ModelSelectProps) {
@@ -49,7 +54,12 @@ export function ModelSelect({ models, selectedModel, mode, onChange }: ModelSele
           {compatible.map((model) => (
             <SelectItem key={model.key} value={model.key}>
               <div className="flex flex-col items-start">
-                <span className="text-sm font-medium">{model.name}</span>
+                <span className="text-sm font-medium">
+                  {model.name}
+                  {!model.configured && (
+                    <span className="ml-2 text-[10px] text-amber-500">(not configured)</span>
+                  )}
+                </span>
                 <span className="text-xs text-muted-foreground">{model.description}</span>
               </div>
             </SelectItem>

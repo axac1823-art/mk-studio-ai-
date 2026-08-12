@@ -44,8 +44,11 @@ def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
         return output[0] if status.get("status") == "SUCCEEDED" and output else None
 
     def extract_error(status):
-        if status.get("status") == "FAILED":
+        state = status.get("status")
+        if state == "FAILED":
             return f"runway task failed: {status.get('failure') or 'unknown'}"
+        if state in ("THROTTLED", "CANCELLED"):
+            return f"runway task {state.lower()}: {status.get('failure') or status.get('estimatedCost') or 'unknown'}"
         return None
 
     video_url = poll_until_done(fetch_status, extract_done, extract_error, timeout_ms, interval_ms=5000)

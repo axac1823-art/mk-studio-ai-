@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   error_message        text, -- message GÉNÉRIQUE client uniquement
   model_used           text, -- modèle/fournisseur ayant servi (historique + debug)
   credits_charged      int NOT NULL DEFAULT 0,
+  provider_cost_cents  int,   -- coût réel du provider en centimes USD (marge = credits_charged / provider_cost_cents)
   created_at           timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_user_created ON jobs(user_id, created_at DESC);
@@ -62,7 +63,7 @@ CREATE TABLE IF NOT EXISTS assets (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id    uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  type          text NOT NULL CHECK (type IN ('image','video','audio')),
+  type          text NOT NULL CHECK (type IN ('image','video','audio','3d_model')),
   generation_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
   storage_path  text NOT NULL, -- chemin public relatif servi par le worker (/storage/...)
   is_favorite   boolean NOT NULL DEFAULT false,
@@ -93,10 +94,17 @@ $$;
 -- Coûts par action EN TABLE (spec : pas de coût en dur). Les
 -- multiplicateurs (qualité pro x2, durée vidéo, surcharge résolution)
 -- restent des constantes documentées côté /web (lib/credits).
+--
+-- `cost_per_generation` réel provider (centimes USD) vit dans le catalogue
+-- worker (`worker/catalog.py`). `margin_multiplier` est le multiplicateur de
+-- marge appliqué à ce coût pour obtenir le prix utilisateur en crédits,
+-- via `credit_conversion_rate` (app_config, 1 crédit = 1 cent USD par défaut).
 CREATE TABLE IF NOT EXISTS action_costs (
-  feature_type text PRIMARY KEY,
-  credit_cost  int NOT NULL CHECK (credit_cost >= 0)
+  feature_type      text PRIMARY KEY,
+  credit_cost       int NOT NULL CHECK (credit_cost >= 0),
+  margin_multiplier float NOT NULL DEFAULT 2.0 CHECK (margin_multiplier > 0)
 );
+ALTER TABLE action_costs ADD COLUMN IF NOT EXISTS margin_multiplier float NOT NULL DEFAULT 2.0 CHECK (margin_multiplier > 0);
 
 CREATE TABLE IF NOT EXISTS app_config (
   key        text PRIMARY KEY,
@@ -155,6 +163,7 @@ CREATE TABLE IF NOT EXISTS video_jobs (
   audio_enabled   boolean NOT NULL DEFAULT false,
   result_url      text,
   credits_charged int NOT NULL DEFAULT 0,
+  provider_cost_cents int,   -- coût réel du provider en centimes USD
   error_message   text,
   progress        jsonb,
   created_at      timestamptz NOT NULL DEFAULT now(),
@@ -165,9 +174,14 @@ CREATE INDEX IF NOT EXISTS video_jobs_user_created ON video_jobs(user_id, create
 CREATE INDEX IF NOT EXISTS video_jobs_project ON video_jobs(project_id);
 
 CREATE TABLE IF NOT EXISTS video_action_costs (
-  mode        text PRIMARY KEY,
-  credit_cost int NOT NULL CHECK (credit_cost >= 0)
+  mode              text PRIMARY KEY,
+  credit_cost       int NOT NULL CHECK (credit_cost >= 0),
+  margin_multiplier float NOT NULL DEFAULT 2.0 CHECK (margin_multiplier > 0)
 );
+ALTER TABLE video_action_costs ADD COLUMN IF NOT EXISTS margin_multiplier float NOT NULL DEFAULT 2.0 CHECK (margin_multiplier > 0);
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provider_cost_cents int;
+ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS provider_cost_cents int;
 
 ALTER TABLE assets
   ADD COLUMN IF NOT EXISTS video_job_id uuid REFERENCES video_jobs(id) ON DELETE SET NULL;
@@ -195,35 +209,85 @@ WHERE email = 'dev@renderstudio.local'
     WHERE u.email = 'dev@renderstudio.local' AND p.name = 'General'
   );
 
-INSERT INTO action_costs (feature_type, credit_cost) VALUES
-  ('print_render', 10),
-  ('mood_swap', 8),
-  ('exterior_to_interior', 12),
-  ('plan_to_render', 12),
-  ('multi_angle', 15),
-  ('animate', 30),
-  ('upscale_2x', 8),
-  ('upscale_4x', 15),
-  ('video_upscale_2x', 20),
-  ('video_upscale_4x', 35),
-  ('video_edit_trim', 5),
-  ('video_edit_concat', 8),
-  ('voice_generator', 6)
-ON CONFLICT (feature_type) DO NOTHING;
+INSERT INTO action_costs (feature_type, credit_cost, margin_multiplier) VALUES
+  -- Coûts recalculés à partir du provider le moins cher × margin_multiplier (2.0)
+  -- avec credit_conversion_rate = 1 crédit = 1 cent USD.
+  -- Image : Magic Hour flux-2-klein ~ 1¢ -> 2 crédits.
+  ('print_render', 2, 2.0),
+  ('mood_swap', 2, 2.0),
+  ('exterior_to_interior', 2, 2.0),
+  ('plan_to_render', 2, 2.0),
+  ('multi_angle', 2, 2.0),
+  ('image_extender', 2, 2.0),
+  ('variations', 2, 2.0),
+  -- Background Remover : remove.bg ~ 2¢ -> 4 crédits.
+  ('background_remover', 4, 2.0),
+  -- Image Generator (text-to-image) : BFL flux-dev ~ 3¢ -> 6 crédits.
+  ('text_to_image', 6, 2.0),
+  -- Vidéo : Magic Hour default ~ 30¢ -> 60 crédits.
+  ('animate', 60, 2.0),
+  -- Upscale / édition vidéo (estimations internes à ajuster).
+  ('upscale_2x', 4, 2.0),
+  ('upscale_4x', 8, 2.0),
+  ('video_upscale_2x', 10, 2.0),
+  ('video_upscale_4x', 20, 2.0),
+  ('video_edit_trim', 2, 2.0),
+  ('video_edit_concat', 2, 2.0),
+  ('video_edit_speed', 2, 2.0),
+  ('video_edit_overlay', 2, 2.0),
+  ('video_edit_export', 2, 2.0),
+  -- 3D : Meshy ~ 50¢ -> 100 crédits.
+  ('3d_generator', 100, 2.0),
+  -- Voix : ElevenLabs ~ 2¢ -> 4 crédits.
+  ('voice_generator', 4, 2.0),
+  -- Lip Sync : Magic Hour ~ 40¢ -> 80 crédits.
+  ('lip_sync', 80, 2.0)
+ON CONFLICT (feature_type)
+  DO UPDATE SET
+    credit_cost = EXCLUDED.credit_cost,
+    margin_multiplier = EXCLUDED.margin_multiplier;
+
+-- Plans d'abonnement : source unique de vérité pour les prix affichés,
+-- les crédits alloués et le rabais annuel. Les ID de prix Stripe restent
+-- en variables d'environnement (elles dépendent du compte Stripe).
+CREATE TABLE IF NOT EXISTS plans (
+  plan                  text PRIMARY KEY,
+  monthly_price_cents   int NOT NULL,
+  yearly_discount_rate  float NOT NULL DEFAULT 0.25 CHECK (yearly_discount_rate >= 0 AND yearly_discount_rate <= 1),
+  monthly_credits       int NOT NULL
+);
+
+INSERT INTO plans (plan, monthly_price_cents, yearly_discount_rate, monthly_credits) VALUES
+  ('starter', 1900, 0.25, 500),
+  ('pro', 4900, 0.25, 2000),
+  ('studio', 12900, 0.25, 6000)
+ON CONFLICT (plan)
+  DO UPDATE SET
+    monthly_price_cents = EXCLUDED.monthly_price_cents,
+    yearly_discount_rate = EXCLUDED.yearly_discount_rate,
+    monthly_credits = EXCLUDED.monthly_credits;
 
 INSERT INTO app_config (key, value_int) VALUES
   ('signup_bonus_credits', 100),
-  ('low_credit_threshold', 10)
+  ('low_credit_threshold', 10),
+  ('credit_per_usd_cent', 1)
 ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO video_action_costs (mode, credit_cost) VALUES
-  ('text_to_video', 25),
-  ('image_to_video', 30),
-  ('start_end_frame', 40),
-  ('multi_reference', 45),
-  ('multi_shot', 35),
-  ('multi_shot_concat_overhead', 5)
-ON CONFLICT (mode) DO NOTHING;
+INSERT INTO video_action_costs (mode, credit_cost, margin_multiplier) VALUES
+  -- Coûts recalculés : provider vidéo le moins cher ~ 30¢ -> 60 crédits (margin 2.0).
+  ('text_to_video', 60, 2.0),
+  ('image_to_video', 60, 2.0),
+  ('start_end_frame', 60, 2.0),
+  ('multi_reference', 60, 2.0),
+  ('multi_shot', 60, 2.0),
+  ('multi_shot_concat_overhead', 10, 2.0),
+  -- Video-to-Video / Relight : Magic Hour ~ 40¢ -> 80 crédits (margin 2.0).
+  ('video_to_video', 80, 2.0),
+  ('relight', 80, 2.0)
+ON CONFLICT (mode)
+  DO UPDATE SET
+    credit_cost = EXCLUDED.credit_cost,
+    margin_multiplier = EXCLUDED.margin_multiplier;
 
 INSERT INTO credit_ledger (user_id, delta, reason)
 SELECT id, 100, 'mint' FROM users

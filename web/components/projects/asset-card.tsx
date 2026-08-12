@@ -6,7 +6,7 @@
 // actifs, ce qui la rend réutilisable partout. En mode corbeille
 // (trashed=true), l'action principale est Restore + Delete permanent.
 import { useState } from "react";
-import { ArchiveRestore, Download, Play, Star, Trash2 } from "lucide-react";
+import { ArchiveRestore, Box, Download, Music, Play, Star, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 export interface AssetSummary {
   id: string;
-  type: "image" | "video";
+  type: "image" | "video" | "audio" | "3d_model";
   url: string;
   isFavorite: boolean;
 }
@@ -77,12 +77,22 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete }: Asset
               </span>
             </div>
           </>
+        ) : asset.type === "audio" ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+            <Music className="h-10 w-10 text-muted-foreground" />
+            <audio src={asset.url} controls className="w-[90%]" />
+          </div>
+        ) : asset.type === "3d_model" ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+            <Box className="h-10 w-10 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">3D model</span>
+          </div>
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={asset.url} alt="" className="h-full w-full object-cover" loading="lazy" />
         )}
         <Badge variant="secondary" className="absolute left-2 top-2 capitalize">
-          {asset.type}
+          {asset.type === "3d_model" ? "3D" : asset.type}
         </Badge>
       </div>
       <CardContent className="flex items-center justify-end gap-1 p-2">

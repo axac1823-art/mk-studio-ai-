@@ -25,7 +25,7 @@ import db
 import storage
 from catalog import MODEL_CATALOG, Candidate, filter_candidates_by_mode
 from providers.http_helpers import data_uri_to_bytes, get_bytes
-from prompts import build_animate_prompt
+from prompts import build_animate_prompt, build_video_relight_prompt, build_video_to_video_prompt
 from workflows.common import (
     complete_video_job,
     fail_video_job,
@@ -44,6 +44,8 @@ VideoMode = Literal[
     "start_end_frame",
     "multi_reference",
     "multi_shot",
+    "video_to_video",
+    "relight",
 ]
 
 _TAG_RE = re.compile(r"@(?P<type>img|vid)(?P<idx>\d+)")
@@ -90,12 +92,18 @@ def resolve_video_mode(input_: dict) -> VideoMode:
     """Détecte le mode à partir des champs utilisateur.
 
     Règles (priorité décroissante) :
+    0. Hint explicite `mode` dans le job -> tel quel.
     1. Plus d'un shot -> multi_shot.
     2. Start image ET End image -> start_end_frame.
     3. ≥ 2 médias tagués dans le premier shot -> multi_reference.
-    4. Exactement une image (start image ou un tag) -> image_to_video.
-    5. Sinon -> text_to_video.
+    4. Un tag @vidN sans start image -> video_to_video.
+    5. Exactement une image (start image ou un tag @imgN) -> image_to_video.
+    6. Sinon -> text_to_video.
     """
+    hinted = input_.get("mode")
+    if hinted in {"video_to_video", "relight"}:
+        return hinted  # type: ignore[return-value]
+
     shots = input_.get("shots") or []
     if len(shots) > 1:
         return "multi_shot"
@@ -110,6 +118,18 @@ def resolve_video_mode(input_: dict) -> VideoMode:
     tagged_count = _count_tagged_media(first_prompt)
     if tagged_count >= 2:
         return "multi_reference"
+
+    # Détection d'une référence vidéo isolée (@vidN) sans image de départ.
+    if not start_image:
+        first_vid = next(
+            (
+                m for m in _TAG_RE.finditer(first_prompt)
+                if m.group("type") == "vid" and _lookup_media(media_refs, f"@vid{m.group('idx')}")
+            ),
+            None,
+        )
+        if first_vid:
+            return "video_to_video"
 
     has_start_image = bool(start_image)
     if has_start_image or tagged_count == 1:
@@ -148,6 +168,7 @@ def _build_request(job: dict, prompt: str, extra: dict | None = None) -> dict:
         "prompt": prompt,
         "imageUrl": _public_url(job.get("start_image_url")),
         "endImageUrl": _public_url(job.get("end_image_url")),
+        "videoUrl": _public_url((extra or {}).get("videoUrl")),
         "referenceUrls": [],
         "durationSeconds": job.get("duration") or 4,
         "aspectRatio": job.get("aspect_ratio") or "16:9",
@@ -330,6 +351,32 @@ def run_multi_reference(
     return _execute_single_video("image_to_video", candidates, fallback_req, adapter_override=adapter_override)
 
 
+def run_video_to_video(
+    job: dict,
+    candidates: list[Candidate],
+    req: dict,
+    adapter_override=None,
+) -> tuple[Candidate, list[str]]:
+    """video_to_video : transforme une vidéo existante via un prompt."""
+    filtered = filter_candidates_by_mode(candidates, "video_to_video")
+    if not filtered:
+        raise AllModelsFailedError("video", [{"candidateKey": "none", "ok": False, "error": "no video_to_video provider"}])
+    return _execute_single_video("video_to_video", filtered, req, adapter_override=adapter_override)
+
+
+def run_relight(
+    job: dict,
+    candidates: list[Candidate],
+    req: dict,
+    adapter_override=None,
+) -> tuple[Candidate, list[str]]:
+    """relight : change l'éclairage / l'heure du jour d'une vidéo existante."""
+    filtered = filter_candidates_by_mode(candidates, "relight")
+    if not filtered:
+        raise AllModelsFailedError("video", [{"candidateKey": "none", "ok": False, "error": "no relight provider"}])
+    return _execute_single_video("relight", filtered, req, adapter_override=adapter_override)
+
+
 def run_multi_shot(
     job: dict,
     candidates: list[Candidate],
@@ -425,17 +472,40 @@ def run(job: dict, adapter_override=None) -> None:
         conn.execute("UPDATE video_jobs SET mode = %s WHERE id = %s", (mode, job["id"]))
         credits_charged = compute_video_cost(conn, mode, len(job.get("shots") or []))
 
-    candidates = MODEL_CATALOG.get("animate", [])
     first_prompt = (job.get("shots") or [{}])[0].get("prompt", "")
-    prompt = build_animate_prompt(scene_details=_strip_tags(first_prompt))
-    req = _build_request(job, prompt, {
-        "referenceUrls": _tagged_media_urls(first_prompt, job.get("media_references") or []),
-    })
-    # Si aucune image de départ n'est fournie mais qu'un média est tagué,
-    # on l'utilise comme frame de départ (image_to_video / multi_reference).
-    if not req.get("imageUrl") and req.get("referenceUrls"):
-        req["imageUrl"] = req["referenceUrls"][0]
-        req["referenceUrls"] = req["referenceUrls"][1:]
+    media_refs = job.get("media_references") or []
+    stripped = _strip_tags(first_prompt)
+
+    if mode in ("video_to_video", "relight"):
+        # On prend la première référence vidéo taguée comme entrée.
+        feature_key = "video_to_video" if mode == "video_to_video" else "video_relight"
+        candidates = MODEL_CATALOG.get(feature_key, [])
+        video_ref = next(
+            (
+                _lookup_media(media_refs, f"@vid{m.group('idx')}")
+                for m in _TAG_RE.finditer(first_prompt)
+                if m.group("type") == "vid"
+            ),
+            None,
+        )
+        video_url = _public_url(video_ref["asset_url"]) if video_ref else None
+        prompt = (
+            build_video_to_video_prompt(scene_details=stripped)
+            if mode == "video_to_video"
+            else build_video_relight_prompt(scene_details=stripped)
+        )
+        req = _build_request(job, prompt, {"videoUrl": video_url})
+    else:
+        candidates = MODEL_CATALOG.get("animate", [])
+        prompt = build_animate_prompt(scene_details=stripped)
+        req = _build_request(job, prompt, {
+            "referenceUrls": _tagged_media_urls(first_prompt, media_refs),
+        })
+        # Si aucune image de départ n'est fournie mais qu'un média est tagué,
+        # on l'utilise comme frame de départ (image_to_video / multi_reference).
+        if not req.get("imageUrl") and req.get("referenceUrls"):
+            req["imageUrl"] = req["referenceUrls"][0]
+            req["referenceUrls"] = req["referenceUrls"][1:]
 
     try:
         if mode == "text_to_video":
@@ -448,6 +518,10 @@ def run(job: dict, adapter_override=None) -> None:
             winner, urls = run_multi_reference(job, candidates, req, adapter_override=adapter_override)
         elif mode == "multi_shot":
             winner, urls = run_multi_shot(job, candidates, req, adapter_override=adapter_override)
+        elif mode == "video_to_video":
+            winner, urls = run_video_to_video(job, candidates, req, adapter_override=adapter_override)
+        elif mode == "relight":
+            winner, urls = run_relight(job, candidates, req, adapter_override=adapter_override)
         else:
             raise ValueError(f"unknown video mode: {mode}")
 
@@ -461,7 +535,7 @@ def run(job: dict, adapter_override=None) -> None:
                 (winner.key, job["id"]),
             )
             asset_id = insert_video_asset(conn, job["id"], job["user_id"], job["project_id"], "video", final_url)
-            complete_video_job(conn, job, final_url, credits_charged, winner.key)
+            complete_video_job(conn, job, final_url, credits_charged, winner.key, winner.cost_per_generation)
     except Exception as err:
         with db.connect() as conn:
             fail_video_job(conn, job, err)

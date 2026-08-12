@@ -11,6 +11,10 @@ export type Feature =
   | "exterior_to_interior"
   | "plan_to_render"
   | "multi_angle"
+  | "image_extender"
+  | "variations"
+  | "background_remover"
+  | "text_to_image"
   | "animate"
   | "upscale";
 

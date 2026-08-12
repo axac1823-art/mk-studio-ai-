@@ -27,7 +27,7 @@ export interface DbAsset {
   id: string;
   project_id: string;
   user_id: string;
-  type: "image" | "video" | "audio";
+  type: "image" | "video" | "audio" | "3d_model";
   generation_id: string | null;
   storage_path: string;
   is_favorite: boolean;
@@ -166,6 +166,7 @@ export async function insertJob(input: {
 export async function insertVideoJob(input: {
   userId: string;
   projectId: string;
+  mode?: string | null;
   startImageUrl: string | null;
   endImageUrl: string | null;
   mediaReferences: Array<{ tag: string; asset_url: string; type: "image" | "video" }>;
@@ -177,13 +178,13 @@ export async function insertVideoJob(input: {
 }): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
     INSERT INTO video_jobs (
-      user_id, project_id,
+      user_id, project_id, mode,
       start_image_url, end_image_url,
       media_references, shots,
       duration, aspect_ratio, audio_enabled, selected_model
     )
     VALUES (
-      ${input.userId}, ${input.projectId},
+      ${input.userId}, ${input.projectId}, ${input.mode ?? null},
       ${input.startImageUrl}, ${input.endImageUrl},
       ${sql.json(input.mediaReferences as JSONValue)}, ${sql.json(input.shots as JSONValue)},
       ${input.duration}, ${input.aspectRatio}, ${input.audioEnabled}, ${input.selectedModel}
@@ -207,7 +208,7 @@ export async function getVideoJobForUser(jobId: string, userId: string): Promise
 export async function insertSourceAsset(input: {
   userId: string;
   projectId: string;
-  type: "image" | "video";
+  type: "image" | "video" | "audio";
   storagePath: string;
 }): Promise<string> {
   const rows = await sql<Array<{ id: string }>>`
@@ -253,7 +254,7 @@ export async function listAssets(
   userId: string,
   filters: {
     projectId?: string;
-    type?: "image" | "video" | "audio";
+    type?: "image" | "video" | "audio" | "3d_model";
     favorite?: boolean;
     trashed?: boolean;
     uploadsOnly?: boolean;
@@ -295,10 +296,22 @@ export async function getActionCosts(): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((row) => [row.feature_type, row.credit_cost]));
 }
 
+/** Marges par action (clé = feature_type). */
+export async function getActionMargins(): Promise<Record<string, number>> {
+  const rows = await sql<Array<{ feature_type: string; margin_multiplier: number }>>`SELECT feature_type, margin_multiplier FROM action_costs`;
+  return Object.fromEntries(rows.map((row) => [row.feature_type, Number(row.margin_multiplier)]));
+}
+
 /** Coûts vidéo par mode (clé = mode). */
 export async function getVideoActionCosts(): Promise<Record<string, number>> {
   const rows = await sql<Array<{ mode: string; credit_cost: number }>>`SELECT mode, credit_cost FROM video_action_costs`;
   return Object.fromEntries(rows.map((row) => [row.mode, row.credit_cost]));
+}
+
+/** Marges vidéo par mode (clé = mode). */
+export async function getVideoActionMargins(): Promise<Record<string, number>> {
+  const rows = await sql<Array<{ mode: string; margin_multiplier: number }>>`SELECT mode, margin_multiplier FROM video_action_costs`;
+  return Object.fromEntries(rows.map((row) => [row.mode, Number(row.margin_multiplier)]));
 }
 
 /** Solde = somme du ledger (append-only : mint/spend/refund/expire). */
@@ -306,6 +319,17 @@ export async function getLedgerBalance(userId: string): Promise<number> {
   const rows = await sql<Array<{ balance: number | null }>>`
     SELECT COALESCE(SUM(delta), 0)::int AS balance FROM credit_ledger WHERE user_id = ${userId}`;
   return rows[0]?.balance ?? 0;
+}
+
+export interface DbPlan {
+  plan: string;
+  monthly_price_cents: number;
+  yearly_discount_rate: number;
+  monthly_credits: number;
+}
+
+export async function getPlans(): Promise<DbPlan[]> {
+  return sql<DbPlan[]>`SELECT plan, monthly_price_cents, yearly_discount_rate, monthly_credits FROM plans ORDER BY monthly_price_cents ASC`;
 }
 
 export interface DbSubscription {
@@ -327,4 +351,17 @@ export async function getAppConfigInt(key: string, fallback: number): Promise<nu
   const rows = await sql<Array<{ value_int: number | null }>>`
     SELECT value_int FROM app_config WHERE key = ${key} LIMIT 1`;
   return rows[0]?.value_int ?? fallback;
+}
+
+export async function getAppConfigNumber(key: string, fallback: number): Promise<number> {
+  const rows = await sql<Array<{ value_int: number | null; value_text: string | null }>>`
+    SELECT value_int, value_text FROM app_config WHERE key = ${key} LIMIT 1`;
+  const raw = rows[0];
+  if (!raw) return fallback;
+  if (raw.value_text !== null && raw.value_text !== "") {
+    const parsed = Number.parseFloat(raw.value_text);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  if (raw.value_int !== null) return raw.value_int;
+  return fallback;
 }

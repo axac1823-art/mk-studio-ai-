@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Box,
   Camera,
   DoorOpen,
   Images,
@@ -18,7 +19,7 @@ import {
 // Tous les libellés, descriptions, icônes et routes vivent ici pour éviter
 // la duplication entre le popover, la future page "All tools" et le dashboard.
 
-export type ToolCategory = "image" | "video" | "audio";
+export type ToolCategory = "image" | "video" | "audio" | "3d";
 
 export interface ToolDefinition {
   id: string;
@@ -32,36 +33,20 @@ export interface ToolDefinition {
 export const TOOLS: ToolDefinition[] = [
   // --- Image ---
   {
+    id: "image-generator",
+    category: "image",
+    name: "Image Generator",
+    description: "Generate photorealistic architectural images from a text prompt",
+    icon: Wand2,
+    route: "/app/image-generator",
+  },
+  {
     id: "screenshot-to-render",
     category: "image",
     name: "Screenshot-to-Render",
     description: "Turn 3D viewport captures into photorealistic renders",
     icon: Camera,
     route: "/app/ai-image-generator",
-  },
-  {
-    id: "ambiance-change",
-    category: "image",
-    name: "Ambiance Change",
-    description: "Change lighting, time of day, or season on an existing render",
-    icon: Sun,
-    route: "/app/ambiance-change",
-  },
-  {
-    id: "exterior-to-interior",
-    category: "image",
-    name: "Exterior → Interior",
-    description: "Generate a plausible interior view from an exterior render",
-    icon: DoorOpen,
-    route: "/app/exterior-to-interior",
-  },
-  {
-    id: "plan-to-furnished-render",
-    category: "image",
-    name: "Plan → Furnished Render",
-    description: "Turn a technical floor plan into a furnished, landscaped render",
-    icon: Map,
-    route: "/app/plan-to-render",
   },
   {
     id: "upscale",
@@ -72,6 +57,30 @@ export const TOOLS: ToolDefinition[] = [
     route: "/app/upscale",
   },
   {
+    id: "ambiance-change",
+    category: "image",
+    name: "Ambiance Change",
+    description: "Change lighting, time of day, or season on an existing render",
+    icon: Sun,
+    route: "/app/ambiance-change",
+  },
+  {
+    id: "image-extender",
+    category: "image",
+    name: "Image Extender",
+    description: "Expand the canvas and fill new areas consistently with the original image",
+    icon: Maximize,
+    route: "/app/image-extender",
+  },
+  {
+    id: "exterior-to-interior",
+    category: "image",
+    name: "Exterior → Interior",
+    description: "Generate a plausible interior view from an exterior render",
+    icon: DoorOpen,
+    route: "/app/exterior-to-interior",
+  },
+   {
     id: "multi-angle",
     category: "image",
     name: "Multi-Angle",
@@ -79,6 +88,34 @@ export const TOOLS: ToolDefinition[] = [
     icon: Images,
     route: "/app/multi-angle",
   },
+  {
+    id: "plan-to-furnished-render",
+    category: "image",
+    name: "Plan → Furnished Render",
+    description: "Turn a technical floor plan into a furnished, landscaped render",
+    icon: Map,
+    route: "/app/plan-to-render",
+  },
+  
+ 
+  
+  {
+    id: "variations",
+    category: "image",
+    name: "Variations",
+    description: "Generate alternate versions of a result with similar style and composition",
+    icon: Images,
+    route: "/app/variations",
+  },
+  {
+    id: "background-remover",
+    category: "image",
+    name: "Background Remover",
+    description: "Isolate the subject and remove the background as a transparent PNG",
+    icon: Scissors,
+    route: "/app/background-remover",
+  },
+  
   // --- Video ---
   {
     id: "video-generator",
@@ -97,6 +134,22 @@ export const TOOLS: ToolDefinition[] = [
     route: "/app/video-upscaler",
   },
   {
+    id: "modify-video",
+    category: "video",
+    name: "Modify Video",
+    description: "Transform an existing video with a text prompt",
+    icon: Wand2,
+    route: "/app/ai-video-generator?mode=video_to_video",
+  },
+  {
+    id: "video-relight",
+    category: "video",
+    name: "Video Relight",
+    description: "Change lighting and time of day on an existing video",
+    icon: Sun,
+    route: "/app/video-relight",
+  },
+  {
     id: "clip-editor",
     category: "video",
     name: "Clip Editor",
@@ -107,10 +160,35 @@ export const TOOLS: ToolDefinition[] = [
   {
     id: "video-project-editor",
     category: "video",
-    name: "Video Project Editor",
-    description: "Edit multi-clip video projects",
+    name: "Concatenate Video",
+    description: "Concatenate multi-clip video projects",
     icon: MonitorPlay,
     route: "/app/video-project-editor",
+  },
+  {
+    id: "lip-sync",
+    category: "video",
+    name: "Lip Sync",
+    description: "Synchronize a person's mouth movement with an audio track",
+    icon: Mic,
+    route: "/app/lip-sync",
+  },
+  // --- 3D ---
+  {
+    id: "image-to-3d",
+    category: "3d",
+    name: "Image-to-3D",
+    description: "Generate a 3D model from up to 6 orthographic views",
+    icon: Box,
+    route: "/app/3d-generator",
+  },
+  {
+    id: "text-to-3d",
+    category: "3d",
+    name: "Text-to-3D",
+    description: "Generate a 3D model from a text description",
+    icon: Box,
+    route: "/app/text-to-3d",
   },
   // --- Audio ---
   {
@@ -130,6 +208,7 @@ export const TOOL_CATEGORIES: Array<{
   { id: "image", label: "Image" },
   { id: "video", label: "Video" },
   { id: "audio", label: "Audio" },
+  { id: "3d", label: "3D" },
 ];
 
 export function toolsByCategory(category: ToolCategory): ToolDefinition[] {

@@ -5,6 +5,7 @@
 // Colonne de droite : aperçu/resultat large, comme dans la référence.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, Video } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { MediaAttachments, type AttachedMediaItem } from "@/components/video-gen
 import { ModelSelect, type VideoModelOption } from "@/components/video-generator/model-select";
 import { ShotEditor } from "@/components/video-generator/shot-editor";
 import { BottomToolbar } from "@/components/video-generator/bottom-toolbar";
+import { VideoDropzone } from "@/components/video-generator/video-dropzone";
 import {
   fetchCostsConfig,
   computeVideoDisplayCost,
@@ -48,12 +50,36 @@ interface VideoGeneratorState {
   selectedModel: string;
 }
 
-function resolvePreviewMode(state: VideoGeneratorState): VideoMode {
+const modeLabels: Record<VideoMode, string> = {
+  text_to_video: "Text to Video",
+  image_to_video: "Image to Video",
+  start_end_frame: "Start + End Frame",
+  multi_reference: "Multi-Reference",
+  multi_shot: "Multi-Shot",
+  video_to_video: "Modify Video",
+  relight: "Video Relight",
+};
+
+function hasVideoTag(state: VideoGeneratorState): boolean {
+  const firstPrompt = state.shots[0]?.prompt ?? "";
+  return findMediaTags(firstPrompt).some((tag) =>
+    state.attachedMedia.some((m) => m.tag === tag && m.type === "video")
+  );
+}
+
+function resolvePreviewMode(state: VideoGeneratorState, modeHint: VideoMode | null): VideoMode {
   if (state.shots.length > 1) return "multi_shot";
   if (state.startImage && state.endImage) return "start_end_frame";
   const firstPrompt = state.shots[0]?.prompt ?? "";
   const taggedCount = findMediaTags(firstPrompt).length;
   if (taggedCount >= 2) return "multi_reference";
+
+  const videoTag = hasVideoTag(state);
+  if (!state.startImage && videoTag) {
+    if (modeHint === "relight") return "relight";
+    return "video_to_video";
+  }
+
   if (state.startImage || taggedCount === 1) return "image_to_video";
   return "text_to_video";
 }
@@ -80,6 +106,9 @@ function aspectRatioClass(ratio: VideoAspectRatio): string {
 }
 
 export default function VideoGeneratorPage() {
+  const searchParams = useSearchParams();
+  const modeHint = (searchParams.get("mode") as VideoMode | null) || null;
+
   const [state, setState] = useState<VideoGeneratorState>({
     startImage: null,
     startImagePreview: null,
@@ -127,7 +156,7 @@ export default function VideoGeneratorPage() {
     setState((current) => ({ ...current, ...patch }));
   }, []);
 
-  const previewMode = useMemo(() => resolvePreviewMode(state), [state]);
+  const previewMode = useMemo(() => resolvePreviewMode(state, modeHint), [state, modeHint]);
 
   // Si le modèle choisi n'est plus compatible avec le mode détecté, on bascule
   // sur le premier modèle compatible disponible (ou on garde Auto si aucun).
@@ -138,6 +167,8 @@ export default function VideoGeneratorPage() {
       start_end_frame: "supportsStartEndFrame",
       multi_reference: "supportsMultiReference",
       multi_shot: "supportsImageToVideo",
+      video_to_video: "supportsVideoToVideo",
+      relight: "supportsRelight",
     };
     const flag = flagMap[previewMode];
     const compatible = models.filter((m) => Boolean(m[flag]));
@@ -151,8 +182,8 @@ export default function VideoGeneratorPage() {
   const tags = useMemo(() => state.attachedMedia.map((m) => m.tag), [state.attachedMedia]);
   const cost = useMemo(() => {
     if (!costsConfig) return 0;
-    return computeVideoDisplayCost(costsConfig, previewMode, state.shots.length);
-  }, [costsConfig, previewMode, state.shots.length]);
+    return computeVideoDisplayCost(costsConfig, previewMode, state.shots.length, state.selectedModel || undefined);
+  }, [costsConfig, previewMode, state.shots.length, state.selectedModel]);
   const hasEnoughCredits = balance === null || balance >= cost;
   const canGenerate = !isBusy;
 
@@ -204,6 +235,39 @@ export default function VideoGeneratorPage() {
           .trim(),
       })),
     }));
+  }, []);
+
+  const isVideoMode = modeHint === "video_to_video" || modeHint === "relight";
+
+  const setSourceVideo = useCallback((file: File) => {
+    setState((current) => {
+      // Remplace une éventuelle vidéo source précédente pour ces modes.
+      const existingVideoTag = current.attachedMedia.find((m) => m.type === "video")?.tag;
+      const cleanedMedia = existingVideoTag
+        ? current.attachedMedia.filter((m) => m.tag !== existingVideoTag)
+        : current.attachedMedia;
+      const cleanedPrompts = existingVideoTag
+        ? current.shots.map((shot) => ({
+            ...shot,
+            prompt: shot.prompt
+              .replace(new RegExp(existingVideoTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "")
+              .replace(/\s+/g, " ")
+              .trim(),
+          }))
+        : current.shots;
+
+      const tag = nextTag(cleanedMedia, "video");
+      return {
+        ...current,
+        attachedMedia: [
+          ...cleanedMedia,
+          { tag, url: URL.createObjectURL(file), file, type: "video" },
+        ],
+        shots: cleanedPrompts.map((shot, index) =>
+          index === 0 ? { ...shot, prompt: `${tag} ${shot.prompt}`.trim() } : shot
+        ),
+      };
+    });
   }, []);
 
   const pollJob = useCallback(
@@ -265,6 +329,7 @@ export default function VideoGeneratorPage() {
         aspectRatio: state.aspectRatio,
         audioEnabled: state.audioEnabled,
         selectedModel: state.selectedModel || undefined,
+        mode: modeHint || previewMode,
         shots: shotsPayload,
         mediaMeta,
       })
@@ -292,7 +357,10 @@ export default function VideoGeneratorPage() {
     <main className="flex min-h-screen w-full flex-col">
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Video Generator</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">Video Generator</h1>
+            <Badge variant="outline">{modeLabels[previewMode]}</Badge>
+          </div>
           <p className="text-sm text-muted-foreground">
             Describe camera motion and choose references — AI mode is detected automatically.
           </p>
@@ -307,26 +375,34 @@ export default function VideoGeneratorPage() {
         <div className="flex flex-col gap-4 border-r p-4 sm:p-5">
           <Card>
             <CardContent className="flex flex-col gap-4 p-4">
-              <div className="grid grid-cols-2 gap-3">
-                <FrameDropzone
-                  label="Start image"
-                  previewUrl={state.startImagePreview}
-                  onFileSelected={(file) =>
-                    updateState({ startImage: file, startImagePreview: URL.createObjectURL(file) })
-                  }
-                  placeholderTitle="Start image"
-                  placeholderDescription="Drop or click"
+              {isVideoMode ? (
+                <VideoDropzone
+                  previewUrl={state.attachedMedia.find((m) => m.type === "video")?.url ?? null}
+                  onFileSelected={setSourceVideo}
+                  label={modeHint === "relight" ? "Video to relight" : "Video to modify"}
                 />
-                <FrameDropzone
-                  label="End image"
-                  previewUrl={state.endImagePreview}
-                  onFileSelected={(file) =>
-                    updateState({ endImage: file, endImagePreview: URL.createObjectURL(file) })
-                  }
-                  placeholderTitle="End image"
-                  placeholderDescription="Optional"
-                />
-              </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <FrameDropzone
+                    label="Start image"
+                    previewUrl={state.startImagePreview}
+                    onFileSelected={(file) =>
+                      updateState({ startImage: file, startImagePreview: URL.createObjectURL(file) })
+                    }
+                    placeholderTitle="Start image"
+                    placeholderDescription="Drop or click"
+                  />
+                  <FrameDropzone
+                    label="End image"
+                    previewUrl={state.endImagePreview}
+                    onFileSelected={(file) =>
+                      updateState({ endImage: file, endImagePreview: URL.createObjectURL(file) })
+                    }
+                    placeholderTitle="End image"
+                    placeholderDescription="Optional"
+                  />
+                </div>
+              )}
 
               <MediaAttachments
                 media={state.attachedMedia}
@@ -422,6 +498,20 @@ export default function VideoGeneratorPage() {
                 />
               </div>
               <p className="text-sm text-muted-foreground">Start frame preview</p>
+            </div>
+          ) : isVideoMode ? (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
+                <Video className="h-8 w-8" />
+              </div>
+              <div>
+                <p className="text-lg font-semibold">
+                  {modeHint === "relight" ? "Upload a video to relight" : "Upload a video to modify"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Then describe what you want to change in the shot prompt.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4 text-center">

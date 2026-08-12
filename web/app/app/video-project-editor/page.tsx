@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, MonitorPlay, Trash2, Video } from "lucide-react";
+import { Loader2, MonitorPlay, Trash2, Upload, Video } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,6 +16,8 @@ interface AssetSummary {
 }
 
 const POLL_INTERVAL_MS = 2500;
+const VIDEO_MIME_TYPES = "video/mp4,video/webm,video/quicktime";
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
 
 export default function VideoProjectEditorPage() {
   const [assets, setAssets] = useState<AssetSummary[]>([]);
@@ -23,8 +25,10 @@ export default function VideoProjectEditorPage() {
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -42,11 +46,15 @@ export default function VideoProjectEditorPage() {
       .then((res) => res.json())
       .then((data) => setBalance(typeof data.balance === "number" ? data.balance : null))
       .catch(() => setBalance(null));
+    loadAssets();
+  }, []);
+
+  const loadAssets = () => {
     fetch("/api/assets?type=video")
       .then((res) => (res.ok ? res.json() : { assets: [] }))
       .then((data: { assets: AssetSummary[] }) => setAssets(data.assets.filter((a) => a.type === "video")))
       .catch(() => setAssets([]));
-  }, []);
+  };
 
   const cost = costsConfig
     ? computeDisplayCost(costsConfig, { feature: "video_edit_concat", quality: "standard", resolution: "1K", quantity: 1 })
@@ -73,6 +81,43 @@ export default function VideoProjectEditorPage() {
       [next[index], next[index + 1]] = [next[index + 1], next[index]];
       return next;
     });
+  };
+
+  const handleFilesSelected = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const videoFiles = Array.from(files).filter((f) => f.type.startsWith("video/"));
+    if (videoFiles.length === 0) {
+      setError("Please upload video files (MP4, WebM or QuickTime).");
+      return;
+    }
+    const oversized = videoFiles.find((f) => f.size > MAX_VIDEO_SIZE_BYTES);
+    if (oversized) {
+      setError("Each video must be under 100 MB.");
+      return;
+    }
+
+    setError(null);
+    setIsUploading(true);
+    const uploaded: AssetSummary[] = [];
+    try {
+      for (const file of videoFiles) {
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/assets", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok || !data.asset) {
+          throw new Error(data.error ?? "Upload failed.");
+        }
+        uploaded.push(data.asset as AssetSummary);
+      }
+      setAssets((current) => [...uploaded, ...current]);
+      setSelectedIds((current) => [...current, ...uploaded.map((a) => a.id)]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed, please try again.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const pollJob = useCallback(
@@ -149,16 +194,18 @@ export default function VideoProjectEditorPage() {
                 <span className="text-sm font-medium">Select clips to concatenate</span>
                 <div className="max-h-48 overflow-y-auto rounded-md border">
                   {assets.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">No videos available. Generate some first.</p>
+                    <p className="p-3 text-sm text-muted-foreground">No videos available yet.</p>
                   ) : (
                     assets.map((asset) => (
                       <button
                         key={asset.id}
                         type="button"
+                        disabled={isBusy || isUploading}
                         onClick={() => toggleAsset(asset.id)}
                         className={cn(
                           "flex w-full items-center gap-2 p-2 text-left text-sm transition-colors",
-                          selectedIds.includes(asset.id) ? "bg-accent" : "hover:bg-accent/60"
+                          selectedIds.includes(asset.id) ? "bg-accent" : "hover:bg-accent/60",
+                          (isBusy || isUploading) && "pointer-events-none"
                         )}
                       >
                         <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -167,6 +214,29 @@ export default function VideoProjectEditorPage() {
                     ))
                   )}
                 </div>
+              </div>
+
+              <div className="relative flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Or upload clips</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={VIDEO_MIME_TYPES}
+                  multiple
+                  disabled={isBusy || isUploading}
+                  onChange={(e) => handleFilesSelected(e.target.files)}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isBusy || isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center justify-center gap-2 rounded-md border border-dashed px-4 py-3 text-sm transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isUploading ? "Uploading…" : "Choose video files"}
+                </button>
+                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 100 MB each</p>
               </div>
 
               {selectedIds.length > 0 && (
@@ -179,7 +249,7 @@ export default function VideoProjectEditorPage() {
                           <div className="flex items-center gap-1">
                             <button
                               type="button"
-                              disabled={index === 0}
+                              disabled={index === 0 || isBusy}
                               onClick={() => moveUp(index)}
                               className="rounded px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
                             >
@@ -187,7 +257,7 @@ export default function VideoProjectEditorPage() {
                             </button>
                             <button
                               type="button"
-                              disabled={index === selectedIds.length - 1}
+                              disabled={index === selectedIds.length - 1 || isBusy}
                               onClick={() => moveDown(index)}
                               className="rounded px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
                             >
@@ -195,8 +265,9 @@ export default function VideoProjectEditorPage() {
                             </button>
                             <button
                               type="button"
+                              disabled={isBusy}
                               onClick={() => toggleAsset(id)}
-                              className="rounded px-2 py-1 text-xs text-destructive hover:bg-accent"
+                              className="rounded px-2 py-1 text-xs text-destructive hover:bg-accent disabled:opacity-50"
                             >
                               <Trash2 className="h-3 w-3" />
                             </button>
@@ -215,7 +286,7 @@ export default function VideoProjectEditorPage() {
                 <Button
                   type="button"
                   onClick={handleEdit}
-                  disabled={selectedIds.length < 2 || isBusy || !hasEnoughCredits}
+                  disabled={selectedIds.length < 2 || isBusy || isUploading || !hasEnoughCredits}
                   className="w-full gap-2"
                 >
                   {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MonitorPlay className="h-4 w-4" />}
@@ -245,7 +316,7 @@ export default function VideoProjectEditorPage() {
               </div>
               <div>
                 <p className="text-lg font-semibold">Build a project</p>
-                <p className="text-sm text-muted-foreground">Select two or more clips and arrange their order.</p>
+                <p className="text-sm text-muted-foreground">Select existing clips, upload new ones, and arrange their order.</p>
               </div>
             </div>
           )}

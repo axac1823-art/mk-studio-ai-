@@ -25,9 +25,15 @@ class AllModelsFailedError(Exception):
 
 
 def order_candidates(candidates: list[Candidate], quality: str, selected_key: str | None = None) -> list[Candidate]:
-    """Tri : `selected_key` (choix utilisateur) retourne UNIQUEMENT ce
-    candidat (pas de fallback silencieux vers un autre modèle). Si absent,
-    on trie par tier de qualité et ordre du catalogue. Tri stable."""
+    """Ordonne les candidats.
+
+    - `selected_key` (choix utilisateur) retourne UNIQUEMENT ce candidat
+      (pas de fallback silencieux).
+    - Mode "Auto" (`selected_key` vide) : parmi les candidats satisfaisant
+      le tier de qualité demandé, on choisit d'abord le MOINS CHER
+      (cost_per_generation croissant), puis l'ordre du catalogue en
+      tie-break. Les candidats hors tier arrivent après (fallback).
+    """
     if selected_key:
         return [c for c in candidates if c.key == selected_key]
 
@@ -36,7 +42,8 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
     def rank(item):
         index, candidate = item
         tier_match = 0 if quality in candidate.tiers else 1
-        return (tier_match, index)
+        # Auto : coût réel croissant, avec l'ordre catalogue en tie-break.
+        return (tier_match, candidate.cost_per_generation, index)
 
     return [candidate for _, candidate in sorted(indexed, key=rank)]
 

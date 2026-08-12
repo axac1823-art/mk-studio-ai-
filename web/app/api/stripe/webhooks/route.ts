@@ -11,11 +11,23 @@ function ensurePriceMap() {
   if (process.env.STRIPE_PRICE_STARTER) PLAN_BY_PRICE[process.env.STRIPE_PRICE_STARTER] = "starter";
   if (process.env.STRIPE_PRICE_PRO) PLAN_BY_PRICE[process.env.STRIPE_PRICE_PRO] = "pro";
   if (process.env.STRIPE_PRICE_STUDIO) PLAN_BY_PRICE[process.env.STRIPE_PRICE_STUDIO] = "studio";
+  if (process.env.STRIPE_PRICE_STARTER_YEARLY) PLAN_BY_PRICE[process.env.STRIPE_PRICE_STARTER_YEARLY] = "starter";
+  if (process.env.STRIPE_PRICE_PRO_YEARLY) PLAN_BY_PRICE[process.env.STRIPE_PRICE_PRO_YEARLY] = "pro";
+  if (process.env.STRIPE_PRICE_STUDIO_YEARLY) PLAN_BY_PRICE[process.env.STRIPE_PRICE_STUDIO_YEARLY] = "studio";
 }
 ensurePriceMap();
 
-function planFromPrice(priceId: string | null): string | null {
-  return priceId ? PLAN_BY_PRICE[priceId] ?? null : null;
+function planFromPrice(priceId: string | null, lookupKey?: string | null): string | null {
+  if (!priceId) return null;
+  const fromId = PLAN_BY_PRICE[priceId];
+  if (fromId) return fromId;
+  // Fallback sur lookup_key si les prix ont été recréés dans Stripe.
+  if (lookupKey) {
+    if (lookupKey.includes("starter")) return "starter";
+    if (lookupKey.includes("pro")) return "pro";
+    if (lookupKey.includes("studio")) return "studio";
+  }
+  return null;
 }
 
 interface StripeSubscriptionLike {
@@ -29,16 +41,26 @@ interface StripeSubscriptionLike {
 
 async function handleSubscription(subscription: StripeSubscriptionLike) {
   const userId = subscription.metadata?.user_id;
-  if (!userId) return;
+  if (!userId) {
+    console.warn("stripe webhook: missing user_id in subscription metadata", subscription.id);
+    return;
+  }
 
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-  const priceId = subscription.items.data[0]?.price.id ?? null;
-  const plan = planFromPrice(priceId);
-  if (!plan) return;
+  const firstItem = subscription.items.data[0];
+  const priceId = firstItem?.price.id ?? null;
+  const lookupKey = firstItem?.price.lookup_key ?? null;
+  const plan = planFromPrice(priceId, lookupKey);
+  if (!plan) {
+    console.warn("stripe webhook: unknown price", { subscriptionId: subscription.id, priceId, lookupKey });
+    return;
+  }
 
+  console.log("stripe webhook: syncing subscription", { userId, plan, status: subscription.status, priceId });
   await syncSubscriptionFromStripe(userId, customerId, subscription as never, plan);
   if (subscription.status === "active" || subscription.status === "trialing") {
     await mintSubscriptionCredits(userId, plan, subscription.current_period_end);
+    console.log("stripe webhook: credits minted", { userId, plan });
   }
 }
 

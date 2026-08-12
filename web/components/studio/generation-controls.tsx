@@ -19,6 +19,7 @@ export interface ModelOption {
   key: string;
   name: string;
   description: string;
+  configured: boolean;
 }
 
 function Control({
@@ -91,7 +92,12 @@ export function GenerationControls({
               {models.map((m) => (
                 <SelectItem key={m.key} value={m.key}>
                   <div className="flex flex-col items-start">
-                    <span className="text-sm font-medium">{m.name}</span>
+                    <span className="text-sm font-medium">
+                      {m.name}
+                      {!m.configured && (
+                        <span className="ml-2 text-[10px] text-amber-500">(not configured)</span>
+                      )}
+                    </span>
                     <span className="text-xs text-muted-foreground">{m.description}</span>
                   </div>
                 </SelectItem>

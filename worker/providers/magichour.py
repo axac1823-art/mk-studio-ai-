@@ -21,9 +21,13 @@ Env : MAGIC_HOUR_API_KEY (https://magichour.ai/developer?tab=api-keys) —
 lue à l'appel, jamais à l'import (échec vite -> fallback).
 """
 import base64
+import mimetypes
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import httpx
+
+import storage
 
 from providers.http_helpers import (
     ProviderError,
@@ -43,17 +47,26 @@ def _headers() -> dict:
 
 def _ensure_file_path(uri: str) -> str:
     """Magic Hour n'accepte que des URL http ou des `file_path` de SON
-    stockage : les data URIs (uploads utilisateur) y sont versées au
-    préalable."""
+    stockage : les data URIs et les fichiers locaux (/storage/...) sont
+    versés au préalable. Les URL http passent telles quelles."""
     parsed = parse_data_uri(uri)
-    if not parsed:
+    if parsed:
+        mime, data = parsed
+        ext = mime.split("/")[1] if "/" in mime else "png"
+        content = base64.b64decode(data)
+    elif uri.startswith("/storage/"):
+        path = storage.resolve(uri)
+        content = Path(path).read_bytes()
+        ext = path.suffix.lstrip(".") or "mp4"
+        mime = mimetypes.guess_type(f"file.{ext}")[0] or "video/mp4"
+    else:
         return uri
-    mime, data = parsed
-    ext = mime.split("/")[1] if "/" in mime else "png"
+
+    media_type = "video" if mime.startswith("video/") else "image"
     grant = post_json(
         f"{BASE_URL}/v1/files/upload-urls",
         _headers(),
-        {"items": [{"type": "image", "extension": ext}]},
+        {"items": [{"type": media_type, "extension": ext}]},
     )
     items = grant.get("items") or []
     item = items[0] if items else {}
@@ -63,7 +76,7 @@ def _ensure_file_path(uri: str) -> str:
     response = httpx.put(
         upload_url,
         headers={"Content-Type": mime},
-        content=base64.b64decode(data),
+        content=content,
         timeout=60,
         follow_redirects=True,
     )
@@ -150,10 +163,48 @@ def _run_video(model_id: str, input_: dict, timeout_ms: int) -> dict:
     return {"video": {"url": _poll_project("video", job_id, timeout_ms)}}
 
 
+def _run_video_to_video(model_id: str, input_: dict, timeout_ms: int) -> dict:
+    """Magic Hour video-to-video : même endpoint pour Modify Video et Relight."""
+    job = post_json(
+        f"{BASE_URL}/v1/video-to-video",
+        _headers(),
+        {
+            "model": model_id,
+            "assets": {"video_file_path": _ensure_file_path(str(input_.get("videoUrl") or ""))},
+            "style": {"prompt": str(input_.get("prompt") or "")},
+        },
+    )
+    job_id = job.get("id")
+    if not job_id:
+        raise ProviderError("magichour: no video-to-video id in submit response")
+    return {"video": {"url": _poll_project("video", job_id, timeout_ms)}}
+
+
+def _run_lip_sync(_model_id: str, input_: dict, timeout_ms: int) -> dict:
+    """Magic Hour lip-sync : synchronise la bouche d'une vidéo avec une piste audio."""
+    video_url = str(input_.get("videoUrl") or "")
+    audio_url = str(input_.get("audioUrl") or "")
+    if not video_url or not audio_url:
+        raise ProviderError("magichour lip-sync: missing videoUrl or audioUrl")
+    job = post_json(
+        f"{BASE_URL}/v1/lip-sync",
+        _headers(),
+        {
+            "assets": {
+                "video_file_path": _ensure_file_path(video_url),
+                "audio_file_path": _ensure_file_path(audio_url),
+            },
+        },
+    )
+    job_id = job.get("id")
+    if not job_id:
+        raise ProviderError("magichour: no lip-sync id in submit response")
+    return {"video": {"url": _poll_project("video", job_id, timeout_ms)}}
+
+
 def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
     """Contrat provider : la FORME de l'input distingue l'endpoint (édition
-    d'image vs vidéo) — pas le model_id (flux-2-klein en image, `default`
-    en vidéo)."""
+    d'image vs image-to-video vs video-to-video vs lip-sync) — pas le model_id."""
     if isinstance(input_.get("images"), list):
         try:
             count = max(1, int(input_.get("quantity") or 1))
@@ -162,4 +213,8 @@ def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
         with ThreadPoolExecutor(max_workers=count) as pool:
             urls = list(pool.map(lambda _: _run_image_edit(model_id, input_, timeout_ms), range(count)))
         return {"images": [{"url": url} for url in urls]}
+    if input_.get("audioUrl"):
+        return _run_lip_sync(model_id, input_, timeout_ms)
+    if input_.get("videoUrl"):
+        return _run_video_to_video(model_id, input_, timeout_ms)
     return _run_video(model_id, input_, timeout_ms)

@@ -17,6 +17,7 @@ export interface UpscaleModelOption {
   key: string;
   name: string;
   description: string;
+  configured: boolean;
 }
 
 interface UpscalePanelProps {
@@ -96,7 +97,12 @@ export function UpscalePanel({
             {models.map((model) => (
               <SelectItem key={model.key} value={model.key}>
                 <div className="flex flex-col items-start">
-                  <span className="text-sm font-medium">{model.name}</span>
+                  <span className="text-sm font-medium">
+                    {model.name}
+                    {!model.configured && (
+                      <span className="ml-2 text-[10px] text-amber-500">(not configured)</span>
+                    )}
+                  </span>
                   <span className="text-xs text-muted-foreground">{model.description}</span>
                 </div>
               </SelectItem>

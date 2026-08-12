@@ -1,8 +1,12 @@
-"""Workflow montage vidéo simple — trim ou concat via ffmpeg.
+"""Workflow montage vidéo simple — trim, concat, speed, text overlay et
+export résolution via ffmpeg.
 
 Entrée : job type "video_edit" avec input JSON :
 - trim : { operation: "trim", assetId, startSeconds, endSeconds }
 - concat : { operation: "concat", assetIds: [...] }
+- speed : { operation: "speed", assetId, speed: float }
+- overlay : { operation: "overlay", assetId, text: str, position?: str }
+- export : { operation: "export", assetId, width: int, height: int }
 
 Sortie : nouvel asset vidéo, job complete.
 """
@@ -85,6 +89,119 @@ def _concat_videos(input_paths: list[Path], output_path: Path) -> None:
         Path(list_path).unlink(missing_ok=True)
 
 
+def _speed_video(input_path: Path, output_path: Path, speed: float) -> None:
+    """Change la vitesse de lecture en conservant audio (si possible)."""
+    _require_ffmpeg()
+    if speed <= 0:
+        raise ValueError("speed must be positive")
+    # setpts modifie la vidéo ; atempo ne supporte que [0.5, 2.0] et est chaîné
+    # pour couvrir un intervalle raisonnable (jusqu'à 4x).
+    atempo = speed
+    atempo_filters = []
+    while atempo > 2.0:
+        atempo_filters.append("atempo=2.0")
+        atempo /= 2.0
+    while atempo < 0.5:
+        atempo_filters.append("atempo=0.5")
+        atempo *= 2.0
+    atempo_filters.append(f"atempo={atempo}")
+    audio_filter = f"{','.join(atempo_filters)}" if atempo_filters else None
+    vf = f"setpts={1 / speed}*PTS"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_path),
+        "-filter:v",
+        vf,
+    ]
+    if audio_filter:
+        cmd.extend(["-filter:a", audio_filter])
+    else:
+        cmd.extend(["-an"])
+    cmd.extend([
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        str(output_path),
+    ])
+    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def _overlay_video(input_path: Path, output_path: Path, text: str, position: str = "bottom") -> None:
+    """Ajoute un texte en overlay avec drawtext."""
+    _require_ffmpeg()
+    if not text.strip():
+        raise ValueError("overlay text is empty")
+    positions = {
+        "top": "x=(w-text_w)/2:y=24",
+        "bottom": "x=(w-text_w)/2:y=h-text_h-24",
+        "center": "x=(w-text_w)/2:y=(h-text_h)/2",
+    }
+    y_pos = positions.get(position, positions["bottom"])
+    escape = text.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    drawtext = (
+        f"drawtext=text='{escape}':fontcolor=white:fontsize=h/18:box=1:boxcolor=black@0.5:"
+        f"boxborderw=4:{y_pos}"
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            drawtext,
+            "-c:a",
+            "copy",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            str(output_path),
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _export_video(input_path: Path, output_path: Path, width: int, height: int) -> None:
+    """Ré-encode une vidéo à une résolution cible."""
+    _require_ffmpeg()
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(input_path),
+            "-vf",
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
+            "-c:a",
+            "copy",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "23",
+            str(output_path),
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
 def run(job: dict) -> None:
     """Exécute un job video_edit (trim ou concat)."""
     input_ = job["input"]
@@ -116,6 +233,38 @@ def run(job: dict) -> None:
             out_name = storage.save_file(b"", "mp4")
             out_abs = storage.resolve(out_name)
             _concat_videos(input_abs_paths, out_abs)
+            result_path = out_name
+
+        elif operation == "speed":
+            asset_id = input_["assetId"]
+            speed = float(input_.get("speed", 1))
+            storage_path = _resolve_storage_path(asset_id, job["user_id"])
+            input_abs = storage.resolve(storage_path)
+            out_name = storage.save_file(b"", "mp4")
+            out_abs = storage.resolve(out_name)
+            _speed_video(input_abs, out_abs, speed)
+            result_path = out_name
+
+        elif operation == "overlay":
+            asset_id = input_["assetId"]
+            text = str(input_.get("text") or "")
+            position = str(input_.get("position") or "bottom")
+            storage_path = _resolve_storage_path(asset_id, job["user_id"])
+            input_abs = storage.resolve(storage_path)
+            out_name = storage.save_file(b"", "mp4")
+            out_abs = storage.resolve(out_name)
+            _overlay_video(input_abs, out_abs, text, position)
+            result_path = out_name
+
+        elif operation == "export":
+            asset_id = input_["assetId"]
+            width = int(input_.get("width", 1920))
+            height = int(input_.get("height", 1080))
+            storage_path = _resolve_storage_path(asset_id, job["user_id"])
+            input_abs = storage.resolve(storage_path)
+            out_name = storage.save_file(b"", "mp4")
+            out_abs = storage.resolve(out_name)
+            _export_video(input_abs, out_abs, width, height)
             result_path = out_name
 
         else:

@@ -10,10 +10,16 @@ import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/co
 const POLL_INTERVAL_MS = 2500;
 const MAX_TEXT_LENGTH = 5000;
 
+interface VoiceOption {
+  key: string;
+  name: string;
+  description: string;
+}
+
 export default function VoiceGeneratorPage() {
   const [text, setText] = useState("");
   const [voiceId, setVoiceId] = useState("");
-  const [models, setModels] = useState<{ key: string; name: string; description: string }[]>([]);
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -34,10 +40,14 @@ export default function VoiceGeneratorPage() {
     fetchCostsConfig().then(setCostsConfig).catch(() => setCostsConfig(null));
     fetch("/api/models")
       .then((res) => (res.ok ? res.json() : { audio: [] }))
-      .then((data: { audio?: { key: string; name: string; description: string }[] }) =>
-        setModels(Array.isArray(data.audio) ? data.audio : [])
-      )
-      .catch(() => setModels([]));
+      .then((data: { audio?: VoiceOption[] }) => {
+        const list = Array.isArray(data.audio) ? data.audio : [];
+        setVoices(list);
+        if (list.length > 0) {
+          setVoiceId((current) => current || list[0].key);
+        }
+      })
+      .catch(() => setVoices([]));
     fetch("/api/credits/balance")
       .then((res) => res.json())
       .then((data) => setBalance(typeof data.balance === "number" ? data.balance : null))
@@ -118,6 +128,29 @@ export default function VoiceGeneratorPage() {
           <Card>
             <CardContent className="flex flex-col gap-4 p-4">
               <div className="flex flex-col gap-1.5">
+                <label htmlFor="voice-id" className="text-sm font-medium">
+                  Voice
+                </label>
+                <select
+                  id="voice-id"
+                  value={voiceId}
+                  onChange={(e) => setVoiceId(e.target.value)}
+                  disabled={isBusy || voices.length === 0}
+                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                >
+                  {voices.length === 0 && <option value="">Default</option>}
+                  {voices.map((voice) => (
+                    <option key={voice.key} value={voice.key}>
+                      {voice.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {voices.find((v) => v.key === voiceId)?.description ?? "Choose a voice for the narration."}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
                 <label htmlFor="voice-text" className="text-sm font-medium">
                   Text
                 </label>
@@ -132,28 +165,6 @@ export default function VoiceGeneratorPage() {
                 />
                 <p className="text-xs text-muted-foreground">{text.length}/{MAX_TEXT_LENGTH}</p>
               </div>
-
-              {models.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="voice-id" className="text-sm font-medium">
-                    Voice (optional)
-                  </label>
-                  <select
-                    id="voice-id"
-                    value={voiceId}
-                    onChange={(e) => setVoiceId(e.target.value)}
-                    disabled={isBusy}
-                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:border-primary"
-                  >
-                    <option value="">Auto / default</option>
-                    {models.map((m) => (
-                      <option key={m.key} value={m.key}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between text-sm">

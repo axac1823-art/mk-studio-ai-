@@ -14,12 +14,21 @@ router = APIRouter()
 
 @router.get("/models")
 def list_models() -> dict:
-    """Retourne les modèles image, vidéo, upscale et audio disponibles côté worker."""
+    """Retourne les modèles image, vidéo, upscale et audio disponibles côté worker.
+
+    `costPerGeneration` (centimes USD réels provider) est inclus pour que le
+    front puisse estimer le coût crédits d'un modèle choisi manuellement.
+    """
     return {
-        "image": list_feature_models("print_render"),
-        "video": list_feature_models("animate"),
+        "image": list_feature_models("print_render", include_costs=True),
+        "video": (
+            list_feature_models("animate", include_costs=True)
+            + list_feature_models("video_to_video", include_costs=True)
+            + list_feature_models("video_relight", include_costs=True)
+        ),
         "upscale": upscale.list_models(),
         "audio": elevenlabs.list_voices() if elevenlabs.is_configured() else [],
+        "threed": list_feature_models("3d_generator", include_costs=True),
     }
 
 
@@ -32,13 +41,19 @@ def list_feature(feature: str) -> list[dict]:
         "exterior_to_interior",
         "plan_to_render",
         "multi_angle",
+        "image_extender",
+        "variations",
+        "background_remover",
         "animate",
+        "video_to_video",
+        "video_relight",
         "upscale",
         "audio",
+        "3d_generator",
     }:
         raise HTTPException(400, "unknown feature")
     if feature == "upscale":
         return upscale.list_models()
     if feature == "audio":
         return elevenlabs.list_voices() if elevenlabs.is_configured() else []
-    return list_feature_models(feature)
+    return list_feature_models(feature, include_costs=True)

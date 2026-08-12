@@ -30,6 +30,7 @@ def fake_candidate(key: str, **overrides) -> Candidate:
         "provider": "bfl",
         "model_id": f"fake/{key}",
         "cost_weight": 1,
+        "cost_per_generation": 5,
         "max_references": 99,
         "timeout_ms": 1000,
         "tiers": ("standard", "pro"),
@@ -98,7 +99,17 @@ def main() -> None:
     ordered_standard = order_candidates([standard, pro], "standard")
     check(ordered_standard[0].key == "standard-first", "l'ordre config est conservé pour standard")
 
-    print("\n[4] Références tronquées au max supporté par le candidat")
+    print("\n[4] Tri Auto : le moins cher satisfaisant le tier est choisi en premier")
+    cheap_standard = fake_candidate("cheap-std", tiers=("standard",), cost_per_generation=1)
+    expensive_standard = fake_candidate("expensive-std", tiers=("standard",), cost_per_generation=10)
+    cheap_pro = fake_candidate("cheap-pro", tiers=("pro",), cost_per_generation=2)
+    ordered_auto_pro = order_candidates([cheap_standard, expensive_standard, cheap_pro], "pro")
+    check(ordered_auto_pro[0].key == "cheap-pro", "Auto qualité pro choisit le moins cher du tier pro")
+    ordered_auto_std = order_candidates([cheap_standard, expensive_standard, cheap_pro], "standard")
+    check(ordered_auto_std[0].key == "cheap-std", "Auto qualité standard choisit le moins cher du tier standard")
+    check(ordered_auto_std[-1].key == "cheap-pro", "les candidats hors tier arrivent en dernier")
+
+    print("\n[5] Références tronquées au max supporté par le candidat")
     calls = []
     seen_refs: list = []
 
@@ -110,14 +121,14 @@ def main() -> None:
     execute_with_fallback("print_render", [limited], base_request(), fake_adapter([], calls))
     check(len(seen_refs) == 1 and seen_refs[0] == "ref-1", "3 références fournies -> 1 seule passée au modèle")
 
-    print("\n[5] Sortie vide du fournisseur = échec -> fallback")
+    print("\n[6] Sortie vide du fournisseur = échec -> fallback")
     calls = []
     empty = fake_candidate("empty", extract_output=lambda _data: [])
     ok = fake_candidate("ok")
     outcome = execute_with_fallback("print_render", [empty, ok], base_request(), fake_adapter([], calls))
     check(outcome["winner"].key == "ok", "sortie vide traitée comme un échec, b sert")
 
-    print("\n[6] Clé préférée (choix utilisateur) : uniquement ce candidat, pas de fallback silencieux")
+    print("\n[7] Clé préférée (choix utilisateur) : uniquement ce candidat, pas de fallback silencieux")
     candidates = [fake_candidate("a"), fake_candidate("b"), fake_candidate("c")]
     ordered = order_candidates(candidates, "standard", "b")
     check(len(ordered) == 1 and ordered[0].key == "b", "seul le candidat choisi est retenu")
@@ -128,7 +139,7 @@ def main() -> None:
     )
     check(len(tier_ordered) == 1 and tier_ordered[0].key == "std-second", "la clé choisie prime sur le tier")
 
-    print("\n[7] Choix utilisateur = échec du candidat unique -> AllModelsFailedError")
+    print("\n[8] Choix utilisateur = échec du candidat unique -> AllModelsFailedError")
     calls = []
     thrown = None
     try:
@@ -143,4 +154,5 @@ def main() -> None:
     raise SystemExit(0 if failures == 0 else 1)
 
 
-main()
+if __name__ == "__main__":
+    main()

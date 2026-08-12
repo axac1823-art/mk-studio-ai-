@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Scissors, Video } from "lucide-react";
+import { Loader2, Scissors, Upload, Video, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,17 +16,28 @@ interface AssetSummary {
 }
 
 const POLL_INTERVAL_MS = 2500;
+const VIDEO_MIME_TYPES = "video/mp4,video/webm,video/quicktime";
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
 
 export default function ClipEditorPage() {
   const [assets, setAssets] = useState<AssetSummary[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
+  const [operation, setOperation] = useState<"trim" | "speed" | "overlay" | "export">("trim");
   const [startSeconds, setStartSeconds] = useState(0);
   const [endSeconds, setEndSeconds] = useState(5);
+  const [speed, setSpeed] = useState(1.5);
+  const [overlayText, setOverlayText] = useState("");
+  const [overlayPosition, setOverlayPosition] = useState<"top" | "bottom" | "center">("bottom");
+  const [exportWidth, setExportWidth] = useState(1920);
+  const [exportHeight, setExportHeight] = useState(1080);
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedAsset = assets.find((a) => a.id === selectedAssetId);
@@ -52,10 +63,17 @@ export default function ClipEditorPage() {
       .catch(() => setAssets([]));
   }, []);
 
+  const featureForOperation: Record<typeof operation, string> = {
+    trim: "video_edit_trim",
+    speed: "video_edit_speed",
+    overlay: "video_edit_overlay",
+    export: "video_edit_export",
+  };
   const cost = costsConfig
-    ? computeDisplayCost(costsConfig, { feature: "video_edit_trim", quality: "standard", resolution: "1K", quantity: 1 })
+    ? computeDisplayCost(costsConfig, { feature: featureForOperation[operation], quality: "standard", resolution: "1K", quantity: 1 })
     : 0;
   const hasEnoughCredits = balance === null || balance >= cost;
+  const hasSource = Boolean(selectedAssetId || uploadedFile);
 
   const pollJob = useCallback(
     (jobId: string) => {
@@ -86,16 +104,65 @@ export default function ClipEditorPage() {
     [stopPolling, cost]
   );
 
+  const handleFileChange = (file: File | null) => {
+    setError(null);
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      setError("Please upload a video file (MP4, WebM or QuickTime).");
+      return;
+    }
+    if (file.size > MAX_VIDEO_SIZE_BYTES) {
+      setError("Video must be under 100 MB.");
+      return;
+    }
+    setSelectedAssetId(null);
+    setUploadedFile(file);
+    setUploadPreviewUrl(URL.createObjectURL(file));
+    setResultUrl(null);
+  };
+
+  const clearUpload = () => {
+    setUploadedFile(null);
+    setUploadPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSelectAsset = (id: string) => {
+    setSelectedAssetId(id);
+    clearUpload();
+    setResultUrl(null);
+    setError(null);
+  };
+
   const handleEdit = async () => {
-    if (!selectedAssetId || isBusy || !hasEnoughCredits || endSeconds <= startSeconds) return;
+    if (!hasSource || isBusy || !hasEnoughCredits) return;
+    if (operation === "trim" && endSeconds <= startSeconds) return;
+    if (operation === "overlay" && overlayText.trim().length === 0) return;
     setError(null);
     setResultUrl(null);
 
     const form = new FormData();
-    form.append("assetId", selectedAssetId);
-    form.append("operation", "trim");
-    form.append("startSeconds", String(startSeconds));
-    form.append("endSeconds", String(endSeconds));
+    form.append("operation", operation);
+    if (uploadedFile) {
+      form.append("video", uploadedFile);
+    } else if (selectedAssetId) {
+      form.append("assetId", selectedAssetId);
+    }
+    if (operation === "trim") {
+      form.append("startSeconds", String(startSeconds));
+      form.append("endSeconds", String(endSeconds));
+    } else if (operation === "speed") {
+      form.append("speed", String(speed));
+    } else if (operation === "overlay") {
+      form.append("text", overlayText.trim());
+      form.append("position", overlayPosition);
+    } else if (operation === "export") {
+      form.append("width", String(exportWidth));
+      form.append("height", String(exportHeight));
+    }
 
     try {
       const res = await fetch("/api/video/edit", { method: "POST", body: form });
@@ -115,12 +182,18 @@ export default function ClipEditorPage() {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl);
+    };
+  }, [uploadPreviewUrl]);
+
   return (
     <main className="flex min-h-screen w-full flex-col">
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Clip Editor</h1>
-          <p className="text-sm text-muted-foreground">Trim, cut, and edit video clips.</p>
+          <p className="text-sm text-muted-foreground">Trim, speed up, caption, and resize video clips.</p>
         </div>
         <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
       </header>
@@ -131,18 +204,20 @@ export default function ClipEditorPage() {
             <CardContent className="flex flex-col gap-4 p-4">
               <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium">Select a video</span>
-                <div className="max-h-60 overflow-y-auto rounded-md border">
+                <div className={cn("max-h-60 overflow-y-auto rounded-md border", uploadedFile && "opacity-50")}>
                   {assets.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">No videos available. Generate one first.</p>
+                    <p className="p-3 text-sm text-muted-foreground">No videos available yet.</p>
                   ) : (
                     assets.map((asset) => (
                       <button
                         key={asset.id}
                         type="button"
-                        onClick={() => setSelectedAssetId(asset.id)}
+                        disabled={Boolean(uploadedFile) || isBusy}
+                        onClick={() => handleSelectAsset(asset.id)}
                         className={cn(
                           "flex w-full items-center gap-2 p-2 text-left text-sm transition-colors",
-                          selectedAssetId === asset.id ? "bg-accent" : "hover:bg-accent/60"
+                          selectedAssetId === asset.id ? "bg-accent" : "hover:bg-accent/60",
+                          (uploadedFile || isBusy) && "pointer-events-none"
                         )}
                       >
                         <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -153,33 +228,156 @@ export default function ClipEditorPage() {
                 </div>
               </div>
 
+              <div className="relative flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Or upload a video</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={VIDEO_MIME_TYPES}
+                  disabled={isBusy}
+                  onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-md border border-dashed px-4 py-3 text-sm transition-colors hover:bg-accent",
+                    selectedAssetId && "opacity-50"
+                  )}
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadedFile ? uploadedFile.name : "Choose video file"}
+                </button>
+                {uploadedFile && (
+                  <button
+                    type="button"
+                    onClick={clearUpload}
+                    disabled={isBusy}
+                    className="absolute right-2 top-6 rounded-full p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 100 MB</p>
+              </div>
+
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Trim range</span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-muted-foreground">Start (s)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={startSeconds}
-                      onChange={(e) => setStartSeconds(Math.max(0, Number(e.target.value)))}
-                      disabled={isBusy}
-                      className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-muted-foreground">End (s)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={endSeconds}
-                      onChange={(e) => setEndSeconds(Math.max(0, Number(e.target.value)))}
-                      disabled={isBusy}
-                      className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                    />
+                <span className="text-sm font-medium">Operation</span>
+                <select
+                  value={operation}
+                  onChange={(e) => setOperation(e.target.value as typeof operation)}
+                  disabled={isBusy}
+                  className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:border-primary"
+                >
+                  <option value="trim">Trim</option>
+                  <option value="speed">Speed</option>
+                  <option value="overlay">Text overlay</option>
+                  <option value="export">Export resolution</option>
+                </select>
+              </div>
+
+              {operation === "trim" && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium">Trim range</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Start (s)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={startSeconds}
+                        onChange={(e) => setStartSeconds(Math.max(0, Number(e.target.value)))}
+                        disabled={isBusy}
+                        className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">End (s)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={endSeconds}
+                        onChange={(e) => setEndSeconds(Math.max(0, Number(e.target.value)))}
+                        disabled={isBusy}
+                        className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {operation === "speed" && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium">Playback speed</span>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={4}
+                    step={0.1}
+                    value={speed}
+                    onChange={(e) => setSpeed(Number(e.target.value))}
+                    disabled={isBusy}
+                    className="w-full"
+                  />
+                  <div className="text-xs text-muted-foreground">{speed.toFixed(1)}x</div>
+                </div>
+              )}
+
+              {operation === "overlay" && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium">Caption</span>
+                  <input
+                    type="text"
+                    value={overlayText}
+                    onChange={(e) => setOverlayText(e.target.value.slice(0, 200))}
+                    placeholder="Your caption..."
+                    disabled={isBusy}
+                    className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                  />
+                  <select
+                    value={overlayPosition}
+                    onChange={(e) => setOverlayPosition(e.target.value as typeof overlayPosition)}
+                    disabled={isBusy}
+                    className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="bottom">Bottom</option>
+                    <option value="center">Center</option>
+                    <option value="top">Top</option>
+                  </select>
+                </div>
+              )}
+
+              {operation === "export" && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium">Resolution</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Width</label>
+                      <input
+                        type="number"
+                        min={240}
+                        value={exportWidth}
+                        onChange={(e) => setExportWidth(Math.max(240, Number(e.target.value)))}
+                        disabled={isBusy}
+                        className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Height</label>
+                      <input
+                        type="number"
+                        min={240}
+                        value={exportHeight}
+                        onChange={(e) => setExportHeight(Math.max(240, Number(e.target.value)))}
+                        disabled={isBusy}
+                        className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between text-sm">
@@ -189,11 +387,20 @@ export default function ClipEditorPage() {
                 <Button
                   type="button"
                   onClick={handleEdit}
-                  disabled={!selectedAssetId || isBusy || !hasEnoughCredits || endSeconds <= startSeconds}
+                  disabled={
+                    !hasSource ||
+                    isBusy ||
+                    !hasEnoughCredits ||
+                    (operation === "trim" && endSeconds <= startSeconds) ||
+                    (operation === "overlay" && overlayText.trim().length === 0)
+                  }
                   className="w-full gap-2"
                 >
                   {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scissors className="h-4 w-4" />}
-                  Trim clip
+                  {operation === "trim" && "Trim clip"}
+                  {operation === "speed" && "Change speed"}
+                  {operation === "overlay" && "Add caption"}
+                  {operation === "export" && "Export video"}
                 </Button>
               </div>
 
@@ -212,6 +419,11 @@ export default function ClipEditorPage() {
               <span className="text-sm font-medium">Result</span>
               <video src={resultUrl} controls className="w-full rounded-xl bg-black" />
             </div>
+          ) : uploadPreviewUrl ? (
+            <div className="flex w-full max-w-4xl flex-col gap-3">
+              <span className="text-sm font-medium">Source</span>
+              <video src={uploadPreviewUrl} controls className="w-full rounded-xl bg-black" />
+            </div>
           ) : selectedAsset ? (
             <div className="flex w-full max-w-4xl flex-col gap-3">
               <span className="text-sm font-medium">Source</span>
@@ -224,7 +436,7 @@ export default function ClipEditorPage() {
               </div>
               <div>
                 <p className="text-lg font-semibold">Edit a clip</p>
-                <p className="text-sm text-muted-foreground">Select a video and set the trim range.</p>
+                <p className="text-sm text-muted-foreground">Select a video from your assets or upload one.</p>
               </div>
             </div>
           )}

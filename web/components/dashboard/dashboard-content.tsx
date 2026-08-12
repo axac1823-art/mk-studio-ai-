@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Box,
   FolderOpen,
   Image as ImageIcon,
   Mic,
@@ -139,6 +140,10 @@ export function DashboardContent() {
 
           <ToolPickerPopover category="audio">
             <CategoryTrigger icon={Mic} label="Audio" colorClass="bg-violet-500/15 text-violet-400" />
+          </ToolPickerPopover>
+
+          <ToolPickerPopover category="3d">
+            <CategoryTrigger icon={Box} label="3D" colorClass="bg-amber-500/15 text-amber-400" />
           </ToolPickerPopover>
 
           <Link href="/app/projects" className="flex flex-col items-center gap-2">

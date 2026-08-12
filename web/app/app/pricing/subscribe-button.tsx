@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 interface SubscribeButtonProps {
   plan: string;
   highlighted: boolean;
+  billing: "monthly" | "yearly";
 }
 
-export function SubscribeButton({ plan, highlighted }: SubscribeButtonProps) {
+export function SubscribeButton({ plan, highlighted, billing }: SubscribeButtonProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +21,7 @@ export function SubscribeButton({ plan, highlighted }: SubscribeButtonProps) {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, billing }),
       });
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (data.url) {

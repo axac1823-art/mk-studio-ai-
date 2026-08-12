@@ -34,13 +34,17 @@ export const dynamic = "force-dynamic";
 // La génération vidéo (Animate) peut durer plusieurs minutes côté worker.
 export const maxDuration = 300;
 
-// Les 5 fonctions image du scope MVP (agrégateur vertical archviz/immobilier).
+// Les fonctions image du scope (agrégateur vertical archviz/immobilier).
 const SUPPORTED_FEATURES: Feature[] = [
   "print_render",
   "mood_swap",
   "exterior_to_interior",
   "plan_to_render",
   "multi_angle",
+  "image_extender",
+  "variations",
+  "background_remover",
+  "text_to_image",
 ];
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
@@ -94,7 +98,10 @@ export async function POST(req: NextRequest) {
   const imageUrlField = form.get("imageUrl");
   const hasImageUrl =
     typeof imageUrlField === "string" && /^https?:\/\/.+/.test(imageUrlField.trim());
-  if (!hasImageUrl && !validImageFile(image, MAX_PRIMARY_SIZE)) {
+  const isTextToImage = feature === "text_to_image";
+  // Text-to-image : l'image principale est optionnelle (prompt suffit) ;
+  // une image de référence peut être fournie via le champ `reference`.
+  if (!isTextToImage && !hasImageUrl && !validImageFile(image, MAX_PRIMARY_SIZE)) {
     return NextResponse.json(
       { error: "Please provide a valid image (PNG, JPEG or WebP, 10 MB max)." },
       { status: 400 }
@@ -158,7 +165,9 @@ export async function POST(req: NextRequest) {
   // Image principale : soit une URL (rendu précédent, transmise telle
   // quelle), soit le fichier uploadé encodé en data URI. Les data URIs
   // transitent dans le job (jsonb) en attendant le stockage objet.
-  let imageUrl: string;
+  // Pour le text-to-image, l'image principale est optionnelle ; si elle
+  // est absente, les références optionnelles peuvent guider le style.
+  let imageUrl: string | undefined;
   if (hasImageUrl && typeof imageUrlField === "string") {
     imageUrl = imageUrlField.trim();
   } else if (validImageFile(image, MAX_PRIMARY_SIZE)) {
@@ -172,7 +181,7 @@ export async function POST(req: NextRequest) {
     } catch {
       // best-effort : l'asset source est un confort, pas un prérequis.
     }
-  } else {
+  } else if (!isTextToImage) {
     // Déjà refusé par la validation ci-dessus — garde-fou pour le typage.
     return NextResponse.json(
       { error: "Please provide a valid image (PNG, JPEG or WebP, 10 MB max)." },

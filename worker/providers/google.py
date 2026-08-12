@@ -1,10 +1,11 @@
 """Adaptateur Google Gemini — API officielle (port de google.ts).
 
 Modèles servis : gemini-2.5-flash-image ("Nano Banana"),
-gemini-3-pro-image-preview ("Nano Banana Pro") — édition multi-images.
+gemini-3-pro-image ("Nano Banana Pro") — génération image à partir de
+ texte seul et/ou d'images de référence.
 
 Schéma : POST /v1beta/models/{model}:generateContent (header
-`x-goog-api-key`) ; l'image source + les références partent en parts
+`x-goog-api-key`) ; le prompt + les images de référence partent en parts
 inline_data ; la réponse rend des parts inlineData (base64), converties
 ici en data URIs (les workflows les stockent ensuite sur disque).
 Une image par requête : la quantité est servie par requêtes parallèles.

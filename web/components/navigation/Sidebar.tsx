@@ -6,10 +6,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Box,
   FolderOpen,
   Home,
   Image as ImageIcon,
   Menu,
+  Mic,
   Plus,
   Search,
   Settings,
@@ -18,12 +20,12 @@ import {
   Upload,
   Video,
   CreditCard,
-  LogOut,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { RenderuimLogo } from "@/components/icons/renderuim";
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
+import { LogoutButton } from "@/components/navigation/logout-button";
 import { cn } from "@/lib/utils";
 import { TOOLS } from "@/config/tools";
 import { CreditAlert } from "@/components/billing/credit-alert";
@@ -31,6 +33,8 @@ import type { DbUser } from "@/lib/db/queries";
 
 const IMAGE_ROUTES = TOOLS.filter((tool) => tool.category === "image").map((tool) => tool.route);
 const VIDEO_ROUTE = TOOLS.find((tool) => tool.category === "video")?.route ?? "/app/ai-video-generator";
+const AUDIO_ROUTE = TOOLS.find((tool) => tool.category === "audio")?.route ?? "/app/voice-generator";
+const THREED_ROUTE = TOOLS.find((tool) => tool.category === "3d")?.route ?? "/app/3d-generator";
 
 const TOP_LINK_ITEMS = [
   { href: "/app/dashboard", label: "Home", icon: Home },
@@ -85,6 +89,8 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
   const collapsed = !open;
   const isImageActive = IMAGE_ROUTES.some((route) => pathname.startsWith(route));
   const isVideoActive = pathname.startsWith(VIDEO_ROUTE);
+  const isAudioActive = pathname.startsWith(AUDIO_ROUTE);
+  const is3dActive = pathname.startsWith(THREED_ROUTE);
 
   return (
     <aside
@@ -189,6 +195,46 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
             {!collapsed && <span className="hidden md:inline">Video</span>}
           </Button>
         </ToolPickerPopover>
+
+        <ToolPickerPopover category="audio" placement="right">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-9 w-full items-center justify-center gap-3 px-3 transition-colors",
+              collapsed ? "px-0" : "md:justify-start",
+              isAudioActive
+                ? "bg-accent text-foreground hover:bg-accent"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            )}
+            aria-label="Audio tools"
+            title="Audio"
+          >
+            <Mic className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="hidden md:inline">Audio</span>}
+          </Button>
+        </ToolPickerPopover>
+
+        <ToolPickerPopover category="3d" placement="right">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-9 w-full items-center justify-center gap-3 px-3 transition-colors",
+              collapsed ? "px-0" : "md:justify-start",
+              is3dActive
+                ? "bg-accent text-foreground hover:bg-accent"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            )}
+            aria-label="3D tools"
+            title="3D"
+          >
+            <Box className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="hidden md:inline">3D</span>}
+          </Button>
+        </ToolPickerPopover>
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 overflow-hidden p-3">
@@ -220,33 +266,20 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
 
         <div className={cn("hidden flex-col gap-1 border-t pt-3", !collapsed && "md:flex")}>
           <p className="truncate px-3 text-xs text-muted-foreground">{user.email}</p>
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="h-9 w-full items-center justify-start gap-3 px-3 text-muted-foreground hover:text-foreground"
-          >
-            <Link href="/logout">
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Link>
-          </Button>
+          <LogoutButton
+            collapsed={collapsed}
+            className="h-9 w-full items-center justify-start px-3"
+          />
         </div>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
+        <LogoutButton
+          collapsed={collapsed}
           className={cn(
-            "h-9 w-full items-center justify-center px-3 text-muted-foreground hover:text-foreground",
-            !collapsed && "md:hidden"
+            "h-9 w-full items-center justify-center px-3 md:hidden",
+            collapsed && "px-0"
           )}
           aria-label="Sign out"
-        >
-          <Link href="/logout">
-            <LogOut className="h-4 w-4" />
-          </Link>
-        </Button>
+        />
       </div>
     </aside>
   );

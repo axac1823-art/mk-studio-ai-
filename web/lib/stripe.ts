@@ -13,14 +13,12 @@ export function getStripe(): Stripe {
   });
 }
 
-const PLAN_CREDITS: Record<string, number> = {
-  starter: 500,
-  pro: 2000,
-  studio: 6000,
-};
+import { getPlans } from "./db/queries";
 
-export function planCredits(plan: string): number {
-  return PLAN_CREDITS[plan.toLowerCase()] ?? 0;
+export async function planCredits(plan: string): Promise<number> {
+  const plans = await getPlans();
+  const found = plans.find((p) => p.plan.toLowerCase() === plan.toLowerCase());
+  return found?.monthly_credits ?? 0;
 }
 
 export async function getOrCreateStripeCustomer(
@@ -103,7 +101,7 @@ export async function mintSubscriptionCredits(
   plan: string,
   periodEndUnix: number
 ) {
-  const credits = planCredits(plan);
+  const credits = await planCredits(plan);
   if (credits <= 0) return;
 
   // Idempotence par période : une seule ligne mint par mois facturé.

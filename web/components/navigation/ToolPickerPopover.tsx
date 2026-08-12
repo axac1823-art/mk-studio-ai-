@@ -102,6 +102,7 @@ export function ToolPickerPopover({
     if (!rect) return { top: 0, left: 0 };
     const padding = 16;
     const popoverWidth = 640;
+    const minVisibleHeight = 240;
 
     if (placement === "right") {
       return {
@@ -112,23 +113,26 @@ export function ToolPickerPopover({
 
     const idealLeft = rect.left + rect.width / 2 - popoverWidth / 2;
     const left = Math.max(padding, Math.min(idealLeft, window.innerWidth - popoverWidth - padding));
-    return { top: rect.bottom + 8, left };
+    const spaceBelow = window.innerHeight - rect.bottom - padding;
+    const top = spaceBelow >= minVisibleHeight ? rect.bottom + 8 : padding;
+    return { top, left };
   }, [rect, placement]);
 
   const popover = (
     <div
       ref={popoverRef}
-      className={cn(
-        "fixed z-50 w-[640px] max-w-[calc(100vw-2rem)] rounded-xl border bg-popover p-4 shadow-2xl",
-        "focus:outline-none"
-      )}
+      className="pointer-events-none fixed z-50 focus:outline-none"
       style={{ top: position.top, left: position.left }}
       role="dialog"
       aria-label="Tool picker"
     >
-      <div className="flex flex-col gap-4">
+      <div
+        className={cn(
+          "pointer-events-auto flex w-[640px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] flex-col gap-4 overflow-hidden rounded-xl border bg-popover p-4 shadow-2xl"
+        )}
+      >
         {!category && (
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {TOOL_CATEGORIES.map((cat) => (
               <button
                 key={cat.id}
@@ -147,7 +151,7 @@ export function ToolPickerPopover({
           </div>
         )}
 
-        <div className="relative">
+        <div className="relative shrink-0">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
@@ -159,21 +163,23 @@ export function ToolPickerPopover({
           />
         </div>
 
-        {filteredTools.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">No tools match.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {filteredTools.map((tool) => (
-              <ToolCard
-                key={tool.id}
-                name={tool.name}
-                description={tool.description}
-                icon={tool.icon}
-                onClick={() => handleNavigate(tool.route)}
-              />
-            ))}
-          </div>
-        )}
+        <div className="min-h-0 overflow-y-auto pr-1">
+          {filteredTools.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">No tools match.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {filteredTools.map((tool) => (
+                <ToolCard
+                  key={tool.id}
+                  name={tool.name}
+                  description={tool.description}
+                  icon={tool.icon}
+                  onClick={() => handleNavigate(tool.route)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

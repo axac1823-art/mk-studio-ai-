@@ -7,7 +7,9 @@ export type VideoMode =
   | "image_to_video"
   | "start_end_frame"
   | "multi_reference"
-  | "multi_shot";
+  | "multi_shot"
+  | "video_to_video"
+  | "relight";
 
 export interface VideoShot {
   id: string;
@@ -44,6 +46,7 @@ export function resolveVideoMode(input: {
   startImage: string | null;
   endImage: string | null;
   shots: VideoShot[];
+  media?: Array<{ tag: string; type: "image" | "video" }>;
 }): VideoMode {
   if (input.shots.length > 1) return "multi_shot";
   if (input.startImage && input.endImage) return "start_end_frame";
@@ -51,6 +54,15 @@ export function resolveVideoMode(input: {
   const firstPrompt = input.shots[0]?.prompt ?? "";
   const taggedCount = countDistinctTags(firstPrompt);
   if (taggedCount >= 2) return "multi_reference";
+
+  // Un tag @vidN isolé (sans start image) déclenche le mode video_to_video.
+  if (!input.startImage) {
+    const firstVideoTag = findTags(firstPrompt).find((tag) => {
+      const meta = input.media?.find((m) => m.tag === tag);
+      return meta?.type === "video";
+    });
+    if (firstVideoTag) return "video_to_video";
+  }
 
   if (input.startImage || taggedCount === 1) return "image_to_video";
   return "text_to_video";

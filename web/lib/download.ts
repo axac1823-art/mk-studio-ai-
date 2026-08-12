@@ -6,7 +6,7 @@
 // sauvegarder) — une route de téléchargement serveur prendra le relais au
 // jalon DB si nécessaire.
 
-export async function saveResult(url: string, kind: "image" | "video"): Promise<void> {
+export async function saveResult(url: string, kind: "image" | "video" | "audio" | "3d_model"): Promise<void> {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`download failed (${res.status})`);
@@ -14,11 +14,15 @@ export async function saveResult(url: string, kind: "image" | "video"): Promise<
     const ext =
       kind === "video"
         ? "mp4"
-        : blob.type.includes("png")
-          ? "png"
-          : blob.type.includes("webp")
-            ? "webp"
-            : "jpg";
+        : kind === "audio"
+          ? "mp3"
+          : kind === "3d_model"
+            ? "glb"
+            : blob.type.includes("png")
+              ? "png"
+              : blob.type.includes("webp")
+                ? "webp"
+                : "jpg";
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = objectUrl;

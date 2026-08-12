@@ -17,6 +17,12 @@ _BASE = "https://api.elevenlabs.io/v1"
 DEFAULT_MODEL = "eleven_multilingual_v2"
 DEFAULT_VOICE = "CwhRBWXzGAHq8TQ4Fs17"  # Roger — voix premade actuelle (vérifier via /v1/voices si la clé change)
 
+# Coût réel provider moyen par génération TTS (centimes USD). ElevenLabs
+# facture au caractère ; cette valeur est une estimation conservative pour
+# un script de narration courte (≈ 1 500 caractères). Utilisé pour le calcul
+# de marge et la cohérence avec `provider_cost_cents` des jobs image/vidéo.
+COST_PER_GENERATION_CENTS = 2
+
 
 def is_configured() -> bool:
     return bool(os.environ.get("ELEVENLABS_API_KEY"))

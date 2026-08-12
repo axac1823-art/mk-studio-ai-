@@ -107,6 +107,27 @@ def test_resolve_text_to_video():
     assert video.resolve_video_mode(job) == "text_to_video"
 
 
+def test_resolve_video_to_video_from_vid_tag():
+    job = {
+        "start_image_url": None,
+        "end_image_url": None,
+        "media_references": [{"tag": "@vid1", "asset_url": "http://video", "type": "video"}],
+        "shots": [{"id": str(uuid.uuid4()), "prompt": "make it rain @vid1", "taggedMediaIds": []}],
+    }
+    assert video.resolve_video_mode(job) == "video_to_video"
+
+
+def test_resolve_relight_hint():
+    job = {
+        "mode": "relight",
+        "start_image_url": None,
+        "end_image_url": None,
+        "media_references": [{"tag": "@vid1", "asset_url": "http://video", "type": "video"}],
+        "shots": [{"id": str(uuid.uuid4()), "prompt": "golden hour @vid1", "taggedMediaIds": []}],
+    }
+    assert video.resolve_video_mode(job) == "relight"
+
+
 def test_compute_video_cost_single_mode(monkeypatch, video_costs):
     monkeypatch.setattr(video, "_get_action_costs", lambda _conn: video_costs)
     assert video.compute_video_cost(FakeConn(), "start_end_frame", 1) == 40

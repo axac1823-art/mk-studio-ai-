@@ -11,7 +11,7 @@ fichiers stockés via storage.py) :
 """
 import os
 
-from providers import bfl, elevenlabs, google, kling, magichour, openai, runway
+from providers import bfl, elevenlabs, google, hunyuan3d, kling, magichour, meshy, openai, removebg, runway, trellis, tripo
 
 PROVIDERS = {
     "bfl": bfl,
@@ -21,6 +21,11 @@ PROVIDERS = {
     "openai": openai,
     "magichour": magichour,
     "elevenlabs": elevenlabs,
+    "removebg": removebg,
+    "meshy": meshy,
+    "tripo": tripo,
+    "hunyuan3d": hunyuan3d,
+    "trellis": trellis,
 }
 
 # Groupes alternatifs de variables d'env : un groupe complet suffit.
@@ -32,6 +37,11 @@ PROVIDER_ENV_KEYS = {
     "openai": [["OPENAI_API_KEY"]],
     "magichour": [["MAGIC_HOUR_API_KEY"]],
     "elevenlabs": [["ELEVENLABS_API_KEY"]],
+    "removebg": [["REMOVEBG_API_KEY"]],
+    "meshy": [["MESHY_API_KEY"]],
+    "tripo": [["TRIPO_API_KEY"]],
+    "hunyuan3d": [["HUNYUAN3D_API_KEY"]],
+    "trellis": [["TRELLIS_API_KEY"]],
 }
 
 

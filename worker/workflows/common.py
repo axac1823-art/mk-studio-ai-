@@ -62,13 +62,14 @@ def insert_video_asset(conn, job_id: str, user_id: str, project_id: str, type_: 
     return str(row["id"])
 
 
-def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int, model_used: str | None = None) -> None:
-    """Succès : job complete + modèle utilisé + débit IDEMPOTENT du coût
-    calculé par /web (index partiel UNIQUE(ref_job_id, reason) WHERE
-    ref_video_job_id IS NULL — jamais deux 'spend' pour le même job)."""
+def complete_job(conn, job: dict, result_asset_id: str, credits_charged: int, model_used: str | None = None, provider_cost_cents: int | None = None) -> None:
+    """Succès : job complete + modèle utilisé + coût provider + débit
+    IDEMPOTENT du coût calculé par /web (index partiel
+    UNIQUE(ref_job_id, reason) WHERE ref_video_job_id IS NULL — jamais deux
+    'spend' pour le même job)."""
     conn.execute(
-        "UPDATE jobs SET status = 'complete', result_asset_id = %s, credits_charged = %s, model_used = %s WHERE id = %s",
-        (result_asset_id, credits_charged, model_used, job["id"]),
+        "UPDATE jobs SET status = 'complete', result_asset_id = %s, credits_charged = %s, model_used = %s, provider_cost_cents = %s WHERE id = %s",
+        (result_asset_id, credits_charged, model_used, provider_cost_cents, job["id"]),
     )
     if credits_charged > 0:
         conn.execute(
@@ -85,13 +86,14 @@ def complete_video_job(
     result_url: str,
     credits_charged: int,
     model_used: str | None = None,
+    provider_cost_cents: int | None = None,
 ) -> None:
-    """Succès d'un video_job : complétion + débit idempotent via ref_video_job_id."""
+    """Succès d'un video_job : complétion + coût provider + débit idempotent via ref_video_job_id."""
     conn.execute(
         """UPDATE video_jobs
-           SET status = 'complete', result_url = %s, credits_charged = %s, model_used = %s
+           SET status = 'complete', result_url = %s, credits_charged = %s, model_used = %s, provider_cost_cents = %s
            WHERE id = %s""",
-        (result_url, credits_charged, model_used, job["id"]),
+        (result_url, credits_charged, model_used, provider_cost_cents, job["id"]),
     )
     if credits_charged > 0:
         conn.execute(

@@ -69,6 +69,15 @@ export const ANGLE_PRESETS: PresetMeta[] = [
   { id: "close_up", label: "Close-up", swatch: "from-rose-200 to-rose-400" },
 ];
 
+/** Image Extender : direction de l'outpaint. */
+export const EXTENDER_DIRECTION_PRESETS: PresetMeta[] = [
+  { id: "center", label: "All sides", swatch: "from-zinc-200 to-zinc-400" },
+  { id: "left", label: "Extend left", swatch: "from-blue-200 to-blue-400" },
+  { id: "right", label: "Extend right", swatch: "from-emerald-200 to-emerald-400" },
+  { id: "top", label: "Extend top", swatch: "from-amber-200 to-amber-400" },
+  { id: "bottom", label: "Extend bottom", swatch: "from-rose-200 to-rose-400" },
+];
+
 // --- Bornes et options des contrôles de génération ---
 
 export const MAX_REFERENCES = 14;

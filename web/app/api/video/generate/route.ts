@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { getBalance } from "@/lib/credits";
-import { computeVideoCost, resolveVideoMode } from "@/lib/video-utils";
+import { computeVideoCost, resolveVideoMode, type VideoMode } from "@/lib/video-utils";
 import {
   getDefaultProject,
   getProject,
@@ -26,6 +26,15 @@ const MAX_START_END_SIZE = 10 * 1024 * 1024;
 const MAX_MEDIA_SIZE = 50 * 1024 * 1024;
 const MAX_ATTACHED_MEDIA = 9;
 const MAX_PROMPT_LENGTH = 1999;
+const KNOWN_MODES: string[] = [
+  "text_to_video",
+  "image_to_video",
+  "start_end_frame",
+  "multi_reference",
+  "multi_shot",
+  "video_to_video",
+  "relight",
+];
 
 function validImage(value: unknown, maxSize: number): value is File {
   return value instanceof File && ALLOWED_IMAGE_TYPES.includes(value.type) && value.size > 0 && value.size <= maxSize;
@@ -57,6 +66,7 @@ export async function POST(req: NextRequest) {
     aspectRatio: string;
     audioEnabled: boolean;
     selectedModel?: string;
+    mode?: string;
     shots: Array<{ id: string; prompt: string; taggedMediaIds: string[] }>;
     mediaMeta: Array<{ tag: string; type: "image" | "video" }>;
   };
@@ -73,6 +83,10 @@ export async function POST(req: NextRequest) {
     if (typeof shot.prompt !== "string" || shot.prompt.length > MAX_PROMPT_LENGTH) {
       return NextResponse.json({ error: "Invalid shot prompt." }, { status: 400 });
     }
+  }
+
+  if (payload.mode !== undefined && !KNOWN_MODES.includes(payload.mode)) {
+    return NextResponse.json({ error: "Invalid mode." }, { status: 400 });
   }
 
   const startImage = form.get("startImage");
@@ -129,11 +143,13 @@ export async function POST(req: NextRequest) {
 
   // Estimation du mode et du coût (le worker recalcule le mode de façon
   // autoritaire au moment de l'exécution).
-  const previewMode = resolveVideoMode({
+  const detectedMode = resolveVideoMode({
     startImage: startImageUrl,
     endImage: endImageUrl,
     shots: payload.shots,
+    media: mediaMeta,
   });
+  const previewMode = (payload.mode as VideoMode | undefined) ?? detectedMode;
   const videoCosts = await getVideoActionCosts();
   const cost = computeVideoCost(videoCosts, previewMode, payload.shots.length);
   const balance = await getBalance();
@@ -144,6 +160,7 @@ export async function POST(req: NextRequest) {
   const jobId = await insertVideoJob({
     userId: user.id,
     projectId: project.id,
+    mode: payload.mode || null,
     startImageUrl,
     endImageUrl,
     mediaReferences: attachedMedia,

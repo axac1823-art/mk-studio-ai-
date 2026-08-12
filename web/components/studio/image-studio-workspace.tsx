@@ -27,6 +27,7 @@ import {
 import { STUDIO_TABS, type StudioTab } from "@/lib/features";
 import {
   ANGLE_PRESETS,
+  EXTENDER_DIRECTION_PRESETS,
   LIGHTING_PRESETS,
   MATERIAL_PRESETS,
   MOOD_PRESETS,
@@ -45,11 +46,12 @@ interface ImageStudioWorkspaceProps {
   showTabs?: boolean;
 }
 
-/** Modèle affichable dans le sélecteur UI (key/name/description). */
+/** Modèle affichable dans le sélecteur UI (key/name/description/configured). */
 interface ModelOption {
   key: string;
   name: string;
   description: string;
+  configured: boolean;
 }
 
 /** Asset tel que renvoyé par GET /api/assets (galerie du projet actif). */
@@ -62,8 +64,8 @@ interface AssetItem {
 
 type RightView = "compare" | "gallery";
 
-/** Fonctions image "simples" (hors Print Render et Upscale) : même panneau générique,
- *  seuls les presets dédiés changent. */
+/** Fonctions image "simples" (hors Print Render et Upscale) :
+ *  même panneau générique, seuls les presets dédiés changent. */
 type SimpleImageTab = Exclude<StudioTab, "print_render" | "upscale">;
 
 interface SimpleImageState {
@@ -74,10 +76,14 @@ interface SimpleImageState {
 }
 
 const SIMPLE_TAB_CONFIG: Record<SimpleImageTab, { options?: PresetMeta[]; optionsLabel?: string }> = {
+  text_to_image: {},
   mood_swap: { options: MOOD_PRESETS, optionsLabel: "Atmosphere" },
   exterior_to_interior: {},
   plan_to_render: { options: PLAN_RENDER_PRESETS, optionsLabel: "Render style" },
   multi_angle: { options: ANGLE_PRESETS, optionsLabel: "Camera angle" },
+  image_extender: { options: EXTENDER_DIRECTION_PRESETS, optionsLabel: "Extend direction" },
+  variations: {},
+  background_remover: {},
 };
 
 function initialSimpleState(optionId: string): SimpleImageState {
@@ -107,12 +113,16 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [lightingId, setLightingId] = useState(LIGHTING_PRESETS[0].id);
   const [sceneDetails, setSceneDetails] = useState("");
 
-  // --- Fonctions image simples (Mood, Ext->Int, Plan, Multi-Angle) ---
+  // --- Fonctions image simples (Text-to-Image, Mood, Ext->Int, Plan, Multi-Angle, Extender, Variations, Background) ---
   const [simpleTabs, setSimpleTabs] = useState<Record<SimpleImageTab, SimpleImageState>>({
+    text_to_image: initialSimpleState(""),
     mood_swap: initialSimpleState(MOOD_PRESETS[0].id),
     exterior_to_interior: initialSimpleState(""),
     plan_to_render: initialSimpleState(PLAN_RENDER_PRESETS[0].id),
     multi_angle: initialSimpleState(ANGLE_PRESETS[0].id),
+    image_extender: initialSimpleState(EXTENDER_DIRECTION_PRESETS[0].id),
+    variations: initialSimpleState(""),
+    background_remover: initialSimpleState(""),
   });
 
   // --- Contrôles de génération (partagés par toutes les fonctions image) ---
@@ -311,14 +321,23 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const handleGenerateSimpleImage = () => {
     if (tab === "print_render" || tab === "upscale") return;
     const state = simpleTabs[tab];
-    if (!state.file) return;
+    if (tab === "text_to_image") {
+      if (state.sceneDetails.trim().length === 0) return;
+    } else if (!state.file) {
+      return;
+    }
     const form = new FormData();
     form.append("feature", tab);
-    form.append("image", state.file);
-    if (SIMPLE_TAB_CONFIG[tab].options && state.optionId) {
-      form.append("optionId", state.optionId);
+    if (tab === "text_to_image") {
+      form.append("sceneDetails", state.sceneDetails.trim());
+      if (state.file) form.append("reference", state.file);
+    } else {
+      form.append("image", state.file as File);
+      if (SIMPLE_TAB_CONFIG[tab].options && state.optionId) {
+        form.append("optionId", state.optionId);
+      }
+      form.append("sceneDetails", state.sceneDetails);
     }
-    form.append("sceneDetails", state.sceneDetails);
     if (selectedModel) form.append("model", selectedModel);
     appendSharedSettings(form);
     void submitGeneration(form, "image", state.previewUrl);
@@ -372,12 +391,29 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   // la config des coûts est fetchée une fois (affiché = facturé côté serveur).
   const activeImageCost = !costsConfig
     ? 0
-    : computeDisplayCost(costsConfig, { feature: tab, quality, resolution, quantity });
+    : computeDisplayCost(costsConfig, {
+        feature: tab,
+        quality,
+        resolution,
+        quantity,
+        selectedModel: selectedModel || undefined,
+      });
   const activeImageFile =
     tab === "print_render" ? file : tab === "upscale" ? null : simpleTabs[tab].file;
+  const canGenerateImage =
+    tab === "text_to_image"
+      ? simpleTabs.text_to_image.sceneDetails.trim().length > 0
+      : activeImageFile !== null;
 
   const upscaleCost = costsConfig
-    ? computeDisplayCost(costsConfig, { feature: "upscale", quality, resolution: "1K", quantity: 1, upscaleFactor })
+    ? computeDisplayCost(costsConfig, {
+        feature: "upscale",
+        quality,
+        resolution: "1K",
+        quantity: 1,
+        upscaleFactor,
+        selectedModel: selectedUpscaleModel || undefined,
+      })
     : 0;
 
   const title = STUDIO_TABS.find((t) => t.id === tab)?.label ?? "Image Studio";
@@ -481,6 +517,8 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                     });
                     setError(null);
                   }}
+                  uploadOptional={tab === "text_to_image"}
+                  uploadLabel={tab === "text_to_image" ? "Reference image" : undefined}
                   options={SIMPLE_TAB_CONFIG[tab].options}
                   optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
                   optionId={simpleTabs[tab].optionId}
@@ -586,7 +624,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
           cost={activeImageCost}
           balance={balance}
           isBusy={isBusy}
-          canGenerate={activeImageFile !== null}
+          canGenerate={canGenerateImage}
           onQuantityChange={setQuantity}
           onQualityChange={setQuality}
           onAspectRatioChange={setAspectRatio}

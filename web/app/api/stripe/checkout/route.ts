@@ -7,20 +7,28 @@ import { getOrCreateStripeCustomer, getStripe } from "@/lib/stripe";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PRICE_MAP: Record<string, string | undefined> = {
+const MONTHLY_PRICE_MAP: Record<string, string | undefined> = {
   starter: process.env.STRIPE_PRICE_STARTER,
   pro: process.env.STRIPE_PRICE_PRO,
   studio: process.env.STRIPE_PRICE_STUDIO,
 };
 
+const YEARLY_PRICE_MAP: Record<string, string | undefined> = {
+  starter: process.env.STRIPE_PRICE_STARTER_YEARLY,
+  pro: process.env.STRIPE_PRICE_PRO_YEARLY,
+  studio: process.env.STRIPE_PRICE_STUDIO_YEARLY,
+};
+
 export async function POST(req: NextRequest) {
   const { dbUser: user, supabaseUser } = await requireAuth();
-  const body = (await req.json().catch(() => null)) as { plan?: string } | null;
+  const body = (await req.json().catch(() => null)) as { plan?: string; billing?: string } | null;
   const plan = body?.plan?.toLowerCase();
-  const priceId = plan ? PRICE_MAP[plan] : undefined;
+  const billing = body?.billing === "yearly" ? "yearly" : "monthly";
+  const priceMap = billing === "yearly" ? YEARLY_PRICE_MAP : MONTHLY_PRICE_MAP;
+  const priceId = plan ? priceMap[plan] : undefined;
 
   if (!plan || !priceId) {
-    return NextResponse.json({ error: "Invalid plan." }, { status: 400 });
+    return NextResponse.json({ error: "Invalid plan or billing period." }, { status: 400 });
   }
 
   try {

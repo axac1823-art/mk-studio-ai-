@@ -3,16 +3,36 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { computeCost, getBalance } from "@/lib/credits";
-import { getAsset, getProject, insertJob } from "@/lib/db/queries";
-import { WorkerNotConfiguredError, isWorkerConfigured, startVideoUpscaleJob } from "@/lib/worker-client";
+import { ensureDefaultProject, getAsset, getProject, insertJob, insertSourceAsset } from "@/lib/db/queries";
+import {
+  WorkerNotConfiguredError,
+  isWorkerConfigured,
+  startVideoUpscaleJob,
+  uploadSource,
+} from "@/lib/worker-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const VIDEO_MIME_TYPES = ["video/mp4", "video/webm", "video/quicktime"] as const;
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+
 function optionalString(form: FormData, key: string): string | undefined {
   const value = form.get(key);
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+async function resolveUploadedVideo(userId: string, projectId: string, file: File): Promise<string> {
+  if (!VIDEO_MIME_TYPES.includes(file.type as (typeof VIDEO_MIME_TYPES)[number])) {
+    throw new Error("Unsupported video format. Use MP4, WebM or QuickTime.");
+  }
+  if (file.size > MAX_VIDEO_SIZE_BYTES) {
+    throw new Error("Video must be under 100 MB.");
+  }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const storagePath = await uploadSource(buffer, file.type);
+  return insertSourceAsset({ userId, projectId, type: "video", storagePath });
 }
 
 export async function POST(req: NextRequest) {
@@ -27,19 +47,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const assetId = optionalString(form, "assetId");
-  if (!assetId) {
-    return NextResponse.json({ error: "Missing assetId." }, { status: 400 });
+  const { dbUser: user } = await requireAuth();
+  const projectIdField = optionalString(form, "projectId");
+
+  let assetId = optionalString(form, "assetId");
+  let asset;
+
+  try {
+    if (assetId) {
+      asset = await getAsset(user.id, assetId);
+      if (!asset || asset.type !== "video" || asset.is_trashed) {
+        return NextResponse.json({ error: "Invalid video asset." }, { status: 400 });
+      }
+    } else {
+      const videoFile = form.get("video");
+      if (!(videoFile instanceof File)) {
+        return NextResponse.json({ error: "Select an existing video or upload one." }, { status: 400 });
+      }
+      const project = projectIdField
+        ? await getProject(user.id, projectIdField)
+        : await ensureDefaultProject(user.id);
+      if (!project) {
+        return NextResponse.json({ error: "Unknown project." }, { status: 400 });
+      }
+      assetId = await resolveUploadedVideo(user.id, project.id, videoFile);
+      asset = await getAsset(user.id, assetId);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to process video upload.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  const { dbUser: user } = await requireAuth();
-  const asset = await getAsset(user.id, assetId);
-  if (!asset || asset.type !== "video" || asset.is_trashed) {
+  if (!asset) {
     return NextResponse.json({ error: "Invalid video asset." }, { status: 400 });
   }
 
-  const projectIdField = optionalString(form, "projectId");
-  const project = projectIdField ? await getProject(user.id, projectIdField) : await getProject(user.id, asset.project_id);
+  const project = projectIdField
+    ? await getProject(user.id, projectIdField)
+    : await getProject(user.id, asset.project_id) ?? (await ensureDefaultProject(user.id));
   if (!project) {
     return NextResponse.json({ error: "Unknown project." }, { status: 400 });
   }

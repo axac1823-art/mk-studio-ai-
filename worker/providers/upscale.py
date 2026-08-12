@@ -93,13 +93,12 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
 
 def list_models() -> list[dict]:
     """Modèles upscalers disponibles côté worker."""
-    if not is_configured():
-        return []
     return [
         {
             "key": "magichour",
             "name": "Magic Hour AI Upscaler",
             "description": "Cloud AI upscaler with enhancement",
+            "configured": is_configured(),
         }
     ]
 

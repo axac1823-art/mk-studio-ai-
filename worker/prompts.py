@@ -143,9 +143,74 @@ def build_animate_prompt(scene_details=None, motion_prompt=None) -> str:
     )
 
 
+def build_video_to_video_prompt(scene_details=None) -> str:
+    """Fonction 5b — Modify Video : transforme une vidéo existante tout en
+    préservant le sujet architectural, la géométrie et le mouvement de caméra."""
+    return _join(
+        [
+            "modify this existing architectural video according to the following description, preserve the original subject, geometry and camera motion",
+            _sanitize_scene_details(scene_details),
+        ]
+    )
+
+
+def build_video_relight_prompt(scene_details=None) -> str:
+    """Fonction 5c — Video Relight : change l'éclairage / l'heure du jour
+    d'une vidéo existante sans toucher à la géométrie."""
+    return _join(
+        [
+            "change the lighting and time of day of this architectural video while preserving the original subject, geometry and camera motion",
+            _sanitize_scene_details(scene_details),
+        ]
+    )
+
+
+def build_image_extender_prompt(direction=None, target_ratio=None, scene_details=None) -> str:
+    """Image Extender — outpaint : étend le canvas dans la direction demandée
+    en préservant le sujet original."""
+    direction = direction or "center"
+    ratio = target_ratio or "original"
+    return _join(
+        [
+            f"extend the canvas of the image toward the {direction}, keep the original subject and architecture intact",
+            f"target aspect ratio {ratio}, fill the new area with content perfectly consistent with the original style, lighting, materials and surroundings",
+            "seamless outpaint, photorealistic architectural image, no distortion of existing elements",
+            _sanitize_scene_details(scene_details),
+        ]
+    )
+
+
+def build_variations_prompt(scene_details=None) -> str:
+    """Variations — alternate versions with similar composition/style."""
+    return _join(
+        [
+            "create a visual variation of this architectural image, keep the same overall composition, perspective, subject and style",
+            "change subtle visual details: materials, lighting, atmosphere, landscape or small design elements while preserving geometry and camera angle",
+            "photorealistic architectural render, consistent with the original",
+            _sanitize_scene_details(scene_details),
+        ]
+    )
+
+
+def build_background_remover_prompt() -> str:
+    """Background Remover — le provider dédié (remove.bg) gère le prompt
+    lui-même ; ce template est conservé pour l'uniformité du dispatch."""
+    return "remove the background, isolate the main architectural subject, transparent background"
+
+
+def build_text_to_image_prompt(scene_details=None) -> str:
+    """Image Generator (standalone) : text-to-image architectural."""
+    return _join(
+        [
+            "photorealistic architectural render, high detail, professional archviz presentation",
+            _sanitize_scene_details(scene_details),
+        ]
+    )
+
+
 def build_feature_prompt(feature: str, fields: dict) -> str:
     """Dispatch par feature — l'`option_id` générique porte le preset de la
-    fonction (mood_id, plan_style_id ou angle_id)."""
+    fonction (mood_id, plan_style_id, angle_id, direction...)."""
     option_id = fields.get("optionId")
     details = fields.get("sceneDetails")
     if feature == "animate":
@@ -158,6 +223,18 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
         return build_plan_to_render_prompt(plan_style_id=option_id, scene_details=details)
     if feature == "multi_angle":
         return build_multi_angle_prompt(angle_id=option_id, scene_details=details)
+    if feature == "image_extender":
+        return build_image_extender_prompt(
+            direction=option_id,
+            target_ratio=fields.get("aspectRatio"),
+            scene_details=details,
+        )
+    if feature == "variations":
+        return build_variations_prompt(scene_details=details)
+    if feature == "background_remover":
+        return build_background_remover_prompt()
+    if feature == "text_to_image":
+        return build_text_to_image_prompt(scene_details=details)
     return build_print_render_prompt(
         scene_details=details,
         scene_type_id=fields.get("sceneTypeId"),
