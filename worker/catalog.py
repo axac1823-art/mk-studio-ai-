@@ -238,13 +238,40 @@ def magichour_edit_input(req: dict) -> dict:
     }
 
 
+def magichour_text_to_image_input(req: dict) -> dict:
+    """Magic Hour image editor utilisé pour le text-to-image avec image
+    optionnelle : l'image uploadée est transmise en référence par le front,
+    on la remonte comme image principale du flux Magic Hour."""
+    ratio = (
+        "16:9"
+        if req["aspectRatio"] in ("16:9", "4:3")
+        else "9:16"
+        if req["aspectRatio"] in ("9:16", "3:4")
+        else "1:1"
+    )
+    images: list[str] = []
+    if req.get("imageUrl"):
+        images.append(req["imageUrl"])
+    images.extend(req.get("referenceUrls", []))
+    return {
+        "prompt": req["prompt"],
+        "images": images,
+        "aspectRatio": ratio,
+        "resolution": "auto",
+        "quantity": req["quantity"],
+    }
+
+
 def magichour_video_input(req: dict) -> dict:
-    """Magic Hour image-to-video : durées transmises telles quelles."""
+    """Magic Hour image-to-video : durées transmises telles quelles.
+
+    Le tier standard utilise 480p car 720p n'est pas disponible sur tous les
+    plans Magic Hour (notamment le free tier)."""
     payload = {
         "prompt": req["prompt"],
         "image": req["imageUrl"],
         "endSeconds": req.get("durationSeconds") or 4,
-        "resolution": "1080p" if req["quality"] == "pro" else "720p",
+        "resolution": "1080p" if req["quality"] == "pro" else "480p",
     }
     if req.get("endImageUrl"):
         payload["endImage"] = req["endImageUrl"]
@@ -252,12 +279,15 @@ def magichour_video_input(req: dict) -> dict:
 
 
 def magichour_video_to_video_input(req: dict) -> dict:
-    """Magic Hour video-to-video / relight : reprend une vidéo existante."""
+    """Magic Hour video-to-video / relight : reprend une vidéo existante.
+
+    Le tier standard utilise 480p pour rester compatible avec les plans Magic Hour
+    qui ne proposent pas 720p (free tier)."""
     return {
         "prompt": req["prompt"],
         "videoUrl": req["videoUrl"],
         "endSeconds": req.get("durationSeconds") or 4,
-        "resolution": "1080p" if req["quality"] == "pro" else "720p",
+        "resolution": "1080p" if req["quality"] == "pro" else "480p",
     }
 
 
@@ -507,6 +537,10 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
     Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation", "bfl", "flux-dev", 5, 3, 0, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls),
     Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image", "openai", "gpt-image-1", 6, 8, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls),
     Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image", "google", "gemini-2.5-flash-image", 3, 3, 0, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls),
+    # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
+    # image de référence est fournie, car l'API Magic Hour exige une image
+    # d'entrée.
+    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly text-to-image with reference", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {

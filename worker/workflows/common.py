@@ -10,6 +10,7 @@ import logging
 import db
 import storage
 from providers.http_helpers import data_uri_to_bytes, get_bytes
+from workflows.engine import AllModelsFailedError
 
 log = logging.getLogger("workflows")
 
@@ -105,8 +106,12 @@ def complete_video_job(
 
 
 def fail_video_job(conn, job: dict, err: Exception) -> None:
-    """Échec d'un video_job : message générique côté client."""
-    log.error("video_job %s failed: %s", job["id"], err)
+    """Échec d'un video_job : message générique côté client, détail des
+    tentatives providers loggé côté serveur pour le diagnostic."""
+    if isinstance(err, AllModelsFailedError):
+        log.error("video_job %s failed: %s\nattempts=%s", job["id"], err, err.attempts)
+    else:
+        log.error("video_job %s failed: %s", job["id"], err)
     conn.execute(
         "UPDATE video_jobs SET status = 'failed', error_message = %s WHERE id = %s",
         ("Generation failed, please try again.", job["id"]),
@@ -130,9 +135,13 @@ def set_video_progress(conn, job_id: str, progress: dict) -> None:
 
 
 def fail_job(conn, job: dict, err: Exception) -> None:
-    """Échec : trace réelle côté serveur, message GÉNÉRIQUE côté client,
-    AUCUN débit (les crédits ne partent qu'au succès)."""
-    log.error("job %s (%s) failed: %s", job["id"], job.get("type"), err)
+    """Échec : trace réelle côté serveur (avec détail des tentatives si
+    disponible), message GÉNÉRIQUE côté client, AUCUN débit (les crédits ne
+    partent qu'au succès)."""
+    if isinstance(err, AllModelsFailedError):
+        log.error("job %s (%s) failed: %s\nattempts=%s", job["id"], job.get("type"), err, err.attempts)
+    else:
+        log.error("job %s (%s) failed: %s", job["id"], job.get("type"), err)
     conn.execute(
         "UPDATE jobs SET status = 'failed', error_message = %s WHERE id = %s",
         ("Generation failed, please try again.", job["id"]),

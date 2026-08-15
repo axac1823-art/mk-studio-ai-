@@ -22,6 +22,10 @@ UPSCALE_TIMEOUT_MS = 10 * 60 * 1000
 _MAGICHOUR_BASE = "https://api.magichour.ai"
 
 
+def _headers(api_key: str) -> dict:
+    return {"Authorization": f"Bearer {api_key}"}
+
+
 def is_configured() -> bool:
     """Au moins Magic Hour configuré (la route /upscale refuse en 503 sinon)."""
     return bool(os.environ.get("MAGIC_HOUR_API_KEY"))
@@ -35,10 +39,15 @@ def _magichour_upload(data_uri: str, api_key: str) -> str:
         return data_uri
     mime, data = parsed
     ext = mime.split("/")[1] if "/" in mime else "png"
+    media_type = (
+        "video" if mime.startswith("video/")
+        else "audio" if mime.startswith("audio/")
+        else "image"
+    )
     upload = post_json(
         f"{_MAGICHOUR_BASE}/v1/files/upload-urls",
-        {"x-api-key": api_key},
-        {"items": [{"extension": ext}]},
+        _headers(api_key),
+        {"items": [{"type": media_type, "extension": ext}]},
     )
     item = (upload.get("items") or [{}])[0]
     upload_url, file_path = item.get("upload_url"), item.get("file_path")
@@ -59,10 +68,11 @@ def _magichour_upload(data_uri: str, api_key: str) -> str:
 def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
     """Magic Hour image upscaler."""
     api_key = require_env("MAGIC_HOUR_API_KEY")
+    headers = _headers(api_key)
     file_path = _magichour_upload(str(input_.get("image") or ""), api_key)
     submit = post_json(
         f"{_MAGICHOUR_BASE}/v1/ai-image-upscaler",
-        {"x-api-key": api_key},
+        headers,
         {
             "image": file_path,
             "upscale_factor": int(input_.get("factor") or 2),
@@ -74,7 +84,7 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
         raise ProviderError(f"magichour upscale: no project id in response ({submit})")
 
     def fetch_status():
-        return get_json(f"{_MAGICHOUR_BASE}/v1/image-projects/{project_id}", {"x-api-key": api_key})
+        return get_json(f"{_MAGICHOUR_BASE}/v1/image-projects/{project_id}", headers)
 
     def extract_done(status):
         if status.get("status") == "complete":

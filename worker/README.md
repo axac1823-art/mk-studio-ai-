@@ -92,3 +92,13 @@ cd worker
 3. L'ajouter dans la liste de fallback du workflow concerné (`workflows/image_render.py`, `workflows/video.py`, `workflows/audio.py`, ...).
 4. Ajouter la clé dans `.env.example`.
 5. Les clés providers ne vivent **jamais** côté `/web`.
+
+
+Commande simple en une ligne
+docker compose exec db psql -U renderstudio -d renderstudio -c "ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_type_check; ALTER TABLE assets ADD CONSTRAINT assets_type_check CHECK (type IN ('image', 'video', 'audio', '3d_model'));"
+Vérification
+docker compose exec db psql -U renderstudio -d renderstudio -c "\d assets"
+Tu dois voir à la fin :
+
+Check constraints:
+    "assets_type_check" CHECK (type IN ('image', 'video', 'audio', '3d_model'))

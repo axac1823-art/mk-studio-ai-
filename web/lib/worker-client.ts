@@ -59,7 +59,7 @@ export function startImageJob(jobId: string): Promise<void> {
 }
 
 export function startVideoJob(videoJobId: string): Promise<void> {
-  return postStartJob("/generate/video", videoJobId, "video_job_id");
+  return postStartJob("/generate/video", videoJobId);
 }
 
 export function startAudioJob(jobId: string): Promise<void> {

@@ -190,8 +190,10 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       .catch(() => setAssets([]));
   }, []);
 
-  // Chargement initial : solde, coûts, projets, modèles (le projet par défaut est
-  // présélectionné — la galerie suit via l'effet ci-dessous).
+  // Chargement initial : solde, coûts, projets, modèles upscale.
+  // Les modèles image sont chargés par feature (voir effet ci-dessous) car
+  // chaque feature (text_to_image, print_render, mood_swap...) expose des
+  // candidats différents dans le catalogue worker.
   useEffect(() => {
     refreshBalance();
     fetchCostsConfig()
@@ -201,16 +203,29 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       if (defaultId) setSelectedProjectId((current) => current ?? defaultId);
     });
     fetch("/api/models")
-      .then((res) => (res.ok ? res.json() : { image: [], upscale: [] }))
-      .then((data: { image?: ModelOption[]; upscale?: ModelOption[] }) => {
-        setImageModels(Array.isArray(data.image) ? data.image : []);
+      .then((res) => (res.ok ? res.json() : { upscale: [] }))
+      .then((data: { upscale?: ModelOption[] }) => {
         setUpscaleModels(Array.isArray(data.upscale) ? data.upscale : []);
       })
       .catch(() => {
-        setImageModels([]);
         setUpscaleModels([]);
       });
   }, [refreshBalance, refreshProjects]);
+
+  // Modèles image : un catalogue par feature. On recharge quand l'onglet
+  // change (studio) ou quand la page est montée avec une feature fixe.
+  useEffect(() => {
+    if (tab === "upscale") {
+      setImageModels([]);
+      setSelectedModel("");
+      return;
+    }
+    fetch(`/api/models/${tab}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: ModelOption[]) => setImageModels(Array.isArray(data) ? data : []))
+      .catch(() => setImageModels([]));
+    setSelectedModel("");
+  }, [tab]);
 
   // La galerie suit le projet sélectionné.
   useEffect(() => {
