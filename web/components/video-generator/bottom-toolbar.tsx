@@ -9,10 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { RectangleHorizontal, RectangleVertical, Square } from "lucide-react";
 const DURATIONS = [4, 5, 6, 8, 10];
-const ASPECT_RATIOS = ["16:9", "9:16", "1:1"];
-
+const ASPECT_RATIOS = [
+  { value: "16:9", icon: RectangleHorizontal },
+  { value: "9:16", icon: RectangleVertical },
+  { value: "1:1", icon: Square },
+];
 interface BottomToolbarProps {
   duration: number;
   onDurationChange: (value: number) => void;
@@ -64,12 +67,19 @@ export function BottomToolbar({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ASPECT_RATIOS.map((ratio) => (
-              <SelectItem key={ratio} value={ratio}>
-                {ratio}
+          {ASPECT_RATIOS.map((ratio) => {
+            const Icon = ratio.icon;
+            return (
+              <SelectItem key={ratio.value} value={ratio.value}>
+                {/* 2. Add a flex container to align text left and icon right */}
+                <div className="flex w-full items-center justify-between gap-3">
+                  <span>{ratio.value}</span>
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                </div>
               </SelectItem>
-            ))}
-          </SelectContent>
+            );
+          })}
+        </SelectContent>
         </Select>
       </div>
 
