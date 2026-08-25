@@ -11,7 +11,7 @@ fichiers stockés via storage.py) :
 """
 import os
 
-from providers import bfl, elevenlabs, google, hunyuan3d, kling, magichour, meshy, openai, removebg, runway, trellis, tripo
+from providers import bfl, comfyui, elevenlabs, google, hunyuan3d, kling, magichour, meshy, openai, removebg, runway, trellis, tripo
 
 PROVIDERS = {
     "bfl": bfl,
@@ -26,6 +26,7 @@ PROVIDERS = {
     "tripo": tripo,
     "hunyuan3d": hunyuan3d,
     "trellis": trellis,
+    "comfyui": comfyui,
 }
 
 # Groupes alternatifs de variables d'env : un groupe complet suffit.
@@ -42,6 +43,7 @@ PROVIDER_ENV_KEYS = {
     "tripo": [["TRIPO_API_KEY"]],
     "hunyuan3d": [["HUNYUAN3D_API_KEY"]],
     "trellis": [["TRELLIS_API_KEY"]],
+    "comfyui": [["COMFYUI_BASE_URL"]],
 }
 
 
