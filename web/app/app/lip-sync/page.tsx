@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/config/action-costs";
 
 const POLL_INTERVAL_MS = 2500;
+const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 
 export default function LipSyncPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -41,13 +43,23 @@ export default function LipSyncPage() {
   const hasEnoughCredits = balance === null || balance >= cost;
 
   const handleVideoChange = (file: File | null) => {
-    setVideoFile(file);
     setResultUrl(null);
     setError(null);
+    setVideoFile(null);
     if (videoPreview) {
       URL.revokeObjectURL(videoPreview);
       setVideoPreview(null);
     }
+    if (file && file.size > MAX_VIDEO_SIZE_BYTES) {
+      setError("Video must be 100 MB or smaller.");
+      return;
+    }
+    const extension = file?.name.split(".").pop()?.toLowerCase() ?? "";
+    if (file && !ALLOWED_VIDEO_TYPES.includes(file.type) && !["mp4", "webm", "mov"].includes(extension)) {
+      setError("Unsupported video format. Use MP4, WebM or MOV.");
+      return;
+    }
+    setVideoFile(file);
     if (file) {
       setVideoPreview(URL.createObjectURL(file));
     }
@@ -135,7 +147,7 @@ export default function LipSyncPage() {
                   disabled={isBusy}
                   className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium"
                 />
-                <p className="text-xs text-muted-foreground">MP4 / WebM / MOV, 50 MB max</p>
+                <p className="text-xs text-muted-foreground">MP4 / WebM / MOV, 100 MB max</p>
               </div>
 
               <div className="flex flex-col gap-1.5">

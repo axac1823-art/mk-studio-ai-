@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Image, Mic, Maximize, Sparkles, Video } from "lucide-react";
+import { Image, Mic, Maximize, Scissors, Sparkles, Video } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +14,7 @@ interface ModelInfo {
 
 interface ModelsData {
   image?: ModelInfo[];
+  background_remover?: ModelInfo[];
   video?: ModelInfo[];
   upscale?: ModelInfo[];
   audio?: ModelInfo[];
@@ -32,6 +33,7 @@ export default function ModelsPage() {
 
   const sections: { key: keyof ModelsData; title: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { key: "image", title: "Image models", icon: Image },
+    { key: "background_remover", title: "Background removal", icon: Scissors },
     { key: "video", title: "Video models", icon: Video },
     { key: "upscale", title: "Upscale models", icon: Maximize },
     { key: "audio", title: "Voice models", icon: Mic },

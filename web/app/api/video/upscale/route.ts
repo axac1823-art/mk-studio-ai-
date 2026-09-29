@@ -6,7 +6,7 @@ import { computeCost, getBalance } from "@/lib/credits";
 import { ensureDefaultProject, getAsset, getProject, insertJob, insertSourceAsset } from "@/lib/db/queries";
 import {
   WorkerNotConfiguredError,
-  isWorkerConfigured,
+  isWorkerReachable,
   startVideoUpscaleJob,
   uploadSource,
 } from "@/lib/worker-client";
@@ -36,8 +36,8 @@ async function resolveUploadedVideo(userId: string, projectId: string, file: Fil
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await isWorkerConfigured())) {
-    return NextResponse.json({ error: "Generation is not configured yet — please try again later." }, { status: 503 });
+  if (!(await isWorkerReachable())) {
+    return NextResponse.json({ error: "Video processor is unavailable — please try again later." }, { status: 503 });
   }
 
   let form: FormData;
@@ -89,11 +89,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unknown project." }, { status: 400 });
   }
 
-  const factorRaw = Number(form.get("factor"));
-  const factor = factorRaw === 4 ? 4 : 2;
-  const feature = factor === 4 ? "video_upscale_4x" : "video_upscale_2x";
-
-  const cost = await computeCost({ feature, quality: "standard", resolution: "1K", quantity: 1 });
+  const speedRaw = Number(form.get("speedFactor") ?? 1);
+  if (![1, 2, 4, 8, 16, 32].includes(speedRaw)) {
+    return NextResponse.json({ error: "Speed must be 1x, 2x, 4x, 8x, 16x or 32x." }, { status: 400 });
+  }
+  const speedFactor = speedRaw as 1 | 2 | 4 | 8 | 16 | 32;
+  const cost = await computeCost({ feature: "video_upscale_speed", quality: "standard", resolution: "1K", quantity: 1 });
   const balance = await getBalance();
   if (balance < cost) {
     return NextResponse.json({ error: "insufficient_credits", required: cost, balance }, { status: 402 });
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
     parentGenerationId: asset.generation_id ?? undefined,
     jobInput: {
       assetId: asset.id,
-      factor,
+      speedFactor,
       creditCost: cost,
     },
   });
@@ -115,9 +116,9 @@ export async function POST(req: NextRequest) {
     await startVideoUpscaleJob(jobId);
   } catch (err) {
     if (err instanceof WorkerNotConfiguredError) {
-      return NextResponse.json({ error: "Video upscaling is not configured yet — please try again later." }, { status: 503 });
+      return NextResponse.json({ error: "Video processing is not configured yet — please try again later." }, { status: 503 });
     }
-    return NextResponse.json({ error: "Upscale failed, please try again." }, { status: 500 });
+    return NextResponse.json({ error: "Video processing failed, please try again." }, { status: 500 });
   }
 
   return NextResponse.json({ jobId });

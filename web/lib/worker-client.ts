@@ -36,6 +36,16 @@ export async function isWorkerConfigured(): Promise<boolean> {
   }
 }
 
+/** Vérifie uniquement que le worker répond ; utile aux outils sans provider IA. */
+export async function isWorkerReachable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl()}/health`, { cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 function workerHeaders(): Record<string, string> {
   const key = process.env.WORKER_API_KEY;
   return {

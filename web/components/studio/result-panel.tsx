@@ -104,7 +104,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
               <img
                 src={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
                 alt="Generated render"
-                className="aspect-[4/3] w-full rounded-lg border object-contain"
+                className="aspect-[4/3] w-full rounded-lg border object-contain [background-color:#e5e7eb] [background-image:linear-gradient(45deg,#cbd5e1_25%,transparent_25%),linear-gradient(-45deg,#cbd5e1_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cbd5e1_75%),linear-gradient(-45deg,transparent_75%,#cbd5e1_75%)] [background-position:0_0,0_8px,8px_-8px,-8px_0] [background-size:16px_16px]"
               />
             )}
             {result.outputUrls.length > 1 && (

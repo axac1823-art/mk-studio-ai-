@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardSearch } from "@/components/navigation/DashboardSearch";
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
+import HeroVisualAI from "@/components/ui/HeroVisualAI";
+
 import { cn } from "@/lib/utils";
 
 function getGreeting() {
@@ -161,6 +163,10 @@ export function DashboardContent() {
           {error}
         </p>
       )}
+
+      <section className="mx-auto w-full max-w-7xl" aria-label="AI camera render workspace">
+        <HeroVisualAI />
+      </section>
 
       <div className="grid w-full max-w-5xl gap-6 self-center lg:grid-cols-2">
         <Card className="flex flex-col">

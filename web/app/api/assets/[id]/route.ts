@@ -6,12 +6,32 @@ import { requireAuth } from "@/lib/auth";
 
 import {
   deleteAsset,
+  getAsset,
   setAssetFlags,
 } from "@/lib/db/queries";
+import { publicUrl } from "@/lib/worker-client";
 
 export const runtime = "nodejs";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const { dbUser: user } = await requireAuth();
+  const asset = await getAsset(user.id, params.id);
+  if (!asset || asset.is_trashed) {
+    return NextResponse.json({ error: "Asset not found." }, { status: 404 });
+  }
+  return NextResponse.json({
+    asset: {
+      id: asset.id,
+      projectId: asset.project_id,
+      type: asset.type,
+      url: publicUrl(asset.storage_path),
+      isFavorite: asset.is_favorite,
+      createdAt: asset.created_at,
+    },
+  });
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const body = (await req.json().catch(() => null)) as

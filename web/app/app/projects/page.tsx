@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { ProjectCard, type ProjectSummary } from "@/components/projects/project-card";
+import { AssetLayoutControls, assetLayoutClass } from "@/components/projects/asset-layout-controls";
+import { useAssetLayout } from "@/components/projects/use-asset-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +19,7 @@ export default function ProjectsPage() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const { layout, columns, setLayout, setColumns } = useAssetLayout("all-projects");
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -80,21 +83,23 @@ export default function ProjectsPage() {
         </p>
       )}
 
+      <AssetLayoutControls layout={layout} columns={columns} onLayoutChange={setLayout} onColumnsChange={setColumns} />
+
       {projects === null ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={assetLayoutClass(layout)} style={layout === "grid" ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
           {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton key={index} className="aspect-[4/3] w-full" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={assetLayoutClass(layout)} style={layout === "grid" ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} onDelete={deleteProject} />
+            <ProjectCard key={project.id} project={project} layout={layout} onDelete={deleteProject} />
           ))}
 
           <Card className="overflow-hidden">
             {creating ? (
-              <CardContent className="flex aspect-[4/3] flex-col justify-center gap-2 p-3">
+              <CardContent className={layout === "grid" ? "flex aspect-[4/3] flex-col justify-center gap-2 p-3" : "flex min-h-32 flex-col justify-center gap-2 p-3"}>
                 <input
                   autoFocus
                   value={name}
@@ -119,7 +124,7 @@ export default function ProjectsPage() {
               <button
                 type="button"
                 onClick={() => setCreating(true)}
-                className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                className={layout === "grid" ? "flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground" : "flex min-h-32 w-full flex-row items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"}
               >
                 <Plus className="h-6 w-6" />
                 <span className="text-sm font-medium">New project</span>

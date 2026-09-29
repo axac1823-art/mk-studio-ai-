@@ -4,6 +4,7 @@
 // Accepte un feature (onglet) fixe et peut optionnellement afficher la barre
 // d'onglets (mode studio legacy) ou la masquer (mode page d'outil unique).
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,9 +61,8 @@ interface AssetItem {
   type: "image" | "video";
   url: string;
   isFavorite: boolean;
+  projectId?: string;
 }
-
-type RightView = "compare" | "gallery";
 
 /** Fonctions image "simples" (hors Print Render et Upscale) :
  *  même panneau générique, seuls les presets dédiés changent. */
@@ -91,9 +91,10 @@ function initialSimpleState(optionId: string): SimpleImageState {
 }
 
 export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioWorkspaceProps) {
+  const searchParams = useSearchParams();
+  const preselectedAssetId = searchParams.get("assetId");
   // --- Navigation ---
   const [tab, setTab] = useState<StudioTab>(feature);
-  const [rightView, setRightView] = useState<RightView>("compare");
 
   // --- Crédits + config des coûts (fetchés une fois au chargement) ---
   const [balance, setBalance] = useState<number | null>(null);
@@ -103,6 +104,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [selectedSourceAsset, setSelectedSourceAsset] = useState<AssetItem | null>(null);
 
   // --- Print Render ---
   const [file, setFile] = useState<File | null>(null);
@@ -182,9 +184,12 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     }
   }, []);
 
-  const refreshAssets = useCallback((projectId: string | null) => {
-    if (!projectId) return;
-    fetch(`/api/assets?project_id=${projectId}`)
+  const refreshAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
+    if (!projectId) {
+      setAssets([]);
+      return;
+    }
+    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
       .then((res) => res.json())
       .then((data) => setAssets(Array.isArray(data.assets) ? data.assets : []))
       .catch(() => setAssets([]));
@@ -229,8 +234,19 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
 
   // La galerie suit le projet sélectionné.
   useEffect(() => {
-    refreshAssets(selectedProjectId);
-  }, [selectedProjectId, refreshAssets]);
+    refreshAssets(selectedProjectId, tab);
+    if (!preselectedAssetId) setSelectedSourceAsset(null);
+  }, [selectedProjectId, tab, preselectedAssetId, refreshAssets]);
+
+  useEffect(() => {
+    if (!preselectedAssetId) return;
+    fetch(`/api/assets/${encodeURIComponent(preselectedAssetId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { asset?: AssetItem } | null) => {
+        if (data?.asset?.type === "image") setSelectedSourceAsset(data.asset);
+      })
+      .catch(() => undefined);
+  }, [preselectedAssetId]);
 
   const handleCreateProject = useCallback(
     async (name: string) => {
@@ -261,10 +277,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
             // Débit réel au succès + nouvel asset : on rafraîchit les deux.
             refreshBalance();
             setSelectedProjectId((current) => {
-              refreshAssets(current);
+              refreshAssets(current, tab);
               return current;
             });
-            setRightView("compare");
           } else if (data.status === "error") {
             stopPolling();
             setResult({ status: "idle" });
@@ -279,13 +294,12 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         }
       }, POLL_INTERVAL_MS);
     },
-    [stopPolling, refreshAssets, refreshBalance]
+    [stopPolling, refreshAssets, refreshBalance, tab]
   );
 
   const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
     setError(null);
     setResult({ status: "busy" });
-    setRightView("compare");
     if (selectedProjectId) form.append("projectId", selectedProjectId);
     try {
       const res = await fetch("/api/generate", { method: "POST", body: form });
@@ -311,6 +325,20 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const updateSimpleTab = (id: SimpleImageTab, patch: Partial<SimpleImageState>) =>
     setSimpleTabs((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
 
+  const selectSourceAsset = (asset: AssetItem) => {
+    setSelectedSourceAsset(asset);
+    setError(null);
+    if (tab === "print_render") {
+      setFile(null);
+      setPreviewUrl(null);
+    } else if (tab === "upscale") {
+      setUpscaleFile(null);
+      setUpscalePreviewUrl(null);
+    } else {
+      updateSimpleTab(tab, { file: null, previewUrl: null });
+    }
+  };
+
   const appendSharedSettings = (form: FormData) => {
     form.append("quality", quality);
     form.append("aspectRatio", aspectRatio);
@@ -319,10 +347,11 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   };
 
   const handleGenerateRender = () => {
-    if (!file) return;
+    if (!file && !selectedSourceAsset) return;
     const form = new FormData();
     form.append("feature", "print_render");
-    form.append("image", file);
+    if (selectedSourceAsset) form.append("imageUrl", selectedSourceAsset.url);
+    else if (file) form.append("image", file);
     for (const reference of references) form.append("reference", reference.file);
     form.append("sceneTypeId", sceneTypeId);
     form.append("materialId", materialId);
@@ -338,16 +367,18 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     const state = simpleTabs[tab];
     if (tab === "text_to_image") {
       if (state.sceneDetails.trim().length === 0) return;
-    } else if (!state.file) {
+    } else if (!state.file && !selectedSourceAsset) {
       return;
     }
     const form = new FormData();
     form.append("feature", tab);
     if (tab === "text_to_image") {
       form.append("sceneDetails", state.sceneDetails.trim());
-      if (state.file) form.append("reference", state.file);
+      if (selectedSourceAsset) form.append("imageUrl", selectedSourceAsset.url);
+      else if (state.file) form.append("reference", state.file);
     } else {
-      form.append("image", state.file as File);
+      if (selectedSourceAsset) form.append("imageUrl", selectedSourceAsset.url);
+      else if (state.file) form.append("image", state.file);
       if (SIMPLE_TAB_CONFIG[tab].options && state.optionId) {
         form.append("optionId", state.optionId);
       }
@@ -359,14 +390,14 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   };
 
   const handleUpscale = async () => {
-    if (!upscaleFile) return;
+    if (!upscaleFile && !selectedSourceAsset) return;
     setError(null);
     setResult({ status: "busy" });
-    setRightView("compare");
     try {
       const form = new FormData();
       form.append("feature", "upscale");
-      form.append("image", upscaleFile);
+      if (selectedSourceAsset) form.append("assetId", selectedSourceAsset.id);
+      else if (upscaleFile) form.append("image", upscaleFile);
       form.append("factor", String(upscaleFactor));
       form.append("enhance", upscaleEnhance ? "1" : "0");
       if (selectedUpscaleModel) form.append("model", selectedUpscaleModel);
@@ -414,11 +445,11 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         selectedModel: selectedModel || undefined,
       });
   const activeImageFile =
-    tab === "print_render" ? file : tab === "upscale" ? null : simpleTabs[tab].file;
+    tab === "print_render" ? file : tab === "upscale" ? upscaleFile : simpleTabs[tab].file;
   const canGenerateImage =
     tab === "text_to_image"
       ? simpleTabs.text_to_image.sceneDetails.trim().length > 0
-      : activeImageFile !== null;
+      : activeImageFile !== null || selectedSourceAsset !== null;
 
   const upscaleCost = costsConfig
     ? computeDisplayCost(costsConfig, {
@@ -476,8 +507,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
               {tab === "print_render" ? (
                 <>
                   <UploadDropzone
-                    previewUrl={previewUrl}
+                    previewUrl={selectedSourceAsset?.url ?? previewUrl}
                     onFileSelected={(selected) => {
+                      setSelectedSourceAsset(null);
                       setFile(selected);
                       setPreviewUrl(URL.createObjectURL(selected));
                       setError(null);
@@ -502,7 +534,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   models={upscaleModels}
                   selectedModel={selectedUpscaleModel}
                   uploadFile={upscaleFile}
-                  uploadPreviewUrl={upscalePreviewUrl}
+                  uploadPreviewUrl={selectedSourceAsset?.url ?? upscalePreviewUrl}
                   factor={upscaleFactor}
                   enhance={upscaleEnhance}
                   cost={upscaleCost}
@@ -510,11 +542,13 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   isBusy={isBusy}
                   onModelChange={setSelectedUpscaleModel}
                   onUploadFileSelected={(file, previewUrl) => {
+                    setSelectedSourceAsset(null);
                     setUpscaleFile(file);
                     setUpscalePreviewUrl(previewUrl);
                     setError(null);
                   }}
                   onClearUpload={() => {
+                    setSelectedSourceAsset(null);
                     setUpscaleFile(null);
                     setUpscalePreviewUrl(null);
                   }}
@@ -524,8 +558,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                 />
               ) : (
                 <ImageFeaturePanel
-                  previewUrl={simpleTabs[tab].previewUrl}
+                  previewUrl={selectedSourceAsset?.url ?? simpleTabs[tab].previewUrl}
                   onFileSelected={(selected) => {
+                    setSelectedSourceAsset(null);
                     updateSimpleTab(tab, {
                       file: selected,
                       previewUrl: URL.createObjectURL(selected),
@@ -553,77 +588,38 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         </div>
 
         <div className="flex flex-col gap-6 pb-6">
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant={rightView === "compare" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setRightView("compare")}
-            >
-              Result
-            </Button>
-            <Button
-              type="button"
-              variant={rightView === "gallery" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setRightView("gallery")}
-            >
-              Results
-            </Button>
-          </div>
-
-          {rightView === "compare" ? (
-            <ResultPanel result={result} />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Results</CardTitle>
-                <CardDescription>Assets of the selected project.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {assets.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nothing generated yet.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {assets.map((asset) => (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        onClick={() => {
-                          setResult({
-                            status: "done",
-                            kind: asset.type,
-                            beforeUrl: null,
-                            outputUrls: [asset.url],
-                          });
-                          setRightView("compare");
-                        }}
-                        className="group rounded-lg border p-1.5 text-left transition-colors hover:border-primary/60"
-                      >
-                        {asset.type === "video" ? (
-                          <video
-                            src={asset.url}
-                            muted
-                            className="aspect-[4/3] w-full rounded-md object-cover"
-                          />
-                        ) : (
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          <img
-                            src={asset.url}
-                            alt="Generated asset"
-                            className="aspect-[4/3] w-full rounded-md object-cover"
-                          />
-                        )}
-                        <span className="mt-1 block px-0.5 text-xs capitalize text-muted-foreground">
-                          {asset.type}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          {result.status !== "idle" && <ResultPanel result={result} />}
+          <Card>
+            <CardHeader>
+              <CardTitle>{result.status === "idle" ? `Previous ${title} results` : `More ${title} results`}</CardTitle>
+              <CardDescription>Select a previous result to use as the source image.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {selectedSourceAsset && (
+                <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  <span>Project image selected as the source.</span>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedSourceAsset(null)}>
+                    Remove selection
+                  </Button>
+                </div>
+              )}
+              {assets.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No previous results for this feature in the selected project yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {assets.map((asset) => (
+                    <div key={asset.id} className={`rounded-lg border p-1.5 ${selectedSourceAsset?.id === asset.id ? "border-primary" : ""}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={asset.url} alt="Previous feature result" className="aspect-[4/3] w-full rounded-md object-cover" />
+                      <Button type="button" size="sm" variant={selectedSourceAsset?.id === asset.id ? "default" : "outline"} className="mt-2 w-full" onClick={() => selectSourceAsset(asset)}>
+                        {selectedSourceAsset?.id === asset.id ? "Selected as source" : "Use as source"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 

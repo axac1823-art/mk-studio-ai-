@@ -3,7 +3,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Wand2, FolderOpen, Image, Video, Settings, Mic, Maximize2, Scissors, MonitorPlay } from "lucide-react";
+import { Search, Wand2, FolderOpen, Image, Video, Settings, Mic, FastForward, Scissors, MonitorPlay } from "lucide-react";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -32,7 +32,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     return [
       { id: "generate", name: "Generate image render", icon: Wand2, action: () => navigate("/app/ai-image-generator") },
       { id: "video", name: "Generate video", icon: Video, action: () => navigate("/app/ai-video-generator") },
-      { id: "video-upscale", name: "Upscale video", icon: Maximize2, action: () => navigate("/app/video-upscaler") },
+      { id: "video-upscale", name: "Change video speed", icon: FastForward, action: () => navigate("/app/video-upscaler") },
       { id: "clip-editor", name: "Edit clip", icon: Scissors, action: () => navigate("/app/clip-editor") },
       { id: "video-project", name: "Edit video project", icon: MonitorPlay, action: () => navigate("/app/video-project-editor") },
       { id: "voice", name: "Generate voiceover", icon: Mic, action: () => navigate("/app/voice-generator") },

@@ -14,7 +14,7 @@ export const maxDuration = 120;
 
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
-const MAX_PROMPT_LENGTH = 2000;
+const MAX_PROMPT_LENGTH = 1024;
 const VIEWS = ["front", "back", "left", "right", "top", "bottom"] as const;
 
 function optionalString(form: FormData, key: string): string | undefined {
@@ -35,6 +35,12 @@ export async function POST(req: NextRequest) {
   }
 
   const prompt = optionalString(form, "prompt");
+  if (prompt?.trim() && prompt.trim().length > MAX_PROMPT_LENGTH) {
+    return NextResponse.json(
+      { error: `Prompt must be ${MAX_PROMPT_LENGTH} characters or fewer.` },
+      { status: 400 }
+    );
+  }
   const hasPrompt = typeof prompt === "string" && prompt.trim().length > 0 && prompt.length <= MAX_PROMPT_LENGTH;
   const selectedModel = optionalString(form, "model");
 

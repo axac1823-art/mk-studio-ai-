@@ -25,8 +25,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
   const typeParam = new URL(req.url).searchParams.get("type");
-  const type = typeParam === "image" || typeParam === "video" ? typeParam : undefined;
-  const assets = await listAssets(user.id, { projectId: project.id, type });
+  const featureParam = new URL(req.url).searchParams.get("feature");
+  const type = typeParam === "image" || typeParam === "video" || typeParam === "audio" ? typeParam : undefined;
+  const assets = await listAssets(user.id, {
+    projectId: project.id,
+    type,
+    feature: featureParam && featureParam !== "all" ? featureParam : undefined,
+  });
   return NextResponse.json({
     project: { id: project.id, name: project.name, coverAssetId: project.cover_asset_id },
     assets: assets.map((asset) => ({

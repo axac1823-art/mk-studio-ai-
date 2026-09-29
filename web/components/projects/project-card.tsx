@@ -9,6 +9,7 @@ import { ImageIcon, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export interface ProjectSummary {
   id: string;
@@ -21,15 +22,16 @@ interface ProjectCardProps {
   project: ProjectSummary;
   /** Appelé après confirmation — la page refetch sa liste. */
   onDelete?: (projectId: string) => void;
+  layout?: "grid" | "list";
 }
 
-export function ProjectCard({ project, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onDelete, layout = "grid" }: ProjectCardProps) {
   const hasCover = Boolean(project.coverUrl);
 
   return (
-    <Card className="group relative overflow-hidden transition-all hover:ring-1 hover:ring-foreground/20">
-      <Link href={`/app/projects/${project.id}`} className="block">
-        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+    <Card className={cn("group relative overflow-hidden transition-all hover:ring-1 hover:ring-foreground/20", layout === "list" && "flex min-h-32 flex-row")}>
+      <Link href={`/app/projects/${project.id}`} className={cn("block", layout === "list" && "flex flex-1")}>
+        <div className={cn("relative overflow-hidden bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]")}>
           {hasCover ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -49,7 +51,7 @@ export function ProjectCard({ project, onDelete }: ProjectCardProps) {
               </div>
             </>
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted p-4 text-center text-muted-foreground">
+            <div className={cn("flex h-full w-full flex-col items-center justify-center gap-3 bg-muted p-4 text-center text-muted-foreground", layout === "list" && "min-h-32")}>
               <ImageIcon className="h-10 w-10" />
               <div>
                 <p className="truncate text-base font-semibold text-foreground">{project.name}</p>

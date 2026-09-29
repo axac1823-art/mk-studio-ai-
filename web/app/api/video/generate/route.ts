@@ -10,6 +10,7 @@ import { getBalance } from "@/lib/credits";
 import { computeVideoCost, resolveVideoMode, type VideoMode } from "@/lib/video-utils";
 import {
   getDefaultProject,
+  getAsset,
   getProject,
   getVideoActionCosts,
   insertVideoJob,
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     selectedModel?: string;
     mode?: string;
     shots: Array<{ id: string; prompt: string; taggedMediaIds: string[] }>;
-    mediaMeta: Array<{ tag: string; type: "image" | "video" }>;
+    mediaMeta: Array<{ tag: string; type: "image" | "video"; assetId?: string }>;
   };
   try {
     payload = JSON.parse(payloadRaw);
@@ -105,8 +106,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Too many attached media (${MAX_ATTACHED_MEDIA} max).` }, { status: 400 });
   }
 
+  const { dbUser: user } = await requireAuth();
   const attachedMedia: Array<{ tag: string; asset_url: string; type: "image" | "video" }> = [];
   for (const meta of mediaMeta) {
+    if (typeof meta.assetId === "string") {
+      const asset = await getAsset(user.id, meta.assetId);
+      if (!asset || asset.is_trashed || asset.type !== meta.type) {
+        return NextResponse.json({ error: `Invalid attached media ${meta.tag}.` }, { status: 400 });
+      }
+      attachedMedia.push({ tag: meta.tag, asset_url: asset.storage_path, type: meta.type });
+      continue;
+    }
     const file = form.get(meta.tag);
     const isImage = meta.type === "image" && validImage(file, MAX_MEDIA_SIZE);
     const isVideo = meta.type === "video" && validVideo(file, MAX_MEDIA_SIZE);
@@ -118,7 +128,6 @@ export async function POST(req: NextRequest) {
     attachedMedia.push({ tag: meta.tag, asset_url: storagePath, type: meta.type });
   }
 
-  const { dbUser: user } = await requireAuth();
   const projectIdField = typeof form.get("projectId") === "string" ? (form.get("projectId") as string) : undefined;
   const project = projectIdField ? await getProject(user.id, projectIdField) : await getDefaultProject(user.id);
   if (!project) {

@@ -53,6 +53,34 @@ const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
 const QUALITY_TIERS: QualityTier[] = ["standard", "pro"];
 
+type CameraPromptState = {
+  azimuth: number;
+  elevation: number;
+  distance: number;
+  height: number;
+  target: { x: number; y: number; z: number };
+  fov: number;
+  roll: number;
+  zoom: number;
+  projection: "perspective";
+};
+
+function parseCameraState(value: string | undefined): CameraPromptState | null | "invalid" {
+  if (!value) return null;
+  try {
+    const raw = JSON.parse(value) as Record<string, unknown>;
+    const target = raw.target as Record<string, unknown> | undefined;
+    const values = [raw.azimuth, raw.elevation, raw.distance, raw.height, raw.fov, raw.roll, raw.zoom, target?.x, target?.y, target?.z];
+    if (!values.every((item) => typeof item === "number" && Number.isFinite(item))) return "invalid";
+    const [azimuth, elevation, distance, height, fov, roll, zoom, x, y, z] = values as number[];
+    if (azimuth < 0 || azimuth >= 360 || elevation < -30 || elevation > 60 || distance < 1 || distance > 10 || height < -100 || height > 100 || fov < 20 || fov > 100 || roll < -180 || roll > 180 || zoom < 0.5 || zoom > 3) return "invalid";
+    if ([x, y, z].some((coordinate) => Math.abs(coordinate) > 100)) return "invalid";
+    return { azimuth, elevation, distance, height, target: { x, y, z }, fov, roll, zoom, projection: "perspective" };
+  } catch {
+    return "invalid";
+  }
+}
+
 function asDataUri(buffer: Buffer, mime: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
@@ -143,6 +171,10 @@ export async function POST(req: NextRequest) {
 
   const sceneDetails = optionalString(form, "sceneDetails")?.slice(0, SCENE_DETAILS_MAX);
   const model = optionalString(form, "model"); // choix utilisateur (optionnel)
+  const cameraState = parseCameraState(optionalString(form, "cameraState"));
+  if (cameraState === "invalid" || (cameraState && feature !== "multi_angle")) {
+    return NextResponse.json({ error: "Invalid camera configuration." }, { status: 400 });
+  }
 
   // --- Projet cible : sélection studio, sinon le projet par défaut ---
   const { dbUser: user } = await requireAuth();
@@ -206,6 +238,7 @@ export async function POST(req: NextRequest) {
       resolution,
       quantity,
       sceneDetails,
+      cameraState: cameraState ?? undefined,
       optionId: optionalString(form, "optionId"),
       sceneTypeId: optionalString(form, "sceneTypeId"),
       materialId: optionalString(form, "materialId"),

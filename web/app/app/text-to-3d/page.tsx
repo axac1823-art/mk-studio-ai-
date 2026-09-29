@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Box, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/config/action-costs";
 
 const POLL_INTERVAL_MS = 2500;
-const MAX_PROMPT_LENGTH = 2000;
+const MAX_PROMPT_LENGTH = 1024;
 
 interface ThreeDModelOption {
   key: string;
@@ -112,7 +113,7 @@ export default function TextTo3DPage() {
   );
 
   const handleGenerate = async () => {
-    if (isBusy || !hasEnoughCredits || !prompt.trim()) return;
+    if (isBusy || !hasEnoughCredits || !prompt.trim() || prompt.trim().length > MAX_PROMPT_LENGTH) return;
     setError(null);
     setResultUrl(null);
 
@@ -142,12 +143,18 @@ export default function TextTo3DPage() {
 
   return (
     <main className="flex min-h-screen w-full flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Text-to-3D</h1>
           <p className="text-sm text-muted-foreground">Generate a 3D model from a text description.</p>
         </div>
-        <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
+        <div className="flex items-center gap-3">
+          <nav className="flex rounded-md border p-1" aria-label="3D generation mode">
+            <Link href="/app/3d-generator" className="rounded px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Image-to-3D</Link>
+            <Link href="/app/text-to-3d" aria-current="page" className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-foreground">Text-to-3D</Link>
+          </nav>
+          <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
+        </div>
       </header>
 
       <div className="grid flex-1 lg:grid-cols-[360px_1fr]">
@@ -161,13 +168,18 @@ export default function TextTo3DPage() {
                 <textarea
                   id="3d-prompt"
                   value={prompt}
-                  onChange={(e) => setPrompt(e.target.value.slice(0, MAX_PROMPT_LENGTH))}
+                  onChange={(e) => setPrompt(e.target.value)}
                   placeholder="e.g. a modern concrete villa with large windows"
                   rows={6}
                   disabled={isBusy}
                   className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                 />
                 <p className="text-xs text-muted-foreground">{prompt.length}/{MAX_PROMPT_LENGTH}</p>
+                {prompt.trim().length > MAX_PROMPT_LENGTH && (
+                  <p role="alert" className="text-xs text-destructive">
+                    Tripo supports prompts up to {MAX_PROMPT_LENGTH} characters. Please shorten this prompt.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -201,7 +213,7 @@ export default function TextTo3DPage() {
                 <Button
                   type="button"
                   onClick={handleGenerate}
-                  disabled={isBusy || !hasEnoughCredits || !prompt.trim()}
+                  disabled={isBusy || !hasEnoughCredits || !prompt.trim() || prompt.trim().length > MAX_PROMPT_LENGTH}
                   className="w-full gap-2"
                 >
                   {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Box className="h-4 w-4" />}

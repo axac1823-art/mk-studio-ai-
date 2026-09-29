@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 export interface AttachedMediaItem {
   tag: string;
   url: string;
-  file: File;
+  file?: File;
+  assetId?: string;
   type: "image" | "video";
 }
 

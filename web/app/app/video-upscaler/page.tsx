@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Maximize2, Upload, Video, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { FastForward, Loader2, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,11 +21,13 @@ const VIDEO_MIME_TYPES = "video/mp4,video/webm,video/quicktime";
 const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
 
 export default function VideoUpscalerPage() {
+  const searchParams = useSearchParams();
+  const preselectedAssetId = searchParams.get("assetId");
   const [assets, setAssets] = useState<AssetSummary[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
-  const [factor, setFactor] = useState<2 | 4>(2);
+  const [speedFactor, setSpeedFactor] = useState<1 | 2 | 4 | 8 | 16 | 32>(1);
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -50,15 +53,32 @@ export default function VideoUpscalerPage() {
       .then((res) => res.json())
       .then((data) => setBalance(typeof data.balance === "number" ? data.balance : null))
       .catch(() => setBalance(null));
-    fetch("/api/assets?type=video")
-      .then((res) => (res.ok ? res.json() : { assets: [] }))
-      .then((data: { assets: AssetSummary[] }) => setAssets(data.assets.filter((a) => a.type === "video")))
-      .catch(() => setAssets([]));
   }, []);
 
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/assets?type=video&feature=video_upscale").then((res) => (res.ok ? res.json() : { assets: [] })),
+      preselectedAssetId
+        ? fetch(`/api/assets/${encodeURIComponent(preselectedAssetId)}`).then((res) => (res.ok ? res.json() : null))
+        : Promise.resolve(null),
+    ])
+      .then(([data, selectedData]: [{ assets: AssetSummary[] }, { asset?: AssetSummary } | null]) => {
+        const list = Array.isArray(data.assets) ? data.assets.filter((asset) => asset.type === "video") : [];
+        const selected = selectedData?.asset;
+        setAssets(selected?.type === "video" && !list.some((asset) => asset.id === selected.id) ? [selected, ...list] : list);
+        if (selected?.type === "video") setSelectedAssetId(selected.id);
+      })
+      .catch(() => setAssets([]));
+  }, [resultUrl, preselectedAssetId]);
+
   const cost = costsConfig
-    ? computeDisplayCost(costsConfig, { feature: "video_upscale", quality: "standard", resolution: "1K", quantity: 1, upscaleFactor: factor })
-    : 0;
+    ? computeDisplayCost(costsConfig, {
+        feature: "video_upscale",
+        quality: "standard",
+        resolution: "1K",
+        quantity: 1,
+      })
+    : 20;
   const hasEnoughCredits = balance === null || balance >= cost;
   const hasSource = Boolean(selectedAssetId || uploadedFile);
 
@@ -81,7 +101,7 @@ export default function VideoUpscalerPage() {
           } else if (data.status === "failed") {
             stopPolling();
             setIsBusy(false);
-            setError(data.error ?? "Upscale failed, please try again.");
+            setError(data.error ?? "Video processing failed, please try again.");
           }
         } catch {
           // retry
@@ -130,7 +150,7 @@ export default function VideoUpscalerPage() {
     setResultUrl(null);
 
     const form = new FormData();
-    form.append("factor", String(factor));
+    form.append("speedFactor", String(speedFactor));
     if (uploadedFile) {
       form.append("video", uploadedFile);
     } else if (selectedAssetId) {
@@ -142,11 +162,11 @@ export default function VideoUpscalerPage() {
       const data = await res.json();
       if (res.status === 402) {
         setBalance(typeof data.balance === "number" ? data.balance : balance);
-        setError("You don't have enough credits for this upscale.");
+        setError("You don't have enough credits for this processing job.");
         return;
       }
       if (!res.ok) {
-        setError(data.error ?? "Upscale failed, please try again.");
+        setError(data.error ?? "Video processing failed, please try again.");
         return;
       }
       pollJob(data.jobId);
@@ -165,8 +185,8 @@ export default function VideoUpscalerPage() {
     <main className="flex min-h-screen w-full flex-col">
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Video Upscaler</h1>
-          <p className="text-sm text-muted-foreground">Enhance resolution and detail on an existing video.</p>
+          <h1 className="text-xl font-semibold tracking-tight">Video Speed</h1>
+          <p className="text-sm text-muted-foreground">Change the playback speed of an existing video. No external AI service is used.</p>
         </div>
         <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
       </header>
@@ -175,34 +195,8 @@ export default function VideoUpscalerPage() {
         <div className="flex flex-col gap-4 border-r p-4 sm:p-5">
           <Card>
             <CardContent className="flex flex-col gap-4 p-4">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Select a video</span>
-                <div className={cn("max-h-60 overflow-y-auto rounded-md border", uploadedFile && "opacity-50")}>
-                  {assets.length === 0 ? (
-                    <p className="p-3 text-sm text-muted-foreground">No videos available yet.</p>
-                  ) : (
-                    assets.map((asset) => (
-                      <button
-                        key={asset.id}
-                        type="button"
-                        disabled={Boolean(uploadedFile) || isBusy}
-                        onClick={() => handleSelectAsset(asset.id)}
-                        className={cn(
-                          "flex w-full items-center gap-2 p-2 text-left text-sm transition-colors",
-                          selectedAssetId === asset.id ? "bg-accent" : "hover:bg-accent/60",
-                          (uploadedFile || isBusy) && "pointer-events-none"
-                        )}
-                      >
-                        <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{asset.id.slice(0, 8)}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
               <div className="relative flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Or upload a video</span>
+                <span className="text-sm font-medium">Upload a video</span>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -237,24 +231,27 @@ export default function VideoUpscalerPage() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Upscale factor</span>
+                <span className="text-sm font-medium">Playback speed</span>
                 <div className="flex overflow-hidden rounded-md border">
-                  {[2, 4].map((f) => (
+                  {([1, 2, 4, 8, 16, 32] as const).map((speed) => (
                     <button
-                      key={f}
+                      key={speed}
                       type="button"
-                      aria-pressed={factor === f}
+                      aria-pressed={speedFactor === speed}
                       disabled={isBusy}
-                      onClick={() => setFactor(f as 2 | 4)}
+                      onClick={() => setSpeedFactor(speed)}
                       className={cn(
-                        "px-4 py-1.5 text-xs font-medium transition-colors",
-                        factor === f ? "bg-primary text-primary-foreground" : "hover:bg-accent disabled:opacity-50"
+                        "flex-1 px-2 py-1.5 text-xs font-medium transition-colors",
+                        speedFactor === speed ? "bg-primary text-primary-foreground" : "hover:bg-accent disabled:opacity-50"
                       )}
                     >
-                      {f}×
+                      {speed}×
                     </button>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Processing costs 20 credits. {speedFactor > 1 ? `Output duration will be divided by ${speedFactor}.` : "1× keeps the original duration."}
+                </p>
               </div>
 
               <div className="flex flex-col gap-2">
@@ -268,8 +265,8 @@ export default function VideoUpscalerPage() {
                   disabled={!hasSource || isBusy || !hasEnoughCredits}
                   className="w-full gap-2"
                 >
-                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Maximize2 className="h-4 w-4" />}
-                  Upscale video
+                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FastForward className="h-4 w-4" />}
+                  Change video speed
                 </Button>
               </div>
 
@@ -282,7 +279,7 @@ export default function VideoUpscalerPage() {
           </Card>
         </div>
 
-        <div className="relative flex flex-col items-center justify-center overflow-y-auto bg-black/20 p-6">
+        <div className="relative flex flex-col items-center justify-start gap-6 overflow-y-auto bg-black/20 p-6">
           {resultUrl ? (
             <div className="flex w-full max-w-4xl flex-col gap-3">
               <span className="text-sm font-medium">Result</span>
@@ -301,14 +298,42 @@ export default function VideoUpscalerPage() {
           ) : (
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-                <Maximize2 className="h-8 w-8" />
+                <FastForward className="h-8 w-8" />
               </div>
               <div>
-                <p className="text-lg font-semibold">Upscale a video</p>
+                <p className="text-lg font-semibold">Change video speed</p>
                 <p className="text-sm text-muted-foreground">Select a video from your assets or upload one.</p>
               </div>
             </div>
           )}
+          <Card className="w-full max-w-4xl text-left">
+            <CardContent className="flex flex-col gap-3 p-4">
+              <div>
+                <h2 className="text-sm font-medium">Previous Video Speed projects</h2>
+                <p className="text-xs text-muted-foreground">Choose a previous speed result to process again.</p>
+              </div>
+              {selectedAsset && !uploadedFile && (
+                <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>Selected project video</span>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedAssetId(null)}>Remove selection</Button>
+                </div>
+              )}
+              {assets.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No previous Video Speed projects yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {assets.map((asset) => (
+                    <div key={asset.id} className={cn("rounded-md border p-1.5", selectedAssetId === asset.id && "border-primary")}>
+                      <video src={asset.url} muted className="aspect-video w-full rounded object-cover" />
+                      <Button type="button" size="sm" variant={selectedAssetId === asset.id ? "default" : "outline"} className="mt-2 w-full" disabled={isBusy} onClick={() => handleSelectAsset(asset.id)}>
+                        {selectedAssetId === asset.id ? "Selected as source" : "Use as source"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </main>

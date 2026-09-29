@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Box, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -174,12 +175,18 @@ export default function ImageTo3DPage() {
 
   return (
     <main className="flex min-h-screen w-full flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Image-to-3D</h1>
           <p className="text-sm text-muted-foreground">Generate a 3D model from up to 6 views.</p>
         </div>
-        <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
+        <div className="flex items-center gap-3">
+          <nav className="flex rounded-md border p-1" aria-label="3D generation mode">
+            <Link href="/app/3d-generator" aria-current="page" className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-foreground">Image-to-3D</Link>
+            <Link href="/app/text-to-3d" className="rounded px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Text-to-3D</Link>
+          </nav>
+          <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
+        </div>
       </header>
 
       <div className="grid flex-1 lg:grid-cols-[360px_1fr]">

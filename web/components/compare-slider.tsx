@@ -47,7 +47,10 @@ export function CompareSlider({
         draggable={false}
         className="absolute inset-0 h-full w-full object-contain"
       />
-      <div className="absolute inset-0" style={{ clipPath: `inset(0 0 0 ${position}%)` }}>
+      <div
+        className="absolute inset-0 [background-color:#e5e7eb] [background-image:linear-gradient(45deg,#cbd5e1_25%,transparent_25%),linear-gradient(-45deg,#cbd5e1_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cbd5e1_75%),linear-gradient(-45deg,transparent_75%,#cbd5e1_75%)] [background-position:0_0,0_8px,8px_-8px,-8px_0] [background-size:16px_16px]"
+        style={{ clipPath: `inset(0 0 0 ${position}%)` }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={afterSrc}

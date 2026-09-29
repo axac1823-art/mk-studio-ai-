@@ -50,6 +50,13 @@ interface VideoGeneratorState {
   selectedModel: string;
 }
 
+interface VideoProjectAsset {
+  id: string;
+  type: "image" | "video";
+  url: string;
+  createdAt: string;
+}
+
 const modeLabels: Record<VideoMode, string> = {
   text_to_video: "Text to Video",
   image_to_video: "Image to Video",
@@ -108,6 +115,7 @@ function aspectRatioClass(ratio: VideoAspectRatio): string {
 export default function VideoGeneratorPage() {
   const searchParams = useSearchParams();
   const modeHint = (searchParams.get("mode") as VideoMode | null) || null;
+  const preselectedAssetId = searchParams.get("assetId");
 
   const [state, setState] = useState<VideoGeneratorState>({
     startImage: null,
@@ -128,6 +136,7 @@ export default function VideoGeneratorPage() {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [projectAssets, setProjectAssets] = useState<VideoProjectAsset[]>([]);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -157,6 +166,14 @@ export default function VideoGeneratorPage() {
   }, []);
 
   const previewMode = useMemo(() => resolvePreviewMode(state, modeHint), [state, modeHint]);
+  const activeFeature = modeHint || previewMode;
+
+  useEffect(() => {
+    fetch(`/api/assets?type=video&feature=${encodeURIComponent(activeFeature)}`)
+      .then((res) => (res.ok ? res.json() : { assets: [] }))
+      .then((data: { assets: VideoProjectAsset[] }) => setProjectAssets(Array.isArray(data.assets) ? data.assets : []))
+      .catch(() => setProjectAssets([]));
+  }, [activeFeature, resultUrl]);
 
   // Si le modèle choisi n'est plus compatible avec le mode détecté, on bascule
   // sur le premier modèle compatible disponible (ou on garde Auto si aucun).
@@ -270,6 +287,30 @@ export default function VideoGeneratorPage() {
     });
   }, []);
 
+  const addExistingVideo = useCallback((asset: VideoProjectAsset) => {
+    setState((current) => {
+      if (current.attachedMedia.length >= MAX_ATTACHED_MEDIA) return current;
+      if (current.attachedMedia.some((item) => item.assetId === asset.id)) return current;
+      const tag = nextTag(current.attachedMedia, "video");
+      return {
+        ...current,
+        attachedMedia: [...current.attachedMedia, { tag, url: asset.url, assetId: asset.id, type: "video" }],
+        shots: current.shots.map((shot, index) => index === 0 ? { ...shot, prompt: `${tag} ${shot.prompt}`.trim() } : shot),
+      };
+    });
+    setResultUrl(null);
+  }, []);
+
+  useEffect(() => {
+    if (!preselectedAssetId) return;
+    fetch(`/api/assets/${encodeURIComponent(preselectedAssetId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { asset?: VideoProjectAsset } | null) => {
+        if (data?.asset?.type === "video") addExistingVideo(data.asset);
+      })
+      .catch(() => undefined);
+  }, [addExistingVideo, preselectedAssetId]);
+
   const pollJob = useCallback(
     (jobId: string) => {
       stopPolling();
@@ -311,9 +352,9 @@ export default function VideoGeneratorPage() {
     if (state.startImage) form.append("startImage", state.startImage);
     if (state.endImage) form.append("endImage", state.endImage);
 
-    const mediaMeta = state.attachedMedia.map((m) => ({ tag: m.tag, type: m.type }));
+    const mediaMeta = state.attachedMedia.map((m) => ({ tag: m.tag, type: m.type, assetId: m.assetId }));
     for (const media of state.attachedMedia) {
-      form.append(media.tag, media.file);
+      if (media.file) form.append(media.tag, media.file);
     }
 
     const shotsPayload = state.shots.map((shot) => ({
@@ -477,7 +518,7 @@ export default function VideoGeneratorPage() {
         </div>
 
         {/* Right preview */}
-        <div className="relative flex flex-col items-center justify-center overflow-y-auto bg-black/20 p-6">
+        <div className="relative flex flex-col items-center justify-start gap-6 overflow-y-auto bg-black/20 p-6">
           {resultUrl ? (
             <div className="flex w-full max-w-4xl flex-col gap-3">
               <span className="text-sm font-medium">Result</span>
@@ -526,6 +567,28 @@ export default function VideoGeneratorPage() {
               </div>
             </div>
           )}
+          <Card className="mt-6 w-full max-w-4xl text-left">
+            <CardContent className="flex flex-col gap-3 p-4">
+              <div>
+                <h2 className="text-sm font-medium">Previous {modeLabels[activeFeature]} projects</h2>
+                <p className="text-xs text-muted-foreground">Add a previous video as a tagged reference for this service.</p>
+              </div>
+              {projectAssets.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No previous videos for this service yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {projectAssets.map((asset) => (
+                    <div key={asset.id} className="rounded-md border p-1.5">
+                      <video src={asset.url} muted className="aspect-video w-full rounded object-cover" />
+                      <Button type="button" variant="outline" size="sm" className="mt-2 w-full" disabled={isBusy || state.attachedMedia.some((item) => item.assetId === asset.id)} onClick={() => addExistingVideo(asset)}>
+                        {state.attachedMedia.some((item) => item.assetId === asset.id) ? "Added as reference" : "Add as reference"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </main>

@@ -91,9 +91,7 @@ export function computeDisplayCost(config: CostsConfig, input: DisplayCostInput)
     return config.baseCosts[key] ?? 0;
   }
   if (input.feature === "video_upscale") {
-    const factor = input.upscaleFactor ?? 2;
-    const key = factor === 4 ? "video_upscale_4x" : "video_upscale_2x";
-    return config.baseCosts[key] ?? 0;
+    return config.baseCosts.video_upscale_speed ?? 20;
   }
   // Coûts fixes des nouvelles actions (pas de multiplicateur qualité/résolution en V1).
   const fixed = config.baseCosts[input.feature];

@@ -255,6 +255,7 @@ export async function listAssets(
   filters: {
     projectId?: string;
     type?: "image" | "video" | "audio" | "3d_model";
+    feature?: string;
     favorite?: boolean;
     trashed?: boolean;
     uploadsOnly?: boolean;
@@ -265,6 +266,21 @@ export async function listAssets(
     WHERE user_id = ${userId}
       AND (${filters.projectId ?? null}::uuid IS NULL OR project_id = ${filters.projectId ?? null}::uuid)
       AND (${filters.type ?? null}::text IS NULL OR type = ${filters.type ?? null})
+      AND (${filters.feature ?? null}::text IS NULL OR EXISTS (
+        SELECT 1 FROM jobs j
+        WHERE j.id = assets.generation_id
+          AND (
+            j.input->>'feature' = ${filters.feature ?? null}
+            OR j.type = ${filters.feature ?? null}
+            OR (
+              j.type = 'video_edit'
+              AND ('video_edit_' || COALESCE(j.input->>'operation', '')) = ${filters.feature ?? null}
+            )
+          )
+      ) OR (${filters.feature ?? null}::text IS NOT NULL AND EXISTS (
+        SELECT 1 FROM video_jobs v
+        WHERE v.id = assets.video_job_id AND v.mode = ${filters.feature ?? null}
+      )))
       AND (${filters.favorite ?? null}::boolean IS NULL OR is_favorite = ${filters.favorite ?? null})
       AND is_trashed = ${filters.trashed ?? false}
       AND (${!filters.uploadsOnly}::boolean OR generation_id IS NULL)

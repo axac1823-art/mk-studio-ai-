@@ -13,7 +13,12 @@ export const maxDuration = 120;
 
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 const ALLOWED_AUDIO_TYPES = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-m4a", "audio/mp4"];
-const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
+const VIDEO_MIME_BY_EXTENSION: Record<string, string> = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+};
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const MAX_AUDIO_SIZE = 20 * 1024 * 1024;
 
 function optionalString(form: FormData, key: string): string | undefined {
@@ -22,7 +27,15 @@ function optionalString(form: FormData, key: string): string | undefined {
 }
 
 function validVideo(value: unknown, maxSize: number): value is File {
-  return value instanceof File && ALLOWED_VIDEO_TYPES.includes(value.type) && value.size > 0 && value.size <= maxSize;
+  if (!(value instanceof File) || value.size <= 0 || value.size > maxSize) return false;
+  const extension = value.name.split(".").pop()?.toLowerCase() ?? "";
+  return ALLOWED_VIDEO_TYPES.includes(value.type) || Boolean(VIDEO_MIME_BY_EXTENSION[extension]);
+}
+
+function normalizedVideoMime(file: File): string {
+  if (ALLOWED_VIDEO_TYPES.includes(file.type)) return file.type;
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return VIDEO_MIME_BY_EXTENSION[extension] ?? "video/mp4";
 }
 
 function validAudio(value: unknown, maxSize: number): value is File {
@@ -44,9 +57,21 @@ export async function POST(req: NextRequest) {
   const video = form.get("video");
   const audio = form.get("audio");
 
+  if (!(video instanceof File) || video.size <= 0) {
+    return NextResponse.json(
+      { error: "Please provide a video file (MP4/WebM/MOV)." },
+      { status: 400 }
+    );
+  }
+  if (video.size > MAX_VIDEO_SIZE) {
+    return NextResponse.json(
+      { error: "Video must be 100 MB or smaller." },
+      { status: 400 }
+    );
+  }
   if (!validVideo(video, MAX_VIDEO_SIZE)) {
     return NextResponse.json(
-      { error: "Please provide a valid video file (MP4/WebM/MOV, 50 MB max)." },
+      { error: "Unsupported video format. Use MP4, WebM or MOV." },
       { status: 400 }
     );
   }
@@ -71,7 +96,7 @@ export async function POST(req: NextRequest) {
   }
 
   const [videoUrl, audioUrl] = await Promise.all([
-    uploadSource(Buffer.from(await video.arrayBuffer()), video.type),
+    uploadSource(Buffer.from(await video.arrayBuffer()), normalizedVideoMime(video)),
     uploadSource(Buffer.from(await audio.arrayBuffer()), audio.type),
   ]);
 

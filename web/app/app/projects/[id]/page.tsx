@@ -10,24 +10,33 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Trash2 } from "lucide-react";
 
 import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
+import { AssetLayoutControls, assetLayoutClass } from "@/components/projects/asset-layout-controls";
+import { AssetServiceFilter } from "@/components/projects/asset-service-filter";
+import { useAssetLayout } from "@/components/projects/use-asset-layout";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TypeFilter = "all" | "image" | "video";
+type TypeFilter = "all" | "image" | "video" | "audio";
 
 export default function ProjectDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [projectName, setProjectName] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
   const [filter, setFilter] = useState<TypeFilter>("all");
+  const [serviceFilter, setServiceFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const { layout, columns, setLayout, setColumns } = useAssetLayout(`project:${params.id}`);
 
   const fetchProject = useCallback(
-    async (type: TypeFilter) => {
+    async (type: TypeFilter, service: string) => {
       try {
-        const query = type === "all" ? "" : `?type=${type}`;
+        const queryParams = new URLSearchParams();
+        if (type !== "all") queryParams.set("type", type);
+        if (service !== "all") queryParams.set("feature", service);
+        const serializedParams = queryParams.toString();
+        const query = serializedParams ? `?${serializedParams}` : "";
         const res = await fetch(`/api/projects/${params.id}${query}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as {
@@ -45,8 +54,8 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
   );
 
   useEffect(() => {
-    void fetchProject(filter);
-  }, [fetchProject, filter]);
+    void fetchProject(filter, serviceFilter);
+  }, [fetchProject, filter, serviceFilter]);
 
   const deleteProject = async () => {
     if (!window.confirm(`Delete project "${projectName ?? "this project"}" and all its assets? This cannot be undone.`)) {
@@ -93,13 +102,20 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </div>
       </header>
 
-      <Tabs value={filter} onValueChange={(value) => setFilter(value as TypeFilter)}>
+      <Tabs value={filter} onValueChange={(value) => { setFilter(value as TypeFilter); setServiceFilter("all"); }}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="image">Images</TabsTrigger>
           <TabsTrigger value="video">Videos</TabsTrigger>
+          <TabsTrigger value="audio">Audio</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {(filter === "image" || filter === "video") && (
+        <AssetServiceFilter type={filter} value={serviceFilter} onChange={setServiceFilter} />
+      )}
+
+      <AssetLayoutControls layout={layout} columns={columns} onLayoutChange={setLayout} onColumnsChange={setColumns} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -108,25 +124,25 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
       )}
 
       {assets === null ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={assetLayoutClass(layout)} style={layout === "grid" ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
           {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton key={index} className="aspect-[4/3] w-full" />
           ))}
         </div>
       ) : assets.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
-          <p className="text-sm font-medium">No assets yet</p>
+          <p className="text-sm font-medium">No assets match these filters</p>
           <p className="text-sm text-muted-foreground">
-            Generate something in the studio to fill this project.
+            Try another asset type or service, or generate a new result for this project.
           </p>
           <Button asChild variant="outline" size="sm" className="mt-2">
             <Link href="/app/ai-image-generator">Open the studio</Link>
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={assetLayoutClass(layout)} style={layout === "grid" ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
           {assets.map((asset) => (
-            <AssetCard key={asset.id} asset={asset} onChanged={() => void fetchProject(filter)} />
+            <AssetCard key={asset.id} asset={asset} layout={layout} onChanged={() => void fetchProject(filter, serviceFilter)} />
           ))}
         </div>
       )}

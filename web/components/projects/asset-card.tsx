@@ -6,6 +6,7 @@
 // actifs, ce qui la rend réutilisable partout. En mode corbeille
 // (trashed=true), l'action principale est Restore + Delete permanent.
 import { useState } from "react";
+import Link from "next/link";
 import { ArchiveRestore, Box, Download, Music, Play, Star, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { saveResult } from "@/lib/download";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface AssetSummary {
   id: string;
@@ -29,9 +36,31 @@ interface AssetCardProps {
   onChanged: () => void;
   /** Callback pour suppression définitive (optionnel ; si absent, pas de bouton Delete). */
   onDelete?: (assetId: string) => void;
+  layout?: "grid" | "list";
 }
 
-export function AssetCard({ asset, trashed = false, onChanged, onDelete }: AssetCardProps) {
+const IMAGE_SERVICES = [
+  ["Image Generator", "/app/image-generator"],
+  ["Render", "/app/ai-image-generator"],
+  ["Mood", "/app/ambiance-change"],
+  ["Exterior to Interior", "/app/exterior-to-interior"],
+  ["Plan to Render", "/app/plan-to-render"],
+  ["Multi-Angle", "/app/multi-angle"],
+  ["Upscale", "/app/upscale"],
+  ["Extend", "/app/image-extender"],
+  ["Variations", "/app/variations"],
+  ["Background Remover", "/app/background-remover"],
+] as const;
+
+const VIDEO_SERVICES = [
+  ["Video Generator", "/app/ai-video-generator"],
+  ["Video Relight", "/app/ai-video-generator?mode=relight"],
+  ["Video Speed", "/app/video-upscaler"],
+  ["Clip Editor", "/app/clip-editor"],
+  ["Video Project Editor", "/app/video-project-editor"],
+] as const;
+
+export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid" }: AssetCardProps) {
   const [busy, setBusy] = useState(false);
 
   // Pas de logique métier ici : simple bascule de flag côté API, puis
@@ -65,8 +94,8 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete }: Asset
   };
 
   return (
-    <Card className="overflow-hidden">
-      <div className="relative aspect-[4/3] bg-muted">
+    <Card className={cn("overflow-hidden", layout === "list" && "flex min-h-32 flex-row")}>
+      <div className={cn("relative bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]")}>
         {asset.type === "video" ? (
           <>
             {/* Pas d'autoplay : simple aperçu muet, overlay Play indicatif. */}
@@ -95,7 +124,13 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete }: Asset
           {asset.type === "3d_model" ? "3D" : asset.type}
         </Badge>
       </div>
-      <CardContent className="flex items-center justify-end gap-1 p-2">
+      {layout === "list" && (
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4">
+          <p className="truncate text-sm font-medium capitalize">{asset.type === "3d_model" ? "3D model" : asset.type}</p>
+          <p className="truncate text-xs text-muted-foreground">Project item · {asset.id.slice(0, 8)}</p>
+        </div>
+      )}
+      <CardContent className={cn("flex flex-wrap items-center justify-end gap-1 p-2", layout === "list" && "flex-1 self-center")}>
         {trashed ? (
           <>
             <Button
@@ -160,6 +195,25 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete }: Asset
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+            {(asset.type === "image" || asset.type === "video") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" disabled={busy} className="whitespace-nowrap">
+                    Create with
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {(asset.type === "image" ? IMAGE_SERVICES : VIDEO_SERVICES).map(([label, route]) => {
+                    const separator = route.includes("?") ? "&" : "?";
+                    return (
+                      <DropdownMenuItem key={route} asChild>
+                        <Link href={`${route}${separator}assetId=${encodeURIComponent(asset.id)}`}>{label}</Link>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </>
         )}
       </CardContent>

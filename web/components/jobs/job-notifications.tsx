@@ -8,6 +8,7 @@ interface JobNotification {
   type: "image" | "video" | "audio";
   status: "pending" | "processing" | "complete" | "failed";
   feature?: string;
+  error?: string;
   created_at: string;
 }
 
@@ -62,15 +63,30 @@ export function JobNotificationsProvider({ children }: { children: React.ReactNo
       setJobs(data.jobs);
       setIsLoading(false);
 
-      // Toasts uniquement pour les jobs qui viennent de passer à complete.
+      // Toasts uniquement quand un job vient de terminer.
       // On ignore le premier fetch (page fraîchement chargée) pour éviter
       // d'inonder l'utilisateur de notifications historiques.
       if (initialLoadDone.current) {
         for (const job of data.jobs) {
-          if (job.status !== "complete") continue;
           const prevStatus = previousById.get(job.id);
-          if (!prevStatus || prevStatus !== "complete") {
-            const label = job.type === "video" ? "Video generation" : "Render";
+          const label =
+            job.type === "video"
+              ? "Video generation"
+              : job.feature === "voice_generator"
+                ? "Voice generation"
+                : job.feature === "lip_sync"
+                  ? "Lip sync"
+                  : job.feature === "3d_generator"
+                    ? "3D generation"
+                    : job.feature === "video_edit"
+                      ? "Video editing"
+                      : "Image generation";
+
+          if (job.status === "failed" && prevStatus !== "failed") {
+            toast.error(`${label} failed`, {
+              description: job.error ?? "The AI provider is unavailable or not configured. Please try again later.",
+            });
+          } else if (job.status === "complete" && prevStatus !== "complete") {
             toast.success(`${label} complete`, {
               description: "Your result is ready in Projects.",
               action: {
