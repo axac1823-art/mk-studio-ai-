@@ -1,0 +1,21 @@
+# Python (worker)
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Next.js / web build outputs
+**/.next/
+**/out/
+*.tsbuildinfo
+
+# Screenshots marketing locales (non utilisées par l'app)
+web/screenshots/
+
+# Fichiers générés par le worker en dev local
+worker/storage/*
+!worker/storage/.gitkeep
+
+# Env réels du worker (web/.gitignore couvre déjà web/.env*)
+worker/.env

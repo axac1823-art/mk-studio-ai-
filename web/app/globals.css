@@ -1,0 +1,320 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer base {
+  /* Dark mode is the default theme. */
+  :root {
+    --background: 240 18% 4%;
+    --foreground: 220 14% 96%;
+    --surface: 240 16% 8%;
+    --surface-light: 240 14% 12%;
+    --brand: 221 83% 53%;
+    --brand-hover: 224 76% 48%;
+    --muted: 240 10% 16%;
+    --muted-foreground: 220 9% 64%;
+
+    --card: 240 16% 8%;
+    --card-foreground: 220 14% 96%;
+    --popover: 240 16% 8%;
+    --popover-foreground: 220 14% 96%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 10% 16%;
+    --secondary-foreground: 220 14% 96%;
+    --accent: 240 10% 16%;
+    --accent-foreground: 220 14% 96%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 10% 18%;
+    --input: 240 10% 18%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+    --circuit-base: rgba(255, 255, 255, 0.13);
+    --circuit-branch: rgba(103, 232, 249, 0.22);
+    --circuit-node: rgba(103, 232, 249, 0.48);
+    --circuit-pulse: rgba(103, 232, 249, 0.96);
+    --circuit-pulse-soft: rgba(59, 130, 246, 0.76);
+  }
+
+  html.light {
+    --background: 0 0% 98%;
+    --foreground: 240 10% 8%;
+    --surface: 0 0% 100%;
+    --surface-light: 220 14% 96%;
+    --brand: 221 83% 53%;
+    --brand-hover: 224 76% 48%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 40%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 240 10% 8%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 240 10% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 221 83% 53%;
+    --circuit-base: rgba(15, 23, 42, 0.12);
+    --circuit-branch: rgba(6, 182, 212, 0.2);
+    --circuit-node: rgba(6, 182, 212, 0.44);
+    --circuit-pulse: rgba(6, 182, 212, 0.84);
+    --circuit-pulse-soft: rgba(59, 130, 246, 0.52);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@keyframes scroll-horizontal {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-horizontal {
+  animation: scroll-horizontal 80s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll-horizontal {
+    animation: none;
+    overflow-x: auto;
+  }
+}
+
+.electrical-circuit-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.electrical-circuit-base,
+.electrical-circuit-branch {
+  fill: none;
+  stroke: var(--circuit-base);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.electrical-circuit-branch {
+  stroke: var(--circuit-branch);
+  stroke-width: 0.8;
+}
+
+.electrical-circuit-pulse {
+  fill: none;
+  stroke: var(--circuit-pulse);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.014 0.986;
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 4px var(--circuit-pulse));
+  vector-effect: non-scaling-stroke;
+  animation: electrical-circuit-flow var(--circuit-duration, 40s) linear infinite;
+}
+
+.electrical-circuit-pulse-secondary {
+  stroke: var(--circuit-pulse-soft);
+  stroke-width: 1.5;
+  stroke-dasharray: 0.008 0.992;
+  filter: drop-shadow(0 0 3px var(--circuit-pulse-soft));
+}
+
+.electrical-circuit-node-halo {
+  fill: var(--circuit-node);
+  opacity: 0.13;
+  filter: drop-shadow(0 0 5px var(--circuit-pulse));
+  animation: electrical-circuit-node var(--circuit-duration, 40s) ease-out infinite;
+}
+
+.electrical-circuit-node {
+  fill: var(--circuit-pulse);
+  opacity: 0.78;
+  filter: drop-shadow(0 0 4px var(--circuit-pulse));
+}
+
+@keyframes electrical-circuit-flow {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes electrical-circuit-node {
+  0%,
+  2%,
+  100% {
+    opacity: 0.13;
+  }
+
+  1% {
+    opacity: 0.78;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .electrical-circuit-pulse,
+  .electrical-circuit-node-halo {
+    animation: none;
+  }
+
+  .electrical-circuit-pulse {
+    stroke-dasharray: 0.006 0.994;
+    stroke-dashoffset: 0;
+    opacity: 0.55;
+  }
+}
+        .model-marquee,
+        .model-marquee-reverse {
+          animation-duration: 38s;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+          animation-play-state: running;
+          will-change: transform;
+        }
+
+        .model-marquee {
+          animation-name: model-marquee-forward;
+        }
+
+        .model-marquee-reverse {
+          animation-name: model-marquee-reverse;
+          animation-duration: 44s;
+        }
+
+        .marquee-focus-group:hover .model-marquee,
+        .marquee-focus-group:hover .model-marquee-reverse,
+        .marquee-focus-group:focus-within .model-marquee,
+        .marquee-focus-group:focus-within .model-marquee-reverse {
+          animation-play-state: paused;
+        }
+
+        @keyframes model-marquee-forward {
+          from {
+            transform: translate3d(0, 0, 0);
+          }
+
+          to {
+            transform: translate3d(
+              calc(-50% - 6px),
+              0,
+              0
+            );
+          }
+        }
+
+        @keyframes model-marquee-reverse {
+          from {
+            transform: translate3d(
+              calc(-50% - 6px),
+              0,
+              0
+            );
+          }
+
+          to {
+            transform: translate3d(0, 0, 0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .model-marquee,
+          .model-marquee-reverse {
+            animation: none !important;
+            transform: none !important;
+          }
+
+          .marquee-focus-group {
+            overflow-x: auto;
+            scrollbar-width: none;
+          }
+
+          .marquee-focus-group::-webkit-scrollbar {
+            display: none;
+          }
+        }
+
+/* ─────────────────────────────────────────────
+   Renderuim — Text Selection
+   ───────────────────────────────────────────── */
+
+::selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.28);
+  color: #071014;
+}
+
+::-moz-selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.28);
+  color: #071014;
+}
+
+/* Choose exactly one hero asset for the active theme and viewport. */
+#hero .hero-responsive-image {
+  background-image: url("/mobile_lightmod.webp");
+}
+
+html.dark #hero .hero-responsive-image {
+  background-image: url("/mobile_hero.webp");
+}
+
+@media (min-width: 768px) {
+  #hero .hero-responsive-image {
+    background-image: url("/hero_white.webp");
+  }
+
+  html.dark #hero .hero-responsive-image {
+    background-image: url("/hero.webp");
+  }
+}
+
+/* Dark mode */
+.dark ::selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.38);
+  color: #ffffff;
+}
+
+.dark ::-moz-selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.38);
+  color: #ffffff;
+}
+
+/* Footer pulse moved from Framer Motion to CSS. */
+@keyframes footer-line-pulse {
+  0% {
+    transform: translateX(-20%);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+.animate-footer-line-pulse {
+  animation: footer-line-pulse 3.8s linear infinite;
+}

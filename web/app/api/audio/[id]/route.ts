@@ -1,0 +1,37 @@
+// Polling authentifié des jobs audio ElevenLabs.
+import { NextRequest, NextResponse } from "next/server";
+
+import { getJobForUser, listAssetsForJob } from "@/lib/db/queries";
+import { publicUrl } from "@/lib/worker-client";
+import { requireAuth } from "@/lib/auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const { dbUser: user } = await requireAuth();
+  const job = await getJobForUser(params.id, user.id);
+  if (!job || (job.type !== "voice_generator" && job.type !== "dialogue_generator")) {
+    return NextResponse.json({ error: "Job not found." }, { status: 404 });
+  }
+
+  if (job.status === "complete") {
+    const assets = await listAssetsForJob(job.id);
+    const asset = assets[0];
+    return NextResponse.json({
+      status: "complete",
+      resultUrl: asset ? publicUrl(asset.storage_path) : null,
+      assetId: asset?.id ?? null,
+      creditsCharged: job.credits_charged,
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  if (job.status === "failed") {
+    return NextResponse.json({
+      status: "failed",
+      error: job.error_message ?? "Generation failed, please try again.",
+    }, { headers: { "Cache-Control": "no-store" } });
+  }
+
+  return NextResponse.json({ status: job.status }, { headers: { "Cache-Control": "no-store" } });
+}
