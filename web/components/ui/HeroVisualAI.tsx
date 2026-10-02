@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type {
   PointerEvent as ReactPointerEvent,
   Ref,
@@ -25,6 +29,9 @@ type NodePositions = Record<
   NodeId,
   NodePosition
 >;
+
+const REFERENCE_IMAGE_SRC_SET =
+  "/image-320.webp 320w, /image-640.webp 640w, /image-960.webp 960w";
 
 type DragStart = {
   id: NodeId;
@@ -90,8 +97,13 @@ function SourceNode({
 
       <div className="hero-source-preview">
         <img
-          src="/image.png"
+          src="/image-640.webp"
+          srcSet={REFERENCE_IMAGE_SRC_SET}
+          sizes="(max-width: 900px) 80vw, 400px"
+          width={1280}
+          height={960}
           alt="Reference image of the subject"
+          loading="lazy"
         />
 
         <span className="hero-node-chip">
@@ -147,6 +159,8 @@ function CameraNode({
 }) {
   const isCameraView =
     mode === "camera";
+  const isReferenceImage =
+    generatedImage === "/image.webp";
 
   return (
     <div
@@ -176,7 +190,7 @@ function CameraNode({
           ref={cameraRef}
           className="multi-angle-camera--hero"
           initialState={cameraState}
-          imageUrl="/image.png"
+          imageUrl="/image.webp"
           displayMode={mode}
           turntable={!isCameraView}
           syncedState={
@@ -196,7 +210,20 @@ function CameraNode({
           generatedImage && (
             <img
               className="hero-ai-render"
-              src={generatedImage}
+              src={
+                isReferenceImage
+                  ? "/image-640.webp"
+                  : generatedImage
+              }
+              srcSet={
+                isReferenceImage
+                  ? REFERENCE_IMAGE_SRC_SET
+                  : undefined
+              }
+              sizes="(max-width: 900px) 80vw, 400px"
+              width={1280}
+              height={960}
+              loading={isReferenceImage ? "lazy" : undefined}
               alt="Live camera preview of the reference subject"
               onError={onImageError}
             />
@@ -294,7 +321,7 @@ export default function HeroVisualAI({
 
       projection: "perspective",
 
-      imageUrl: "/image.png",
+      imageUrl: "/image.webp",
     });
 
   /*
@@ -337,7 +364,7 @@ export default function HeroVisualAI({
     generatedImage,
     setGeneratedImage,
   ] = useState<string | null>(
-    "/image.png"
+    "/image.webp"
   );
 
   const [
@@ -512,7 +539,7 @@ export default function HeroVisualAI({
 
       const reference =
         await fetch(
-          "/image.png",
+          "/image.webp",
           {
             cache:
               "force-cache",

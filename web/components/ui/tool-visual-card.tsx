@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { memo, useState } from "react";
 import type { ToolDefinition } from "@/config/tools";
 import { TOOL_PREVIEWS } from "@/components/ui/tool-previews";
 
@@ -12,36 +12,25 @@ type ToolVisualCardProps = {
 
 const ACCENT = "hsl(189.16deg 79.17% 47.06%)";
 
-export function ToolVisualCard({
+export const ToolVisualCard = memo(function ToolVisualCard({
   tool,
   onClick,
 }: ToolVisualCardProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+
+  const isPreviewActive = isHovered || isFocused;
   const Icon = tool.icon;
   const preview = TOOL_PREVIEWS[tool.id];
 
   return (
-    <motion.button
+    <button
       type="button"
       onClick={onClick}
-      initial={{
-        opacity: 0,
-        y: 24,
-      }}
-      whileInView={{
-        opacity: 1,
-        y: 0,
-      }}
-      viewport={{
-        once: true,
-        margin: "-60px",
-      }}
-      whileHover={{
-        y: -7,
-      }}
-      transition={{
-        duration: 0.5,
-        ease: [0.22, 1, 0.36, 1],
-      }}
+      onPointerEnter={() => setIsHovered(true)}
+      onPointerLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
       className="
         group
         relative
@@ -67,8 +56,11 @@ export function ToolVisualCard({
         transition-all
         duration-500
 
+        hover:-translate-y-[7px]
         hover:border-black/[0.12]
         hover:shadow-[0_26px_70px_rgba(15,23,42,0.12)]
+
+        focus-visible:outline-none
 
         dark:border-white/[0.10]
         dark:bg-[#090a0c]
@@ -88,13 +80,7 @@ export function ToolVisualCard({
           AMBIENT BACKGROUND
       ====================================================== */}
 
-      <div
-        className="
-          pointer-events-none
-          absolute
-          inset-0
-        "
-      >
+      <div className="pointer-events-none absolute inset-0">
         <div
           className="
             absolute
@@ -146,12 +132,7 @@ export function ToolVisualCard({
 
         {/* top illumination */}
         <div
-          className="
-            absolute
-            inset-x-0
-            top-0
-            h-px
-          "
+          className="absolute inset-x-0 top-0 h-px"
           style={{
             background: `linear-gradient(
               90deg,
@@ -180,47 +161,53 @@ export function ToolVisualCard({
             transition-opacity
             duration-700
             group-hover:opacity-100
+            group-focus-within:opacity-100
           "
         >
-          {preview.type === "video" ? (
-            <video
-              src={preview.src}
-              poster={preview.poster}
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              className="
-                h-full
-                w-full
-                scale-[1.10]
-                object-cover
-                transition-transform
-                duration-[1500ms]
-                ease-out
-                group-hover:scale-100
-              "
-              aria-hidden="true"
-            />
-          ) : (
-            <img
-              src={preview.src}
-              alt=""
-              loading="lazy"
-              draggable={false}
-              className="
-                h-full
-                w-full
-                scale-[1.10]
-                object-cover
-                transition-transform
-                duration-[1500ms]
-                ease-out
-                group-hover:scale-100
-              "
-            />
-          )}
+          {preview.type === "video"
+            ? isPreviewActive && (
+                <video
+                  key={preview.src}
+                  src={preview.src}
+                  poster={preview.poster}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="none"
+                  className="
+                    h-full
+                    w-full
+                    scale-[1.10]
+                    object-cover
+                    transition-transform
+                    ease-out
+                    group-hover:scale-100
+                  "
+                  style={{ transitionDuration: "1500ms" }}
+                  aria-hidden="true"
+                />
+              )
+            : isPreviewActive && (
+                <img
+                  src={preview.src}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  className="
+                    h-full
+                    w-full
+                    scale-[1.10]
+                    object-cover
+                    transition-transform
+                    ease-out
+                    group-hover:scale-100
+                  "
+                  style={{ transitionDuration: "1500ms" }}
+                />
+              )}
+
 
           {/* image protection */}
           <div
@@ -234,10 +221,7 @@ export function ToolVisualCard({
 
           {/* cyan cinematic wash */}
           <div
-            className="
-              absolute
-              inset-0
-            "
+            className="absolute inset-0"
             style={{
               background: `
                 linear-gradient(
@@ -331,17 +315,9 @@ export function ToolVisualCard({
           ELECTRIC NODE
       ====================================================== */}
 
-      <motion.span
-        animate={{
-          opacity: [0.35, 1, 0.35],
-          scale: [0.85, 1.15, 0.85],
-        }}
-        transition={{
-          duration: 2.2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
+      <span
         className="
+          tool-node-pulse
           absolute
           right-6
           top-6
@@ -355,6 +331,7 @@ export function ToolVisualCard({
           boxShadow:
             "0 0 12px 3px hsla(189.16,79.17%,47.06%,0.55)",
         }}
+        aria-hidden="true"
       />
 
       {/* =====================================================
@@ -622,17 +599,9 @@ export function ToolVisualCard({
               }}
             />
 
-            <motion.span
-              animate={{
-                x: [0, 36],
-                opacity: [0, 1, 0],
-              }}
-              transition={{
-                duration: 1.8,
-                repeat: Infinity,
-                ease: "linear",
-              }}
+            <span
               className="
+                tool-signal-dot
                 h-1
                 w-1
                 rounded-full
@@ -642,6 +611,7 @@ export function ToolVisualCard({
                 boxShadow:
                   "0 0 8px 2px hsla(189.16,79.17%,47.06%,0.65)",
               }}
+              aria-hidden="true"
             />
           </div>
         </div>
@@ -675,7 +645,67 @@ export function ToolVisualCard({
             "0 0 14px hsla(189.16,79.17%,47.06%,0.45)",
         }}
       />
-    </motion.button>
-  );
-}
 
+      {/* =====================================================
+          LIGHTWEIGHT CSS ANIMATIONS
+      ====================================================== */}
+
+      <style jsx>{`
+        .tool-node-pulse {
+          animation: toolNodePulse 2.2s ease-in-out infinite;
+          transform-origin: center;
+        }
+
+        .tool-signal-dot {
+          animation: toolSignalPulse 1.8s linear infinite;
+          transform: translate3d(0, 0, 0);
+          will-change: transform, opacity;
+        }
+
+        @keyframes toolNodePulse {
+          0%,
+          100% {
+            opacity: 0.35;
+            transform: scale(0.85);
+          }
+
+          50% {
+            opacity: 1;
+            transform: scale(1.15);
+          }
+        }
+
+        @keyframes toolSignalPulse {
+          0% {
+            opacity: 0;
+            transform: translate3d(0, 0, 0);
+          }
+
+          12% {
+            opacity: 1;
+          }
+
+          50% {
+            opacity: 0.95;
+          }
+
+          88% {
+            opacity: 0.2;
+          }
+
+          100% {
+            opacity: 0;
+            transform: translate3d(36px, 0, 0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .tool-node-pulse,
+          .tool-signal-dot {
+            animation: none;
+          }
+        }
+      `}</style>
+    </button>
+  );
+});

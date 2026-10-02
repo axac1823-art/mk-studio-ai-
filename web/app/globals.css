@@ -253,3 +253,68 @@
             display: none;
           }
         }
+
+/* ─────────────────────────────────────────────
+   Renderuim — Text Selection
+   ───────────────────────────────────────────── */
+
+::selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.28);
+  color: #071014;
+}
+
+::-moz-selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.28);
+  color: #071014;
+}
+
+/* Choose exactly one hero asset for the active theme and viewport. */
+#hero .hero-responsive-image {
+  background-image: url("/mobile_lightmod.webp");
+}
+
+html.dark #hero .hero-responsive-image {
+  background-image: url("/mobile_hero.webp");
+}
+
+@media (min-width: 768px) {
+  #hero .hero-responsive-image {
+    background-image: url("/hero_white.webp");
+  }
+
+  html.dark #hero .hero-responsive-image {
+    background-image: url("/hero.webp");
+  }
+}
+
+/* Dark mode */
+.dark ::selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.38);
+  color: #ffffff;
+}
+
+.dark ::-moz-selection {
+  background: hsl(189.16deg 79.17% 47.06% / 0.38);
+  color: #ffffff;
+}
+
+/* Footer pulse moved from Framer Motion to CSS. */
+@keyframes footer-line-pulse {
+  0% {
+    transform: translateX(-20%);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+}
+
+.animate-footer-line-pulse {
+  animation: footer-line-pulse 3.8s linear infinite;
+}

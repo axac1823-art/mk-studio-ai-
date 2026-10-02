@@ -11,11 +11,17 @@ import { GoogleIcon } from "@/components/icons/google";
 import { RenderuimLogo } from "@/components/icons/renderuim";
 import { signInWithPassword, signInWithGoogle, signUp } from "@/app/(auth)/login/actions";
 
-export function AuthForm() {
+export function AuthForm({
+  initialMode,
+}: {
+  initialMode?: "login" | "signup";
+}) {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") ?? "/";
 
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup">(
+    initialMode ?? (searchParams.get("mode") === "signup" ? "signup" : "login"),
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -63,9 +69,7 @@ export function AuthForm() {
   async function handleGoogle() {
     setBusy(true);
     setError(null);
-    const formData = new FormData();
-    formData.append("origin", window.location.origin);
-    const result = await signInWithGoogle(undefined, formData);
+    const result = await signInWithGoogle();
     if (result?.url) {
       window.location.href = result.url;
     } else {
@@ -228,19 +232,19 @@ export function AuthForm() {
 
       <p className="text-center text-xs text-muted-foreground">
         By registering, you agree to our{" "}
-        <a
+        <Link
           className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
-          href="https://policies.google.com/terms"
+          href="/terms"
         >
           Terms of Service
-        </a>{" "}
+        </Link>{" "}
         and{" "}
-        <a
+        <Link
           className="text-muted-foreground hover:text-foreground hover:underline transition-colors"
-          href="https://policies.google.com/privacy"
+          href="/privacy"
         >
           Privacy Policy
-        </a>
+        </Link>
         .
       </p>
     </div>

@@ -6,6 +6,18 @@ import { AppShell } from "@/components/navigation/app-shell";
 import { SessionTimeout } from "@/components/auth/session-timeout";
 import { requireAuth } from "@/lib/auth";
 import { getLedgerBalance, getAppConfigInt } from "@/lib/db/queries";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
+};
 
 export const dynamic = "force-dynamic";
 

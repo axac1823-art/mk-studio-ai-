@@ -35,16 +35,22 @@ CREATE TABLE IF NOT EXISTS jobs (
   status               text NOT NULL DEFAULT 'pending'
                        CHECK (status IN ('pending','processing','complete','failed')),
   input                jsonb NOT NULL DEFAULT '{}',
+  idempotency_key     text,
   result_asset_id      uuid, -- FK ajoutée après assets
   parent_generation_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
   error_message        text, -- message GÉNÉRIQUE client uniquement
   model_used           text, -- modèle/fournisseur ayant servi (historique + debug)
+  provider_request_id  text,
   credits_charged      int NOT NULL DEFAULT 0,
   provider_cost_cents  int,   -- coût réel du provider en centimes USD (marge = credits_charged / provider_cost_cents)
   created_at           timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_user_created ON jobs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS jobs_project ON jobs(project_id);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS idempotency_key text;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS provider_request_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_user_idempotency_unique
+  ON jobs(user_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 DO $$
 BEGIN
@@ -130,6 +136,20 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
 
 CREATE INDEX IF NOT EXISTS credit_ledger_user_created
   ON credit_ledger(user_id, created_at DESC);
+
+-- Réservations temporaires utilisées par Audio Generation : le ledger
+-- reste append-only et le débit final n'est ajouté qu'à la réussite.
+CREATE TABLE IF NOT EXISTS audio_credit_reservations (
+  job_id     uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount     int NOT NULL CHECK (amount >= 0),
+  status     text NOT NULL DEFAULT 'reserved'
+             CHECK (status IN ('reserved', 'consumed', 'released')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS audio_credit_reservations_user_status
+  ON audio_credit_reservations(user_id, status);
 
 -- Coquille pour le jalon Stripe (abonnements + webhooks).
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -231,15 +251,17 @@ INSERT INTO action_costs (feature_type, credit_cost, margin_multiplier) VALUES
   ('upscale_4x', 8, 2.0),
   ('video_upscale_2x', 10, 2.0),
   ('video_upscale_4x', 20, 2.0),
+  ('video_upscale_speed', 20, 2.0),
   ('video_edit_trim', 2, 2.0),
   ('video_edit_concat', 2, 2.0),
   ('video_edit_speed', 2, 2.0),
   ('video_edit_overlay', 2, 2.0),
   ('video_edit_export', 2, 2.0),
-  -- 3D : Meshy ~ 50¢ -> 100 crédits.
-  ('3d_generator', 100, 2.0),
+  -- 3D : coût utilisateur réduit à 2 crédits.
+  ('3d_generator', 2, 2.0),
   -- Voix : ElevenLabs ~ 2¢ -> 4 crédits.
   ('voice_generator', 4, 2.0),
+  ('dialogue_generator', 4, 2.0),
   -- Lip Sync : Magic Hour ~ 40¢ -> 80 crédits.
   ('lip_sync', 80, 2.0)
 ON CONFLICT (feature_type)

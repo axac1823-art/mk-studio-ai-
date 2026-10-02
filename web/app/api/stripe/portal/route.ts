@@ -20,7 +20,7 @@ export async function POST() {
   }
 
   try {
-    const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://192.168.1.4:3000/";
     const session = await getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: `${origin}/app/account`,

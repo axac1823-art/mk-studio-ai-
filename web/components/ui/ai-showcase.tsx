@@ -1,5 +1,5 @@
 "use client";
-
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -10,7 +10,6 @@ import {
   Sparkles,
   Video,
 } from "lucide-react";
-import { useMemo, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 type PreviewMedia = {
@@ -44,7 +43,6 @@ type Category = {
 const ACCENT = "hsl(189.16deg 79.17% 47.06%)";
 const ACCENT_SOFT = "hsl(189.16deg 79.17% 47.06% / 0.16)";
 const ACCENT_GLOW = "hsl(189.16deg 79.17% 47.06% / 0.22)";
-
 const providers: ModelProvider[] = [
   { name: "Black Forest Labs", query: "Black Forest Labs", monogram: "BFL" },
   { name: "Google", query: "Google", monogram: "G" },
@@ -174,7 +172,18 @@ const sectionVars = {
 export default function ModelDiscovery() {
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<CategoryId | null>(null);
+const [isDesktop, setIsDesktop] = useState(false);
 
+useEffect(() => {
+  const media = window.matchMedia("(min-width: 1024px)");
+
+  const update = () => setIsDesktop(media.matches);
+
+  update();
+  media.addEventListener("change", update);
+
+  return () => media.removeEventListener("change", update);
+}, []);
   const nodeMap = useMemo(
     () => new Map(blueprintNodes.map((node) => [node.name, node])),
     [],
@@ -223,106 +232,110 @@ export default function ModelDiscovery() {
 
         <div className="mt-14 sm:mt-16 lg:mt-20">
           <div className="relative mx-auto max-w-[1260px]">
-            <div className="relative hidden h-[720px] lg:block">
-              <BlueprintCircuit
-                visibleRoutes={visibleRoutes}
-                onCoreEnter={() => setActiveNode("__core__")}
-              />
+{isDesktop ? (
+  <div className="relative h-[720px]">
+    <BlueprintCircuit
+      visibleRoutes={visibleRoutes}
+      onCoreEnter={() => setActiveNode("__core__")}
+    />
 
-              {categories.map((category) => {
-                const Icon = category.icon;
-                const active = activeCategory === category.id;
-                const dimmed = Boolean(activeCategory) && !active;
+{categories.map((category) => {
+  const Icon = category.icon;
+  const active = activeCategory === category.id;
+  const dimmed = Boolean(activeCategory) && !active;
 
-                return (
-                  <button
-                    key={category.id}
-                    type="button"
-                    onMouseEnter={() => {
-                      setActiveCategory(category.id);
-                      setActiveNode(null);
-                    }}
-                    onMouseLeave={() => {
-                      setActiveCategory(null);
-                      setActiveNode(null);
-                    }}
-                    className={[
-                      "absolute z-20 flex w-[180px] -translate-y-1/2 flex-col items-center text-center",
-                      "transition-all duration-300",
-                      dimmed ? "opacity-25" : "opacity-100",
-                      category.id === "image" ? "left-[30px] top-[115px]" : "",
-                      category.id === "video" ? "right-[30px] top-[115px]" : "",
-                      category.id === "3d" ? "left-[30px] top-[350px]" : "",
-                      category.id === "enhance" ? "right-[30px] top-[350px]" : "",
-                    ].join(" ")}
-                  >
-                    <span
-                      className={[
-                        "mb-3 flex h-9 w-9 items-center justify-center rounded-full border",
-                        "border-slate-300/70 bg-white/75 backdrop-blur-xl",
-                        "dark:border-white/10 dark:bg-[#0b0d10]/80",
-                        "transition-shadow duration-300",
-                      ].join(" ")}
-                      style={{
-                        boxShadow: active ? `0 0 28px ${ACCENT_GLOW}` : undefined,
-                      }}
-                    >
-                      <Icon
-                        className="h-3.5 w-3.5"
-                        style={{ color: ACCENT }}
-                      />
-                    </span>
+  return (
+    <button
+      key={category.id}
+      type="button"
+      onMouseEnter={() => {
+        setActiveCategory(category.id);
+        setActiveNode(null);
+      }}
+      onMouseLeave={() => {
+        setActiveCategory(null);
+        setActiveNode(null);
+      }}
+      className={[
+        "absolute z-20 flex w-[180px] -translate-y-1/2 flex-col items-center text-center",
+        "transition-all duration-300",
+        dimmed ? "opacity-25" : "opacity-100",
+        category.id === "image" ? "left-[30px] top-[115px]" : "",
+        category.id === "video" ? "right-[30px] top-[115px]" : "",
+        category.id === "3d" ? "left-[30px] top-[350px]" : "",
+        category.id === "enhance" ? "right-[30px] top-[350px]" : "",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "mb-3 flex h-9 w-9 items-center justify-center rounded-full border",
+          "border-slate-300/70 bg-white/75 backdrop-blur-xl",
+          "dark:border-white/10 dark:bg-[#0b0d10]/80",
+          "transition-shadow duration-300",
+        ].join(" ")}
+        style={{
+          boxShadow: active ? `0 0 28px ${ACCENT_GLOW}` : undefined,
+        }}
+      >
+        <Icon
+          className="h-3.5 w-3.5"
+          style={{ color: ACCENT }}
+        />
+      </span>
 
-                    <span className="font-mono text-[9px] font-semibold tracking-[0.28em] text-slate-950 dark:text-white">
-                      {category.label}
-                    </span>
-                    <span className="mt-1 text-[10px] text-slate-500 dark:text-white/40">
-                      {category.description}
-                    </span>
-                  </button>
-                );
-              })}
+      <span className="font-mono text-[9px] font-semibold tracking-[0.28em] text-slate-950 dark:text-white">
+        {category.label}
+      </span>
 
-              <div className="absolute inset-x-[214px] top-[145px] bottom-[64px] z-20">
-                {blueprintNodes.map((node) => (
-                  <BlueprintNodeCard
-                    key={node.name}
-                    node={node}
-                    active={activeNode === node.name}
-                    dimmed={Boolean(activeNode && activeNode !== node.name)}
-                    onEnter={() => {
-                      setActiveNode(node.name);
-                      setActiveCategory(node.category);
-                    }}
-                    onLeave={() => {
-                      setActiveNode(null);
-                      setActiveCategory(null);
-                    }}
-                  />
-                ))}
-              </div>
+      <span className="mt-1 text-[10px] text-slate-500 dark:text-white/40">
+        {category.description}
+      </span>
+    </button>
+  );
+})}
 
-              <CoreModule
-                active={activeNode === "__core__"}
-                onMouseEnter={() => {
-                  setActiveNode("__core__");
-                  setActiveCategory(null);
-                }}
-                onMouseLeave={() => {
-                  setActiveNode(null);
-                  setActiveCategory(null);
-                }}
-              />
-            </div>
+    <div className="absolute inset-x-[214px] top-[145px] bottom-[64px] z-20">
+      {blueprintNodes.map((node) => (
+        <BlueprintNodeCard
+          key={node.name}
+          node={node}
+          active={activeNode === node.name}
+          dimmed={Boolean(activeNode && activeNode !== node.name)}
+          onEnter={() => {
+            setActiveNode(node.name);
+            setActiveCategory(node.category);
+          }}
+          onLeave={() => {
+            setActiveNode(null);
+            setActiveCategory(null);
+          }}
+        />
+      ))}
+    </div>
 
-            <div className="lg:hidden">
-              <MobileBlueprintTree
-                activeNode={activeNode}
-                setActiveNode={setActiveNode}
-                activeCategory={activeCategory}
-                setActiveCategory={setActiveCategory}
-              />
-            </div>
+    <CoreModule
+      active={activeNode === "__core__"}
+      onMouseEnter={() => {
+        setActiveNode("__core__");
+        setActiveCategory(null);
+      }}
+      onMouseLeave={() => {
+        setActiveNode(null);
+        setActiveCategory(null);
+      }}
+    />
+  </div>
+) : (
+  <MobileBlueprintTree
+    activeNode={activeNode}
+    setActiveNode={setActiveNode}
+    activeCategory={activeCategory}
+    setActiveCategory={setActiveCategory}
+  />
+)}
+
+
+
           </div>
         </div>
 
@@ -820,7 +833,6 @@ function MobileBlueprintTree({
 
       <div className="relative z-10">
         {categories.map((category, index) => {
-          const Icon = category.icon;
           const providersForCategory = blueprintNodes.filter((node) => node.category === category.id);
           const isActive = activeCategory === category.id;
           const tone = categoryStyles[category.id];
@@ -877,7 +889,6 @@ function MobileBlueprintTree({
                     boxShadow: isActive ? `inset 0 0 0 1px ${tone.dot}20, 0 0 18px ${tone.glow}` : undefined,
                   }}
                 >
-                  <Icon className="h-4 w-4" style={{ color: tone.dot }} />
                   <span
                     aria-hidden="true"
                     className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full"

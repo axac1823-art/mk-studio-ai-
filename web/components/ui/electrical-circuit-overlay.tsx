@@ -27,12 +27,32 @@ const SECTION_ORDER = [
   "footer",
 ];
 
-/** Mesure les sections existantes pour tracer un circuit décoratif derrière la page. */
+/**
+ * Mesure les sections existantes pour tracer un circuit décoratif derrière la page.
+ *
+ * Pourquoi le guard mobile ?
+ * Sur mobile (< 768 px) l'overlay SVG n'est pas rendu visuellement (il est masqué
+ * par la page) mais il exécuterait ResizeObserver + DOM queries + animations CSS
+ * en continu, pesant sur le Main Thread et le TBT. On court-circuite cela dès
+ * le premier mount côté client via window.matchMedia — sans polling.
+ */
 export function ElectricalCircuitOverlay() {
   const overlayRef = useRef<SVGSVGElement>(null);
   const [layout, setLayout] = useState<CircuitLayout | null>(null);
 
+  // null = non encore déterminé (SSR), true = mobile, false = desktop
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+
+  // Étape 1 : déterminer si on est sur mobile une seule fois au mount.
   useEffect(() => {
+    setIsMobile(!window.matchMedia("(min-width: 768px)").matches);
+  }, []);
+
+  // Étape 2 : lancer la logique lourde uniquement si on est sur desktop.
+  useEffect(() => {
+    // Attendre la résolution de isMobile.
+    if (isMobile === null || isMobile === true) return;
+
     const overlay = overlayRef.current;
     const page = overlay?.parentElement;
     if (!overlay || !page) return;
@@ -43,7 +63,7 @@ export function ElectricalCircuitOverlay() {
       const height = page.scrollHeight;
       if (!width || !height) return;
 
-      const isMobile = width < 640;
+      const isMobileWidth = width < 640;
       const isTablet = width < 1024;
       const sections = SECTION_ORDER.flatMap((id) => {
         const section = page.querySelector<HTMLElement>(
@@ -57,16 +77,16 @@ export function ElectricalCircuitOverlay() {
       if (!sections.length) return;
 
       const nodes = sections.map((section, index) => {
-        const x = isMobile
+        const x = isMobileWidth
           ? width * 0.965
           : isTablet
             ? width * 0.95
             : width * (index % 3 === 1 ? 0.92 : 0.945);
-        const y = Math.min(section.top + (isMobile ? 30 : 48), section.top + section.height / 2);
+        const y = Math.min(section.top + (isMobileWidth ? 30 : 48), section.top + section.height / 2);
         return { x, y, progress: y / height };
       });
 
-      const laneOffset = isMobile ? 0 : isTablet ? 14 : 22;
+      const laneOffset = isMobileWidth ? 0 : isTablet ? 14 : 22;
       const path = nodes
         .slice(0, -1)
         .map((node, index) => {
@@ -101,7 +121,10 @@ export function ElectricalCircuitOverlay() {
       observer.disconnect();
       window.removeEventListener("resize", updateLayout);
     };
-  }, []);
+  }, [isMobile]);
+
+  // Sur mobile, ne pas monter le SVG du tout (pas d'animations, pas de ResizeObserver).
+  if (isMobile === true) return null;
 
   return (
     <svg
@@ -129,7 +152,7 @@ export function ElectricalCircuitOverlay() {
           />
           {layout.nodes.map((node, index) => (
             <g key={`circuit-node-${index}`}>
-              {!((layout.width < 640)) && (
+              {!(layout.width < 640) && (
                 <path
                   className="electrical-circuit-branch"
                   d={`M ${node.x} ${node.y + 7} h -13 v 15 h 8`}

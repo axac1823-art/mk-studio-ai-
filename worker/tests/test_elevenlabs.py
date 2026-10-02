@@ -1,77 +1,136 @@
-"""Tests minimaux hors-ligne pour le provider ElevenLabs.
-
-    cd worker && ./.venv/Scripts/python -m tests.test_elevenlabs
-
-Couvre : is_configured, extraction du data URI, gestion d'erreur texte vide.
-"""
-import base64
+"""Offline tests for ElevenLabs voice and dialogue generation."""
 import os
+import unittest
+from unittest.mock import Mock, patch
+
+import httpx
 
 from providers import elevenlabs
-
-failures = 0
-
-
-def check(condition: bool, label: str) -> None:
-    global failures
-    if condition:
-        print(f"  PASS  {label}")
-    else:
-        failures += 1
-        print(f"  FAIL  {label}")
+from providers.http_helpers import ProviderError
+from workflows import audio
 
 
-def main() -> None:
-    print("\n[1] is_configured détecte la clé")
-    old = os.environ.get("ELEVENLABS_API_KEY")
-    os.environ["ELEVENLABS_API_KEY"] = "test-key"
-    check(elevenlabs.is_configured() is True, "configuré quand ELEVENLABS_API_KEY est présent")
-    del os.environ["ELEVENLABS_API_KEY"]
-    check(elevenlabs.is_configured() is False, "non configuré quand la clé est absente")
-    if old:
-        os.environ["ELEVENLABS_API_KEY"] = old
+class ElevenLabsProviderTests(unittest.TestCase):
+    def test_dialogue_keeps_turn_voice_pairing_and_emotion_tag(self):
+        turns = elevenlabs.normalize_dialogue_inputs([
+            {"text": "Hello", "voice_id": "voice_A", "emotion": "cheerfully"},
+            {"text": "Hi", "voice_id": "voice_B", "emotion": ""},
+        ])
+        self.assertEqual(turns, [
+            {"text": "[cheerfully] Hello", "voice_id": "voice_A"},
+            {"text": "Hi", "voice_id": "voice_B"},
+        ])
 
-    print("\n[2] generate refuse un texte vide")
-    try:
-        elevenlabs.generate({"text": "   "})
-        check(False, "doit lever une erreur")
-    except Exception as err:
-        check("missing text" in str(err), "erreur explicite sur texte manquant")
+    def test_dialogue_rejects_invalid_bounds_and_emotion_markup(self):
+        with self.assertRaises(ProviderError):
+            elevenlabs.normalize_dialogue_inputs([{ "text": "one", "voice_id": "a" }])
+        with self.assertRaises(ProviderError):
+            elevenlabs.normalize_dialogue_inputs([
+                {"text": "one", "voice_id": "a", "emotion": "[angry]"},
+                {"text": "two", "voice_id": "b"},
+            ])
+        with self.assertRaises(ProviderError):
+            elevenlabs.normalize_dialogue_inputs([
+                {"text": "x" * 1000, "voice_id": "a"},
+                {"text": "y" * 1001, "voice_id": "b"},
+            ])
 
-    print("\n[3] generate retourne un data URI audio/mpeg")
-    fake_mp3 = b"fake mp3 bytes"
-    # Monkey-patch httpx.post pour simuler ElevenLabs sans appel réseau.
-    import httpx
+    def test_dialogue_posts_expected_official_payload_and_returns_audio_bytes(self):
+        response = httpx.Response(
+            200,
+            content=b"audio bytes",
+            headers={"content-type": "audio/mpeg", "request-id": "req-123"},
+            request=httpx.Request("POST", "https://api.elevenlabs.io/v1/text-to-dialogue"),
+        )
+        with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "secret-test"}), patch.object(
+            elevenlabs._CLIENT, "post", return_value=response
+        ) as post:
+            result = elevenlabs.generate_dialogue({
+                "inputs": [
+                    {"text": "Hello", "voice_id": "voice_A", "emotion": "warmly"},
+                    {"text": "Hi", "voice_id": "voice_B"},
+                ],
+                "language_code": "en",
+                "seed": 123,
+            })
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["model_id"], "eleven_v3")
+        self.assertEqual(payload["inputs"][0], {"text": "[warmly] Hello", "voice_id": "voice_A"})
+        self.assertEqual(payload["inputs"][1], {"text": "Hi", "voice_id": "voice_B"})
+        self.assertEqual(payload["language_code"], "en")
+        self.assertEqual(payload["seed"], 123)
+        self.assertEqual(result["audio_bytes"], b"audio bytes")
+        self.assertEqual(result["provider_request_id"], "req-123")
 
-    original_post = httpx.post
+    def test_single_generation_uses_allowlisted_model_and_audio_bytes(self):
+        response = httpx.Response(
+            200, content=b"mp3", headers={"content-type": "audio/mpeg"},
+            request=httpx.Request("POST", "https://api.elevenlabs.io/v1/text-to-speech/voice_1"),
+        )
+        with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "secret-test"}), patch.object(
+            elevenlabs._CLIENT, "post", return_value=response
+        ) as post:
+            result = elevenlabs.generate({"text": "Hello", "voice_id": "voice_1", "model": "eleven_flash_v2_5"})
+        self.assertEqual(post.call_args.kwargs["json"]["model_id"], "eleven_flash_v2_5")
+        self.assertEqual(result["extension"], "mp3")
 
-    def fake_post(url, **kwargs):
-        class FakeResponse:
-            status_code = 200
-            text = ""
-            content = fake_mp3
+    def test_read_timeout_is_not_retried(self):
+        with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "secret-test"}), patch.object(
+            elevenlabs._CLIENT, "post", side_effect=httpx.ReadTimeout("lost response")
+        ) as post:
+            with self.assertRaises(ProviderError):
+                elevenlabs.generate({"text": "Hello", "voice_id": "voice_1"})
+        post.assert_called_once()
 
-        return FakeResponse()
 
-    httpx.post = fake_post
-    os.environ["ELEVENLABS_API_KEY"] = "test-key"
-    try:
-        result = elevenlabs.generate({"text": "Hello", "voice_id": "fake-voice"})
-        check("audio" in result, "clé audio présente")
-        url = result["audio"]["url"]
-        check(url.startswith("data:audio/mpeg;base64,"), "format data URI audio/mpeg")
-        decoded = base64.b64decode(url.split(",")[1])
-        check(decoded == fake_mp3, "contenu MP3 encodé correctement")
-    finally:
-        httpx.post = original_post
-        if old:
-            os.environ["ELEVENLABS_API_KEY"] = old
-        else:
-            os.environ.pop("ELEVENLABS_API_KEY", None)
+class AudioWorkflowTests(unittest.TestCase):
+    def setUp(self):
+        self.job = {"id": "job-1", "user_id": "user-1", "project_id": "project-1", "type": "voice_generator", "input": {"text": "Hello", "creditCost": 4}}
+        self.conn = Mock()
+        self.conn.__enter__ = Mock(return_value=self.conn)
+        self.conn.__exit__ = Mock(return_value=False)
+        self.conn.transaction.return_value.__enter__ = Mock(return_value=None)
+        self.conn.transaction.return_value.__exit__ = Mock(return_value=False)
 
-    print(f"\n{failures} failure(s)")
-    raise SystemExit(1 if failures else 0)
+    def test_success_stores_asset_completes_and_consumes_reservation_once(self):
+        result = {"audio_bytes": b"audio", "mime_type": "audio/mpeg", "model": "eleven_multilingual_v2", "provider_request_id": "req-1"}
+        with patch.object(audio.elevenlabs, "generate", return_value=result) as generate, \
+             patch.object(audio, "store_audio_output", return_value=("/storage/a.mp3", "mp3")), \
+             patch.object(audio, "consume_audio_reservation") as consume, \
+             patch.object(audio, "insert_asset", return_value="asset-1") as insert_asset, \
+             patch.object(audio, "complete_job") as complete, \
+             patch.object(audio, "fail_job") as fail, \
+             patch.object(audio, "release_audio_reservation") as release, \
+             patch.object(audio.db, "connect", return_value=self.conn):
+            audio.run(self.job)
+        generate.assert_called_once()
+        consume.assert_called_once_with(self.conn, "job-1")
+        insert_asset.assert_called_once_with(self.conn, self.job, "audio", "/storage/a.mp3")
+        complete.assert_called_once()
+        fail.assert_not_called()
+        release.assert_not_called()
+
+    def test_provider_failure_fails_job_and_releases_reservation(self):
+        with patch.object(audio.elevenlabs, "generate", side_effect=ProviderError("provider failed")), \
+             patch.object(audio, "fail_job") as fail, \
+             patch.object(audio, "release_audio_reservation") as release, \
+             patch.object(audio.db, "connect", return_value=self.conn):
+            audio.run(self.job)
+        fail.assert_called_once()
+        release.assert_called_once_with(self.conn, "job-1")
+
+    def test_storage_failure_does_not_call_provider_again(self):
+        result = {"audio_bytes": b"audio", "mime_type": "audio/mpeg", "model": "eleven_multilingual_v2"}
+        with patch.object(audio.elevenlabs, "generate", return_value=result) as generate, \
+             patch.object(audio, "store_audio_output", side_effect=OSError("disk full")), \
+             patch.object(audio, "fail_job") as fail, \
+             patch.object(audio, "release_audio_reservation") as release, \
+             patch.object(audio.db, "connect", return_value=self.conn):
+            audio.run(self.job)
+        generate.assert_called_once()
+        fail.assert_called_once()
+        release.assert_called_once_with(self.conn, "job-1")
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()

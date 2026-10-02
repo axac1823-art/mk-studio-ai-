@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { getOrCreateStripeCustomer, getStripe } from "@/lib/stripe";
+import { getSiteUrl } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const customerId = await getOrCreateStripeCustomer(user.id, supabaseUser.email ?? user.email);
-    const origin = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const origin = getSiteUrl().origin;
 
     const session = await getStripe().checkout.sessions.create({
       customer: customerId,
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
         },
       ],
       success_url: `${origin}/app/account?success=1`,
-      cancel_url: `${origin}/app/pricing`,
+      cancel_url: `${origin}/pricing`,
       subscription_data: {
         metadata: { user_id: user.id, plan },
       },

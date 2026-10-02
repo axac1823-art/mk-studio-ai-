@@ -319,6 +319,15 @@ def removebg_input(req: dict) -> dict:
     return {"image": req["imageUrl"]}
 
 
+def google_background_removal_input(req: dict) -> dict:
+    """Google Gemini : prompt d'isolation + image source comme référence."""
+    return {
+        "prompt": req["prompt"],
+        "images": [req["imageUrl"]],
+        "quantity": 1,
+    }
+
+
 def bfl_text_to_image_input(req: dict) -> dict:
     """BFL text-to-image : prompt + image de référence optionnelle."""
     payload: dict = {
@@ -471,8 +480,9 @@ LIP_SYNC_CANDIDATES: list[Candidate] = [
     ),
 ]
 
-# Background Remover : provider dédié (segmentation, pas d'édition image
-# généraliste) — remove.bg en V1.
+# Background Remover : utiliser uniquement le service de segmentation dédié
+# qui renvoie un PNG avec canal alpha. Les modèles génératifs peuvent réinventer
+# le sujet ou peindre une fausse transparence dans l'image.
 BACKGROUND_REMOVER_CANDIDATES: list[Candidate] = [
     Candidate(
         "removebg",
@@ -486,6 +496,20 @@ BACKGROUND_REMOVER_CANDIDATES: list[Candidate] = [
         IMAGE_TIMEOUT_MS,
         ("standard", "pro"),
         removebg_input,
+        extract_image_urls,
+    ),
+    Candidate(
+        "gemini-background-removal",
+        "Gemini 3 Pro Image",
+        "Prompt-guided background removal with image editing",
+        "google",
+        "gemini-3-pro-image",
+        6,
+        10,
+        1,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        google_background_removal_input,
         extract_image_urls,
     ),
 ]

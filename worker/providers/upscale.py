@@ -74,9 +74,9 @@ def _upscale_magichour(input_: dict, timeout_ms: int) -> dict:
         f"{_MAGICHOUR_BASE}/v1/ai-image-upscaler",
         headers,
         {
-            "image": file_path,
-            "upscale_factor": int(input_.get("factor") or 2),
-            "enhance": bool(input_.get("enhance")),
+            "assets": {"image_file_path": file_path},
+            "scale_factor": int(input_.get("factor") or 2),
+            "style": {"mode": "creative" if input_.get("enhance") else "pro"},
         },
     )
     project_id = submit.get("id")

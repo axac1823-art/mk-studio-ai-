@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardSearch } from "@/components/navigation/DashboardSearch";
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
-import HeroVisualAI from "@/components/ui/HeroVisualAI";
+// import HeroVisualAI from "@/components/ui/HeroVisualAI";
 
 import { cn } from "@/lib/utils";
 
@@ -66,6 +66,8 @@ function CategoryTrigger({
 }
 
 export function DashboardContent() {
+  // Keep server and first client render identical; resolve local time after hydration.
+  const [greeting, setGreeting] = useState("Good morning, start creating!");
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
   const [creating, setCreating] = useState(false);
@@ -96,6 +98,7 @@ export function DashboardContent() {
   }, []);
 
   useEffect(() => {
+    setGreeting(`${getGreeting()}, start creating!`);
     void fetchProjects();
     void fetchAssets();
   }, [fetchProjects, fetchAssets]);
@@ -121,7 +124,6 @@ export function DashboardContent() {
     }
   };
 
-  const greeting = `${getGreeting()}, start creating!`;
   const recentProjects = projects?.slice(0, 5) ?? [];
 
   return (
@@ -165,7 +167,7 @@ export function DashboardContent() {
       )}
 
       <section className="mx-auto w-full max-w-7xl" aria-label="AI camera render workspace">
-        <HeroVisualAI />
+        {/* <HeroVisualAI /> */}
       </section>
 
       <div className="grid w-full max-w-5xl gap-6 self-center lg:grid-cols-2">

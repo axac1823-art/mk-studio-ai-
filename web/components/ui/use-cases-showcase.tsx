@@ -1,11 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  AnimatePresence,
-  motion,
-  useReducedMotion,
-} from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   ArrowUpRight,
   Box,
@@ -26,6 +21,7 @@ type UseCase = {
   label: string;
   description: string;
   image: string;
+  mobileImage: string;
   steps: string[];
   icon: LucideIcon;
   metric: string;
@@ -50,6 +46,8 @@ const USE_CASES: UseCase[] = [
       "Transform plans, sketches and massing studies into presentation-ready architectural visuals.",
     image:
       "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1800&q=90",
+    mobileImage:
+      "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=900&q=75",
     steps: ["PLAN", "MASSING", "MATERIAL", "RENDER"],
     icon: Box,
     metric: "PLAN → 3D",
@@ -62,6 +60,8 @@ const USE_CASES: UseCase[] = [
       "Turn one project into a complete visual campaign with renders, angles and cinematic content.",
     image:
       "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1800&q=90",
+    mobileImage:
+      "https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=900&q=75",
     steps: ["PROJECT", "RENDER", "ANGLE", "VIDEO"],
     icon: Camera,
     metric: "1 → MANY",
@@ -74,6 +74,8 @@ const USE_CASES: UseCase[] = [
       "Explore furniture, materials, lighting and atmosphere without rebuilding the original scene.",
     image:
       "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1800&q=90",
+    mobileImage:
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=900&q=75",
     steps: ["SPACE", "FURNISH", "MATERIAL", "MOOD"],
     icon: Layers3,
     metric: "IDEA → MOOD",
@@ -86,6 +88,8 @@ const USE_CASES: UseCase[] = [
       "Generate multiple views, visual variations and cinematic sequences from a single creative direction.",
     image:
       "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=90",
+    mobileImage:
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=900&q=75",
     steps: ["SCENE", "ANGLE", "VARIATION", "FILM"],
     icon: Play,
     metric: "SCENE → FILM",
@@ -95,500 +99,837 @@ const USE_CASES: UseCase[] = [
 const AUTO_DELAY = 6500;
 
 /* ============================================================
+   MOTION PREFERENCE
+============================================================ */
+
+function usePerformanceMotionMode() {
+  const [isMobile, setIsMobile] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] =
+    useState(false);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia(
+      "(max-width: 1023px)",
+    );
+
+    const motionQuery = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    );
+
+    const update = () => {
+      setIsMobile(mobileQuery.matches);
+      setPrefersReducedMotion(motionQuery.matches);
+    };
+
+    update();
+
+    mobileQuery.addEventListener("change", update);
+    motionQuery.addEventListener("change", update);
+
+    return () => {
+      mobileQuery.removeEventListener("change", update);
+      motionQuery.removeEventListener("change", update);
+    };
+  }, []);
+
+  return {
+    isMobile,
+    disableDecorativeMotion:
+      isMobile || prefersReducedMotion,
+  };
+}
+
+/* ============================================================
    MAIN
 ============================================================ */
 
 export default function UseCasesShowcase() {
-  const reduceMotion = useReducedMotion();
+  const {
+    isMobile,
+    disableDecorativeMotion,
+  } = usePerformanceMotionMode();
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
-  const activeCase = USE_CASES[activeIndex];
+  const activeCase =
+    USE_CASES[activeIndex] ?? USE_CASES[0];
 
   useEffect(() => {
-    if (isPaused || reduceMotion) return;
+    if (isPaused || disableDecorativeMotion) {
+      return;
+    }
 
     const timer = window.setInterval(() => {
       setActiveIndex(
-        (current) => (current + 1) % USE_CASES.length,
+        (current) =>
+          (current + 1) % USE_CASES.length,
       );
     }, AUTO_DELAY);
 
-    return () => window.clearInterval(timer);
-  }, [isPaused, reduceMotion]);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isPaused, disableDecorativeMotion]);
 
-  const progress = useMemo(
-    () =>
-      `${((activeIndex + 1) / USE_CASES.length) * 100}%`,
-    [activeIndex],
-  );
+  const progress =
+    `${((activeIndex + 1) / USE_CASES.length) * 100}%`;
 
   return (
-    <section
-      id="use-cases"
-      data-circuit-section="use-cases"
-      className="
-        relative
-        overflow-hidden
-        border-y
-        border-black/[0.07]
-        bg-[#f7fafb]
-        text-slate-950
-        dark:border-white/[0.06]
-        dark:bg-[#050607]
-        dark:text-white
-      "
-    >
-      {/* =====================================================
-          BACKGROUND
-      ===================================================== */}
+    <>
+      {/* =========================================================
+          PERFORMANCE CSS
+      ========================================================= */}
 
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-      >
-        {/* =================================================
-            MAIN ATMOSPHERE
-        ================================================= */}
-
-        <div
-          className="
-            absolute
-            left-1/2
-            top-[-180px]
-            h-[760px]
-            w-[1100px]
-            -translate-x-1/2
-            rounded-full
-            blur-[95px]
-          "
-          style={{
-            background:
-              "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.22) 0%, hsla(189.16,79.17%,47.06%,0.13) 28%, hsla(189.16,79.17%,47.06%,0.06) 48%, transparent 72%)",
-          }}
-        />
-
-        {/* =================================================
-            MOVING DEPTH GLOW
-        ================================================= */}
-
-        <motion.div
-          animate={
-            reduceMotion
-              ? undefined
-              : {
-                  x: ["-8%", "8%", "-8%"],
-                  y: ["0%", "3%", "0%"],
-                  opacity: [0.62, 1, 0.62],
-                }
+      <style jsx>{`
+        @keyframes usecaseDepthDrift {
+          0%,
+          100% {
+            transform: translate3d(-50%, 0, 0);
+            opacity: 0.62;
           }
-          transition={{
-            duration: 12,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-          className="
-            absolute
-            left-1/2
-            top-[18%]
-            h-[650px]
-            w-[900px]
-            -translate-x-1/2
-            rounded-full
-            blur-[110px]
-          "
-          style={{
-            background:
-              "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.12) 0%, hsla(189.16,79.17%,47.06%,0.06) 38%, transparent 72%)",
-          }}
-        />
 
-        {/* =================================================
-            LEFT LIGHT
-        ================================================= */}
+          50% {
+            transform: translate3d(
+              calc(-50% + 70px),
+              18px,
+              0
+            );
+            opacity: 1;
+          }
+        }
 
-        <div
-          className="
-            absolute
-            -left-[180px]
-            top-[32%]
-            h-[520px]
-            w-[520px]
-            rounded-full
-            blur-[120px]
-          "
-          style={{
-            background:
-              "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.095) 0%, transparent 70%)",
-          }}
-        />
+        @keyframes usecaseReveal {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 15px, 0);
+          }
 
-        {/* =================================================
-            RIGHT LIGHT
-        ================================================= */}
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
 
-        <div
-          className="
-            absolute
-            -right-[180px]
-            top-[38%]
-            h-[520px]
-            w-[520px]
-            rounded-full
-            blur-[120px]
-          "
-          style={{
-            background:
-              "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.085) 0%, transparent 70%)",
-          }}
-        />
+        @keyframes usecaseImageReveal {
+          from {
+            opacity: 0;
+            transform: scale(1.025);
+          }
 
-        {/* =================================================
-            LIGHT PRIMARY GRID
-        ================================================= */}
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
 
-        <div
-          className="absolute inset-0 dark:hidden"
-          style={{
-            opacity: 0.44,
-            backgroundImage: `
-              linear-gradient(
-                hsla(189.16,79.17%,47.06%,0.20) 1px,
-                transparent 1px
-              ),
-              linear-gradient(
-                90deg,
-                hsla(189.16,79.17%,47.06%,0.20) 1px,
-                transparent 1px
-              )
-            `,
-            backgroundSize: "64px 64px",
-            maskImage:
-              "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-            WebkitMaskImage:
-              "linear-gradient(to bottom, black 0%, black 88%, transparent 100%)",
-          }}
-        />
+        @keyframes usecaseScan {
+          from {
+            transform: translate3d(0, -5%, 0);
+          }
 
-        {/* =================================================
-            LIGHT SECONDARY GRID
-        ================================================= */}
+          to {
+            transform: translate3d(0, 680%, 0);
+          }
+        }
 
-        <div
-          className="absolute inset-0 dark:hidden"
-          style={{
-            opacity: 0.12,
-            backgroundImage: `
-              linear-gradient(
-                hsla(189.16,79.17%,47.06%,0.18) 1px,
-                transparent 1px
-              ),
-              linear-gradient(
-                90deg,
-                hsla(189.16,79.17%,47.06%,0.18) 1px,
-                transparent 1px
-              )
-            `,
-            backgroundSize: "128px 128px",
-          }}
-        />
+        @keyframes usecasePulse {
+          0%,
+          100% {
+            opacity: 0.35;
+            transform: scale(0.82);
+          }
 
-        {/* =================================================
-            DARK PRIMARY GRID
-        ================================================= */}
+          50% {
+            opacity: 1;
+            transform: scale(1.16);
+          }
+        }
 
-        <div
-          className="absolute inset-0 hidden dark:block"
-          style={{
-            opacity: 0.26,
-            backgroundImage: `
-              linear-gradient(
-                hsla(189.16,79.17%,47.06%,0.24) 1px,
-                transparent 1px
-              ),
-              linear-gradient(
-                90deg,
-                hsla(189.16,79.17%,47.06%,0.24) 1px,
-                transparent 1px
-              )
-            `,
-            backgroundSize: "64px 64px",
-            maskImage:
-              "linear-gradient(to bottom, black 0%, black 90%, transparent 100%)",
-            WebkitMaskImage:
-              "linear-gradient(to bottom, black 0%, black 90%, transparent 100%)",
-          }}
-        />
+        @keyframes usecaseCircuit {
+          0%,
+          100% {
+            opacity: 0.15;
+            transform: translate3d(0, 0, 0);
+          }
 
-        {/* =================================================
-            DARK VIGNETTE
-        ================================================= */}
+          50% {
+            opacity: 1;
+            transform: translate3d(34px, 0, 0);
+          }
+        }
 
-        <div className="absolute inset-0 hidden bg-gradient-to-b from-transparent via-transparent to-black/10 dark:block" />
+        @keyframes usecaseEnergy {
+          0% {
+            transform: translate3d(0, 0, 0);
+            opacity: 0;
+          }
 
-        {/* =================================================
-            CENTRAL HAZE
-        ================================================= */}
+          15% {
+            opacity: 1;
+          }
 
-        <div
-          className="
-            absolute
-            left-1/2
-            top-[46%]
-            h-[460px]
-            w-[860px]
-            -translate-x-1/2
-            rounded-full
-            blur-[130px]
-          "
-          style={{
-            background:
-              "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.075) 0%, hsla(189.16,79.17%,47.06%,0.025) 46%, transparent 74%)",
-          }}
-        />
-      </div>
+          80% {
+            opacity: 1;
+          }
 
-      {/* =====================================================
-          CONTENT
-      ===================================================== */}
+          100% {
+            transform: translate3d(0, 340px, 0);
+            opacity: 0;
+          }
+        }
 
-      <div className="relative z-10 mx-auto max-w-[1600px] px-4 py-20 sm:px-6 lg:px-16 lg:py-28">
+        @keyframes usecaseBorder {
+          from {
+            transform: rotate(0deg);
+          }
+
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        @keyframes usecaseSignal {
+          0% {
+            stroke-dashoffset: 0;
+            opacity: 0;
+          }
+
+          20% {
+            opacity: 1;
+          }
+
+          80% {
+            opacity: 1;
+          }
+
+          100% {
+            stroke-dashoffset: -430;
+            opacity: 0;
+          }
+        }
+
+        .uc-depth-motion {
+          animation: usecaseDepthDrift 12s ease-in-out infinite;
+        }
+
+        .uc-reveal {
+          animation:
+            usecaseReveal 0.7s
+            cubic-bezier(0.16, 1, 0.3, 1)
+            both;
+        }
+
+        .uc-image-reveal {
+          animation:
+            usecaseImageReveal 0.65s
+            cubic-bezier(0.16, 1, 0.3, 1)
+            both;
+        }
+
+        .uc-scan {
+          animation:
+            usecaseScan 5.2s linear infinite;
+        }
+
+        .uc-node-pulse {
+          animation:
+            usecasePulse 2s ease-in-out infinite;
+        }
+
+        .uc-circuit-pulse {
+          animation:
+            usecaseCircuit 2.2s linear infinite;
+        }
+
+        .uc-energy {
+          animation:
+            usecaseEnergy 5s linear infinite;
+        }
+
+        .uc-rotating-border {
+          animation:
+            usecaseBorder 9s linear infinite;
+        }
+
+        .uc-signal-path {
+          stroke-dasharray: 22 999;
+          animation:
+            usecaseSignal 2.8s linear infinite;
+        }
+
+        .uc-card {
+          transition:
+            transform 300ms ease,
+            border-color 300ms ease,
+            background-color 300ms ease,
+            box-shadow 300ms ease;
+        }
+
+        .uc-card-active {
+          transform: translate3d(4px, 0, 0);
+        }
+
+        .uc-arrow {
+          transition:
+            transform 300ms ease,
+            color 300ms ease;
+        }
+
+        .uc-description {
+          max-height: 0;
+          overflow: hidden;
+          opacity: 0;
+          transition:
+            max-height 420ms cubic-bezier(0.16, 1, 0.3, 1),
+            opacity 300ms ease;
+        }
+
+        .uc-description-active {
+          max-height: 180px;
+          opacity: 1;
+        }
+
+        .uc-mobile-visual {
+          animation:
+            usecaseImageReveal 0.55s
+            cubic-bezier(0.16, 1, 0.3, 1)
+            both;
+        }
+
+        @media (max-width: 1023px) {
+          .uc-depth-motion,
+          .uc-reveal,
+          .uc-image-reveal,
+          .uc-scan,
+          .uc-node-pulse,
+          .uc-circuit-pulse,
+          .uc-energy,
+          .uc-rotating-border,
+          .uc-signal-path,
+          .uc-mobile-visual {
+            animation: none !important;
+          }
+
+          .uc-reveal {
+            opacity: 1 !important;
+            transform: none !important;
+          }
+
+          .uc-card-active {
+            transform: none !important;
+          }
+
+          .uc-mobile-blur {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .uc-depth-motion,
+          .uc-reveal,
+          .uc-image-reveal,
+          .uc-scan,
+          .uc-node-pulse,
+          .uc-circuit-pulse,
+          .uc-energy,
+          .uc-rotating-border,
+          .uc-signal-path,
+          .uc-mobile-visual {
+            animation: none !important;
+          }
+
+          .uc-reveal {
+            opacity: 1 !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+
+      <section
+        id="use-cases"
+        data-circuit-section="use-cases"
+        className="
+          relative
+          overflow-hidden
+          border-y
+          border-black/[0.07]
+          bg-[#f7fafb]
+          text-slate-950
+          dark:border-white/[0.06]
+          dark:bg-[#050607]
+          dark:text-white
+        "
+        style={{
+          contain: "layout paint",
+        }}
+      >
         {/* =====================================================
-            HEADER
+            BACKGROUND
         ===================================================== */}
 
-        <div className="flex flex-col items-center text-center">
-          <NeuralTitle reduceMotion={Boolean(reduceMotion)} />
+        <div
+          aria-hidden="true"
+          className="
+            pointer-events-none
+            absolute
+            inset-0
+            overflow-hidden
+          "
+          style={{
+            contain: "paint",
+          }}
+        >
+          {/* MAIN ATMOSPHERE */}
 
-          <motion.p
-            initial={
-              reduceMotion
-                ? undefined
-                : { opacity: 0, y: 15 }
-            }
-            whileInView={{
-              opacity: 1,
-              y: 0,
-            }}
-            viewport={{
-              once: true,
-              amount: 0.5,
-            }}
-            transition={{
-              delay: 0.18,
-              duration: 0.7,
-            }}
+          <div
             className="
-              mt-9
-              max-w-2xl
-              text-sm
-              leading-7
-              text-slate-600
-              dark:text-white/48
-              sm:text-base
-            "
-          >
-            One creative engine for architecture, real estate
-            and visualization. Explore how Renderuim
-            transforms the way visual content is created.
-          </motion.p>
+              absolute
+              left-1/2
+              top-[-120px]
+              h-[340px]
+              w-[540px]
+              -translate-x-1/2
+              rounded-full
+              blur-[55px]
 
-          <motion.div
-            initial={
-              reduceMotion
-                ? undefined
-                : { opacity: 0 }
-            }
-            whileInView={{
-              opacity: 1,
+              sm:h-[520px]
+              sm:w-[760px]
+              sm:blur-[80px]
+
+              lg:top-[-180px]
+              lg:h-[760px]
+              lg:w-[1100px]
+              lg:blur-[95px]
+            "
+            style={{
+              background:
+                "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.18) 0%, hsla(189.16,79.17%,47.06%,0.10) 30%, hsla(189.16,79.17%,47.06%,0.04) 52%, transparent 72%)",
             }}
-            viewport={{
-              once: true,
-            }}
-            transition={{
-              delay: 0.32,
-            }}
+          />
+
+          {/* MOVING DEPTH */}
+
+          <div
             className="
-              mt-4
-              flex
-              items-center
-              gap-3
-              font-mono
-              text-[8px]
-              uppercase
-              tracking-[0.3em]
-              text-slate-400
-              dark:text-white/25
+              uc-depth-motion
+              absolute
+              left-1/2
+              top-[18%]
+              h-[300px]
+              w-[520px]
+              -translate-x-1/2
+              rounded-full
+              blur-[55px]
+
+              sm:h-[420px]
+              sm:w-[680px]
+              sm:blur-[75px]
+
+              lg:h-[650px]
+              lg:w-[900px]
+              lg:blur-[110px]
             "
-          >
-            <span className="h-px w-8 bg-black/10 dark:bg-white/10" />
+            style={{
+              background:
+                "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.10) 0%, hsla(189.16,79.17%,47.06%,0.05) 40%, transparent 72%)",
+            }}
+          />
 
-            <span>Select a workflow</span>
+          {/* LEFT LIGHT — desktop */}
 
-            <span className="h-px w-8 bg-black/10 dark:bg-white/10" />
-          </motion.div>
+          <div
+            className="
+              absolute
+              -left-[180px]
+              top-[32%]
+              hidden
+              h-[520px]
+              w-[520px]
+              rounded-full
+              blur-[120px]
+              lg:block
+            "
+            style={{
+              background:
+                "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.075) 0%, transparent 70%)",
+            }}
+          />
 
-          {/* ==================================================
-              TITLE → USE CASES BRIDGE
-          ================================================== */}
+          {/* RIGHT LIGHT — desktop */}
 
-          <TitleToCasesCircuit
-            reduceMotion={Boolean(reduceMotion)}
+          <div
+            className="
+              absolute
+              -right-[180px]
+              top-[38%]
+              hidden
+              h-[520px]
+              w-[520px]
+              rounded-full
+              blur-[120px]
+              lg:block
+            "
+            style={{
+              background:
+                "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.07) 0%, transparent 70%)",
+            }}
+          />
+
+          {/* LIGHT GRID */}
+
+          <div
+            className="
+              absolute
+              inset-0
+              dark:hidden
+            "
+            style={{
+              opacity: 0.34,
+              backgroundImage: `
+                linear-gradient(
+                  hsla(189.16,79.17%,47.06%,0.16) 1px,
+                  transparent 1px
+                ),
+                linear-gradient(
+                  90deg,
+                  hsla(189.16,79.17%,47.06%,0.16) 1px,
+                  transparent 1px
+                )
+              `,
+              backgroundSize: "80px 80px",
+            }}
+          />
+
+          {/* LIGHT SECONDARY GRID — desktop only */}
+
+          <div
+            className="
+              absolute
+              inset-0
+              hidden
+              dark:hidden
+              lg:block
+            "
+            style={{
+              opacity: 0.1,
+              backgroundImage: `
+                linear-gradient(
+                  hsla(189.16,79.17%,47.06%,0.18) 1px,
+                  transparent 1px
+                ),
+                linear-gradient(
+                  90deg,
+                  hsla(189.16,79.17%,47.06%,0.18) 1px,
+                  transparent 1px
+                )
+              `,
+              backgroundSize: "128px 128px",
+            }}
+          />
+
+          {/* DARK GRID */}
+
+          <div
+            className="
+              absolute
+              inset-0
+              hidden
+              dark:block
+            "
+            style={{
+              opacity: 0.2,
+              backgroundImage: `
+                linear-gradient(
+                  hsla(189.16,79.17%,47.06%,0.20) 1px,
+                  transparent 1px
+                ),
+                linear-gradient(
+                  90deg,
+                  hsla(189.16,79.17%,47.06%,0.20) 1px,
+                  transparent 1px
+                )
+              `,
+              backgroundSize: "80px 80px",
+            }}
+          />
+
+          {/* DARK VIGNETTE */}
+
+          <div
+            className="
+              absolute
+              inset-0
+              hidden
+              bg-gradient-to-b
+              from-transparent
+              via-transparent
+              to-black/10
+              dark:block
+            "
+          />
+
+          {/* CENTRAL HAZE — desktop */}
+
+          <div
+            className="
+              absolute
+              left-1/2
+              top-[46%]
+              hidden
+              h-[460px]
+              w-[860px]
+              -translate-x-1/2
+              rounded-full
+              blur-[130px]
+              lg:block
+            "
+            style={{
+              background:
+                "radial-gradient(circle, hsla(189.16,79.17%,47.06%,0.06) 0%, hsla(189.16,79.17%,47.06%,0.02) 46%, transparent 74%)",
+            }}
           />
         </div>
 
         {/* =====================================================
-            SHOWCASE
+            CONTENT
         ===================================================== */}
 
         <div
           className="
             relative
-            mt-7
-            flex
-            flex-col
-            gap-5
-            lg:mt-2
-            lg:flex-row
-            lg:gap-5
+            z-10
+            mx-auto
+            max-w-[1600px]
+            px-4
+            py-20
+            sm:px-6
+            lg:px-16
+            lg:py-28
           "
-          onMouseEnter={() => setIsPaused(true)}
-          onMouseLeave={() => setIsPaused(false)}
-          onFocusCapture={() => setIsPaused(true)}
-          onBlurCapture={() => setIsPaused(false)}
         >
-          {/* =================================================
-              DESKTOP VISUAL
-          ================================================= */}
+          {/* =====================================================
+              HEADER
+          ===================================================== */}
 
-          <div className="relative hidden min-h-[640px] flex-1 lg:flex">
-            <VisualStage
-              activeCase={activeCase}
-              reduceMotion={Boolean(reduceMotion)}
+          <div className="flex flex-col items-center text-center">
+            <NeuralTitle
+              reduceMotion={disableDecorativeMotion}
             />
-          </div>
 
-          {/* =================================================
-              MOBILE VISUAL
-          ================================================= */}
-
-          <MobileVisual
-            activeCase={activeCase}
-            reduceMotion={Boolean(reduceMotion)}
-          />
-
-          {/* =================================================
-              NAVIGATION
-          ================================================= */}
-
-          <UseCaseNavigation
-            activeIndex={activeIndex}
-            setActiveIndex={setActiveIndex}
-            isPaused={isPaused}
-            reduceMotion={Boolean(reduceMotion)}
-          />
-        </div>
-
-        {/* =====================================================
-            STATUS BAR
-        ===================================================== */}
-
-        <div
-          className="
-            mt-7
-            flex
-            items-center
-            justify-between
-            border-t
-            border-black/[0.07]
-            pt-5
-            dark:border-white/[0.07]
-          "
-        >
-          <div className="flex items-center gap-3">
-            <div
+            <p
               className="
-                relative
-                flex
-                h-5
-                w-5
-                items-center
-                justify-center
-                rounded-full
-                border
-                border-black/[0.07]
-                bg-white/55
-                dark:border-white/[0.07]
-                dark:bg-white/[0.02]
+                uc-reveal
+                mt-9
+                max-w-2xl
+                text-sm
+                leading-7
+                text-slate-600
+                dark:text-white/48
+                sm:text-base
               "
             >
-              <Scan className="h-3 w-3 text-slate-500 dark:text-white/30" />
+              One creative engine for architecture,
+              real estate and visualization. Explore how
+              Renderuim transforms the way visual content is
+              created.
+            </p>
 
-              <span
-                className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
-                style={{
-                  background: BRAND_CYAN,
-                  boxShadow:
-                    "0 0 8px rgba(103,232,249,.7)",
-                }}
-              />
-            </div>
-
-            <span
+            <div
               className="
+                uc-reveal
+                mt-4
+                flex
+                items-center
+                gap-3
                 font-mono
                 text-[8px]
                 uppercase
-                tracking-[0.25em]
-                text-slate-500
-                dark:text-white/28
-              "
-            >
-              Renderuim / Workflow Engine
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div
-              className="
-                h-px
-                w-16
-                overflow-hidden
-                bg-black/10
-                dark:bg-white/10
-                sm:w-24
-              "
-            >
-              <motion.div
-                animate={{ width: progress }}
-                transition={{
-                  duration: 0.55,
-                  ease: "easeOut",
-                }}
-                className="h-full"
-                style={{
-                  background: BRAND_CYAN,
-                  boxShadow:
-                    "0 0 10px rgba(103,232,249,.5)",
-                }}
-              />
-            </div>
-
-            <span
-              className="
-                font-mono
-                text-[8px]
+                tracking-[0.3em]
                 text-slate-400
                 dark:text-white/25
               "
+              style={{
+                animationDelay: "180ms",
+              }}
             >
-              {activeCase.number} / 04
-            </span>
+              <span className="h-px w-8 bg-black/10 dark:bg-white/10" />
+
+              <span>Select a workflow</span>
+
+              <span className="h-px w-8 bg-black/10 dark:bg-white/10" />
+            </div>
+
+            <TitleToCasesCircuit
+              reduceMotion={disableDecorativeMotion}
+            />
+          </div>
+
+          {/* =====================================================
+              SHOWCASE
+          ===================================================== */}
+
+          <div
+            className="
+              relative
+              mt-7
+              flex
+              flex-col
+              gap-5
+              lg:mt-2
+              lg:flex-row
+              lg:gap-5
+            "
+            onMouseEnter={() =>
+              !isMobile && setIsPaused(true)
+            }
+            onMouseLeave={() =>
+              !isMobile && setIsPaused(false)
+            }
+            onFocusCapture={() =>
+              setIsPaused(true)
+            }
+            onBlurCapture={() =>
+              setIsPaused(false)
+            }
+          >
+            {/* DESKTOP */}
+
+            <div
+              className="
+                relative
+                hidden
+                min-h-[640px]
+                flex-1
+                lg:flex
+              "
+            >
+              <VisualStage
+                activeCase={activeCase}
+                reduceMotion={disableDecorativeMotion}
+              />
+            </div>
+
+            {/* MOBILE */}
+
+            <MobileVisual
+              activeCase={activeCase}
+            />
+
+            {/* NAVIGATION */}
+
+            <UseCaseNavigation
+              activeIndex={activeIndex}
+              setActiveIndex={setActiveIndex}
+              isPaused={isPaused}
+              reduceMotion={disableDecorativeMotion}
+            />
+          </div>
+
+          {/* =====================================================
+              STATUS BAR
+          ===================================================== */}
+
+          <div
+            className="
+              mt-7
+              flex
+              items-center
+              justify-between
+              border-t
+              border-black/[0.07]
+              pt-5
+              dark:border-white/[0.07]
+            "
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="
+                  relative
+                  flex
+                  h-5
+                  w-5
+                  items-center
+                  justify-center
+                  rounded-full
+                  border
+                  border-black/[0.07]
+                  bg-white/55
+                  dark:border-white/[0.07]
+                  dark:bg-white/[0.02]
+                "
+              >
+                <Scan className="h-3 w-3 text-slate-500 dark:text-white/30" />
+
+                <span
+                  className="
+                    absolute
+                    -right-0.5
+                    -top-0.5
+                    h-1.5
+                    w-1.5
+                    rounded-full
+                  "
+                  style={{
+                    background: BRAND_CYAN,
+                    boxShadow:
+                      "0 0 8px rgba(103,232,249,.7)",
+                  }}
+                />
+              </div>
+
+              <span
+                className="
+                  font-mono
+                  text-[8px]
+                  uppercase
+                  tracking-[0.25em]
+                  text-slate-500
+                  dark:text-white/28
+                "
+              >
+                Renderuim / Workflow Engine
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div
+                className="
+                  h-px
+                  w-16
+                  overflow-hidden
+                  bg-black/10
+                  dark:bg-white/10
+                  sm:w-24
+                "
+              >
+                <div
+                  className="h-full transition-[width] duration-500 ease-out"
+                  style={{
+                    width: progress,
+                    background: BRAND_CYAN,
+                    boxShadow:
+                      "0 0 10px rgba(103,232,249,.5)",
+                  }}
+                />
+              </div>
+
+              <span
+                className="
+                  font-mono
+                  text-[8px]
+                  text-slate-400
+                  dark:text-white/25
+                "
+              >
+                {activeCase.number} / 04
+              </span>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
 
@@ -614,9 +955,7 @@ function TitleToCasesCircuit({
         overflow-visible
       "
     >
-      {/* =================================================
-          DESKTOP
-      ================================================= */}
+      {/* DESKTOP */}
 
       <svg
         viewBox="0 0 1200 68"
@@ -630,27 +969,6 @@ function TitleToCasesCircuit({
           lg:block
         "
       >
-        <defs>
-          <filter
-            id="usecase-bridge-glow"
-            x="-100%"
-            y="-100%"
-            width="300%"
-            height="300%"
-          >
-            <feGaussianBlur
-              stdDeviation="3"
-              result="blur"
-            />
-
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        {/* base */}
         <path
           d="M600 0 V18 H1010 V68"
           fill="none"
@@ -667,7 +985,6 @@ function TitleToCasesCircuit({
           className="hidden dark:block"
         />
 
-        {/* secondary guide */}
         <path
           d="M600 18 H430"
           fill="none"
@@ -676,29 +993,17 @@ function TitleToCasesCircuit({
           strokeDasharray="2 8"
         />
 
-        {/* signal */}
         {!reduceMotion && (
-          <motion.path
+          <path
             d="M600 0 V18 H1010 V68"
             fill="none"
             stroke={BRAND_CYAN}
             strokeWidth="2.5"
             strokeLinecap="round"
-            strokeDasharray="22 999"
-            animate={{
-              strokeDashoffset: [0, -430],
-              opacity: [0, 1, 0],
-            }}
-            transition={{
-              duration: 2.8,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-            filter="url(#usecase-bridge-glow)"
+            className="uc-signal-path"
           />
         )}
 
-        {/* junctions */}
         <circle
           cx="600"
           cy="18"
@@ -722,9 +1027,7 @@ function TitleToCasesCircuit({
         />
       </svg>
 
-      {/* =================================================
-          MOBILE
-      ================================================= */}
+      {/* MOBILE */}
 
       <svg
         viewBox="0 0 100 68"
@@ -754,26 +1057,14 @@ function TitleToCasesCircuit({
         />
 
         {!reduceMotion && (
-          <motion.path
+          <path
             d="M50 0 V68"
             fill="none"
             stroke={BRAND_CYAN}
-            strokeWidth="2.5"
+            strokeWidth="2"
             strokeLinecap="round"
             strokeDasharray="10 58"
-            animate={{
-              strokeDashoffset: [0, -68],
-              opacity: [0.15, 1, 0.15],
-            }}
-            transition={{
-              duration: 2.2,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-            style={{
-              filter:
-                "drop-shadow(0 0 5px rgba(103,232,249,.75))",
-            }}
+            className="uc-signal-path"
           />
         )}
 
@@ -805,9 +1096,7 @@ function UseCaseNavigation({
 }) {
   return (
     <div className="relative flex w-full flex-col lg:w-[410px]">
-      {/* =================================================
-          MAIN RAIL
-      ================================================= */}
+      {/* MAIN RAIL */}
 
       <div
         aria-hidden="true"
@@ -825,7 +1114,6 @@ function UseCaseNavigation({
         "
       />
 
-      {/* rail glow */}
       <div
         aria-hidden="true"
         className="
@@ -845,25 +1133,16 @@ function UseCaseNavigation({
       />
 
       {/* travelling energy */}
+
       {!reduceMotion && (
-        <motion.div
+        <div
           aria-hidden="true"
-          animate={{
-            top: [
-              "8px",
-              "calc(100% - 18px)",
-            ],
-            opacity: [0, 1, 1, 0],
-          }}
-          transition={{
-            duration: 5,
-            repeat: Infinity,
-            ease: "linear",
-          }}
           className="
+            uc-energy
             pointer-events-none
             absolute
             left-[9px]
+            top-[8px]
             z-30
             hidden
             h-12
@@ -883,7 +1162,9 @@ function UseCaseNavigation({
 
       <div className="relative flex flex-col gap-2 sm:pl-7 lg:gap-3">
         {USE_CASES.map((item, index) => {
-          const isActive = index === activeIndex;
+          const isActive =
+            index === activeIndex;
+
           const Icon = item.icon;
 
           return (
@@ -891,31 +1172,10 @@ function UseCaseNavigation({
               key={item.number}
               className="relative"
             >
-              {/* =================================================
-                  INPUT NODE
-              ================================================= */}
+              {/* INPUT NODE */}
 
-              <motion.div
+              <div
                 aria-hidden="true"
-                animate={
-                  reduceMotion
-                    ? undefined
-                    : {
-                        scale: isActive
-                          ? [0.8, 1.18, 0.8]
-                          : 1,
-                        opacity: isActive
-                          ? [0.45, 1, 0.45]
-                          : 0.5,
-                      }
-                }
-                transition={{
-                  duration: 1.8,
-                  repeat: isActive
-                    ? Infinity
-                    : 0,
-                  ease: "easeInOut",
-                }}
                 className="
                   absolute
                   left-[5px]
@@ -933,38 +1193,45 @@ function UseCaseNavigation({
                   dark:bg-[#07090b]
                 "
                 style={{
-                  borderColor: isActive
-                    ? "rgba(103,232,249,.55)"
-                    : "rgba(103,232,249,.22)",
-                  boxShadow: isActive
-                    ? "0 0 14px rgba(103,232,249,.28)"
-                    : undefined,
+                  borderColor:
+                    isActive
+                      ? "rgba(103,232,249,.55)"
+                      : "rgba(103,232,249,.22)",
                 }}
               >
                 <span
-                  className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                  className={`
+                    absolute
+                    left-1/2
+                    top-1/2
+                    h-1
+                    w-1
+                    -translate-x-1/2
+                    -translate-y-1/2
+                    rounded-full
+                    ${
+                      isActive &&
+                      !reduceMotion
+                        ? "uc-node-pulse"
+                        : ""
+                    }
+                  `}
                   style={{
-                    background: BRAND_CYAN,
+                    background:
+                      BRAND_CYAN,
                     boxShadow:
                       "0 0 10px 3px rgba(103,232,249,.6)",
                   }}
                 />
-              </motion.div>
+              </div>
 
               {/* horizontal signal */}
+
               {isActive && !reduceMotion && (
-                <motion.div
+                <div
                   aria-hidden="true"
-                  animate={{
-                    x: ["-100%", "0%"],
-                    opacity: [0, 1, 0],
-                  }}
-                  transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
                   className="
+                    uc-circuit-pulse
                     pointer-events-none
                     absolute
                     left-0
@@ -988,34 +1255,34 @@ function UseCaseNavigation({
 
               <button
                 type="button"
-                onClick={() => setActiveIndex(index)}
+                onClick={() =>
+                  setActiveIndex(index)
+                }
                 aria-pressed={isActive}
-                className="group relative block w-full text-left outline-none"
+                className="
+                  group
+                  relative
+                  block
+                  w-full
+                  text-left
+                  outline-none
+                "
               >
-                <motion.div
-                  layout
-                  animate={{
-                    x: isActive ? 4 : 0,
-                  }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 320,
-                    damping: 28,
-                  }}
+                <div
                   className={`
+                    uc-card
                     relative
                     overflow-hidden
                     rounded-[24px]
                     border
                     p-4
-                    transition-all
-                    duration-500
                     sm:p-5
                     lg:rounded-[26px]
                     lg:p-6
                     ${
                       isActive
                         ? `
+                          uc-card-active
                           border-black/[0.08]
                           bg-[#080b0d]
                           text-white
@@ -1041,14 +1308,11 @@ function UseCaseNavigation({
                     }
                   `}
                 >
-                  {/* =================================================
-                      ACTIVE EDGE
-                  ================================================= */}
+                  {/* ACTIVE EDGE */}
 
                   {isActive && (
                     <>
-                      <motion.div
-                        layoutId="use-case-active-edge"
+                      <div
                         className="
                           pointer-events-none
                           absolute
@@ -1085,10 +1349,12 @@ function UseCaseNavigation({
                           absolute
                           -right-16
                           -top-20
+                          hidden
                           h-36
                           w-36
                           rounded-full
                           blur-[55px]
+                          sm:block
                         "
                         style={{
                           background:
@@ -1099,9 +1365,7 @@ function UseCaseNavigation({
                   )}
 
                   <div className="relative z-10">
-                    {/* =================================================
-                        TOP ROW
-                    ================================================= */}
+                    {/* TOP ROW */}
 
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
@@ -1132,20 +1396,23 @@ function UseCaseNavigation({
                             border
                           "
                           style={{
-                            borderColor: isActive
-                              ? "rgba(103,232,249,.18)"
-                              : "rgba(15,23,42,.08)",
-                            background: isActive
-                              ? "rgba(103,232,249,.055)"
-                              : "rgba(15,23,42,.02)",
+                            borderColor:
+                              isActive
+                                ? "rgba(103,232,249,.18)"
+                                : "rgba(15,23,42,.08)",
+                            background:
+                              isActive
+                                ? "rgba(103,232,249,.055)"
+                                : "rgba(15,23,42,.02)",
                           }}
                         >
                           <Icon
                             className="h-4 w-4"
                             style={{
-                              color: isActive
-                                ? BRAND_CYAN
-                                : undefined,
+                              color:
+                                isActive
+                                  ? BRAND_CYAN
+                                  : undefined,
                             }}
                           />
                         </div>
@@ -1189,132 +1456,106 @@ function UseCaseNavigation({
                         </div>
                       </div>
 
-                      <motion.div
-                        animate={{
-                          rotate: isActive ? 45 : 0,
-                        }}
-                        transition={{
-                          duration: 0.3,
-                        }}
-                        className="shrink-0"
-                      >
-                        <ArrowUpRight
-                          className={`h-4 w-4 sm:h-5 sm:w-5 ${
+                      <ArrowUpRight
+                        className={`
+                          uc-arrow
+                          h-4
+                          w-4
+                          shrink-0
+                          sm:h-5
+                          sm:w-5
+                          ${
                             isActive
-                              ? "text-cyan-300"
+                              ? "rotate-45 text-cyan-300"
                               : "text-slate-300 dark:text-white/20"
-                          }`}
-                        />
-                      </motion.div>
+                          }
+                        `}
+                      />
                     </div>
 
-                    {/* =================================================
-                        DESCRIPTION
-                    ================================================= */}
+                    {/* DESCRIPTION */}
 
-                    <AnimatePresence initial={false}>
-                      {isActive && (
-                        <motion.div
-                          initial={{
-                            opacity: 0,
-                            height: 0,
-                          }}
-                          animate={{
-                            opacity: 1,
-                            height: "auto",
-                          }}
-                          exit={{
-                            opacity: 0,
-                            height: 0,
-                          }}
-                          transition={{
-                            duration: 0.42,
-                            ease: [
-                              0.16,
-                              1,
-                              0.3,
-                              1,
-                            ],
-                          }}
-                          className="overflow-hidden"
+                    <div
+                      className={`
+                        uc-description
+                        ${
+                          isActive
+                            ? "uc-description-active"
+                            : ""
+                        }
+                      `}
+                    >
+                      <div>
+                        <p
+                          className="
+                            max-w-[340px]
+                            pt-3
+                            text-xs
+                            leading-5
+                            text-white/52
+                            sm:pt-4
+                            sm:text-sm
+                            sm:leading-6
+                          "
                         >
-                          <p
+                          {item.description}
+                        </p>
+
+                        {/* STEPS */}
+
+                        <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 sm:mt-5">
+                          {item.steps.map(
+                            (
+                              step,
+                              stepIndex,
+                            ) => (
+                              <div
+                                key={step}
+                                className="flex items-center"
+                              >
+                                <span className="font-mono text-[7px] tracking-[0.13em] text-white/42 sm:text-[8px]">
+                                  {step}
+                                </span>
+
+                                {stepIndex <
+                                  item.steps.length -
+                                    1 && (
+                                  <span className="mx-1.5 h-px w-2 bg-white/12 sm:mx-2 sm:w-3" />
+                                )}
+                              </div>
+                            ),
+                          )}
+                        </div>
+
+                        {/* METRIC */}
+
+                        <div className="mt-4 flex items-center justify-between gap-3 sm:mt-5">
+                          <span
                             className="
-                              max-w-[340px]
-                              pt-3
-                              text-xs
-                              leading-5
-                              text-white/52
-                              sm:pt-4
-                              sm:text-sm
-                              sm:leading-6
+                              rounded-full
+                              border
+                              border-cyan-300/20
+                              bg-cyan-300/[0.045]
+                              px-2.5
+                              py-1
+                              font-mono
+                              text-[7px]
+                              uppercase
+                              tracking-[0.16em]
+                              text-cyan-300
                             "
                           >
-                            {item.description}
-                          </p>
+                            {item.metric}
+                          </span>
 
-                          {/* =================================================
-                              STEPS
-                          ================================================= */}
+                          <span className="font-mono text-[7px] uppercase tracking-[0.16em] text-white/20">
+                            WORKFLOW
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                          <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 sm:mt-5">
-                            {item.steps.map(
-                              (
-                                step,
-                                stepIndex,
-                              ) => (
-                                <div
-                                  key={step}
-                                  className="flex items-center"
-                                >
-                                  <span className="font-mono text-[7px] tracking-[0.13em] text-white/42 sm:text-[8px]">
-                                    {step}
-                                  </span>
-
-                                  {stepIndex <
-                                    item.steps.length -
-                                      1 && (
-                                    <span className="mx-1.5 h-px w-2 bg-white/12 sm:mx-2 sm:w-3" />
-                                  )}
-                                </div>
-                              ),
-                            )}
-                          </div>
-
-                          {/* =================================================
-                              METRIC / WORKFLOW
-                          ================================================= */}
-
-                          <div className="mt-4 flex items-center justify-between gap-3 sm:mt-5">
-                            <span
-                              className="
-                                rounded-full
-                                border
-                                border-cyan-300/20
-                                bg-cyan-300/[0.045]
-                                px-2.5
-                                py-1
-                                font-mono
-                                text-[7px]
-                                uppercase
-                                tracking-[0.16em]
-                                text-cyan-300
-                              "
-                            >
-                              {item.metric}
-                            </span>
-
-                            <span className="font-mono text-[7px] uppercase tracking-[0.16em] text-white/20">
-                              WORKFLOW
-                            </span>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* =================================================
-                        PROGRESS
-                    ================================================= */}
+                    {/* PROGRESS */}
 
                     <div
                       className={`
@@ -1330,25 +1571,21 @@ function UseCaseNavigation({
                       `}
                     >
                       {isActive && (
-                        <motion.div
-                          key={`${activeIndex}-${isPaused}`}
-                          initial={{
-                            width: "0%",
-                          }}
-                          animate={{
-                            width: isPaused
-                              ? "34%"
-                              : "100%",
-                          }}
-                          transition={{
-                            duration: isPaused
-                              ? 0.25
-                              : AUTO_DELAY /
-                                1000,
-                            ease: "linear",
-                          }}
-                          className="h-full"
+                        <div
+                          className="
+                            h-full
+                            transition-[width]
+                            ease-linear
+                          "
                           style={{
+                            width:
+                              isPaused
+                                ? "34%"
+                                : "100%",
+                            transitionDuration:
+                              isPaused
+                                ? "250ms"
+                                : `${AUTO_DELAY}ms`,
                             background:
                               BRAND_CYAN,
                             boxShadow:
@@ -1358,7 +1595,7 @@ function UseCaseNavigation({
                       )}
                     </div>
                   </div>
-                </motion.div>
+                </div>
               </button>
             </div>
           );
@@ -1378,37 +1615,17 @@ function NeuralTitle({
   reduceMotion: boolean;
 }) {
   return (
-    <motion.div
-      initial={
-        reduceMotion
-          ? undefined
-          : {
-              opacity: 0,
-              y: 24,
-              filter: "blur(12px)",
-            }
-      }
-      whileInView={{
-        opacity: 1,
-        y: 0,
-        filter: "blur(0px)",
-      }}
-      viewport={{
-        once: true,
-        amount: 0.5,
-      }}
-      transition={{
-        duration: 0.9,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      className="relative"
+    <div
+      className="
+        uc-reveal
+        relative
+      "
     >
-      {/* =================================================
-          TITLE UNIT
-      ================================================= */}
+      {/* TITLE UNIT */}
 
       <div className="relative flex items-center">
         {/* left circuit */}
+
         <div className="relative mr-3 hidden h-[72px] w-20 sm:block">
           <CircuitTrack
             reverse={false}
@@ -1421,13 +1638,11 @@ function NeuralTitle({
           <div className="absolute right-0 top-1/2 h-8 w-px -translate-y-1/2 bg-black/10 dark:bg-white/12" />
         </div>
 
-        {/* USE */}
         <CircuitBox
           label="USE"
           reduceMotion={reduceMotion}
         />
 
-        {/* CENTER */}
         <div className="relative h-[72px] w-12 sm:w-20 lg:w-28">
           <div className="absolute left-0 right-0 top-1/2 h-px bg-black/12 dark:bg-white/16" />
 
@@ -1441,33 +1656,66 @@ function NeuralTitle({
             reduceMotion={reduceMotion}
           />
 
-          <CircuitNode className="left-0 top-1/2" />
-          <CircuitNode className="right-0 top-1/2" />
-
           <div
-            className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
-            style={{
-              background: BRAND_CYAN,
-              boxShadow:
-                "0 0 8px rgba(103,232,249,.45)",
-            }}
+            className="
+              absolute
+              left-0
+              top-1/2
+              h-1.5
+              w-1.5
+              -translate-x-1/2
+              -translate-y-1/2
+              rounded-full
+              bg-[hsl(189.16deg_79.17%_47.06%)]
+            "
           />
 
           <div
-            className="absolute bottom-0 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
-            style={{
-              background: BRAND_CYAN,
-            }}
+            className="
+              absolute
+              right-0
+              top-1/2
+              h-1.5
+              w-1.5
+              -translate-y-1/2
+              translate-x-1/2
+              rounded-full
+              bg-[hsl(189.16deg_79.17%_47.06%)]
+            "
+          />
+
+          <div
+            className="
+              absolute
+              left-1/2
+              top-0
+              h-1.5
+              w-1.5
+              -translate-x-1/2
+              rounded-full
+              bg-[hsl(189.16deg_79.17%_47.06%)]
+            "
+          />
+
+          <div
+            className="
+              absolute
+              bottom-0
+              left-1/2
+              h-1.5
+              w-1.5
+              -translate-x-1/2
+              rounded-full
+              bg-[hsl(189.16deg_79.17%_47.06%)]
+            "
           />
         </div>
 
-        {/* CASES */}
         <CircuitBox
           label="CASES"
           reduceMotion={reduceMotion}
         />
 
-        {/* right circuit */}
         <div className="relative ml-3 hidden h-[72px] w-20 sm:block">
           <CircuitTrack
             reverse
@@ -1481,35 +1729,22 @@ function NeuralTitle({
         </div>
       </div>
 
-      {/* =================================================
-          STATUS
-      ================================================= */}
+      {/* STATUS */}
 
       <div className="mt-5 flex items-center justify-center gap-3">
-        {!reduceMotion ? (
-          <motion.span
-            animate={{
-              opacity: [0.25, 1, 0.25],
-              boxShadow: [
-                "0 0 0 rgba(103,232,249,0)",
-                "0 0 14px rgba(103,232,249,.85)",
-                "0 0 0 rgba(103,232,249,0)",
-              ],
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-            }}
-            className="h-1.5 w-1.5 rounded-full bg-cyan-400"
-          />
-        ) : (
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{
-              background: BRAND_CYAN,
-            }}
-          />
-        )}
+        <span
+          className={`
+            h-1.5
+            w-1.5
+            rounded-full
+            bg-cyan-400
+            ${
+              !reduceMotion
+                ? "uc-node-pulse"
+                : ""
+            }
+          `}
+        />
 
         <span className="font-mono text-[8px] uppercase tracking-[0.35em] text-slate-400 dark:text-white/24">
           Neural workflow / active
@@ -1521,7 +1756,7 @@ function NeuralTitle({
           01—04
         </span>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -1537,20 +1772,7 @@ function CircuitBox({
   reduceMotion: boolean;
 }) {
   return (
-    <motion.div
-      whileHover={
-        reduceMotion
-          ? undefined
-          : {
-              y: -3,
-              scale: 1.012,
-            }
-      }
-      transition={{
-        type: "spring",
-        stiffness: 400,
-        damping: 25,
-      }}
+    <div
       className="
         group
         relative
@@ -1562,16 +1784,32 @@ function CircuitBox({
         bg-white/55
         px-6
         shadow-[0_18px_50px_rgba(15,23,42,.045)]
-        backdrop-blur-xl
+        backdrop-blur-sm
         dark:border-white/[0.12]
         dark:bg-[#0a0d10]
         dark:shadow-[0_20px_60px_rgba(0,0,0,.30)]
         sm:px-9
         lg:px-12
+        lg:backdrop-blur-xl
+        transition-transform
+        duration-300
+        group-hover:-translate-y-0.5
       "
     >
       {/* interior glow */}
-      <div className="pointer-events-none absolute inset-0 rounded-[19px] opacity-0 transition-opacity duration-500 group-hover:opacity-100">
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          inset-0
+          rounded-[19px]
+          opacity-0
+          transition-opacity
+          duration-500
+          group-hover:opacity-100
+        "
+      >
         <div
           className="absolute inset-0 rounded-[19px]"
           style={{
@@ -1589,7 +1827,8 @@ function CircuitBox({
         />
       </div>
 
-      {/* top rail */}
+      {/* rails */}
+
       <div
         className="
           absolute
@@ -1605,7 +1844,6 @@ function CircuitBox({
         "
       />
 
-      {/* bottom rail */}
       <div
         className="
           absolute
@@ -1622,12 +1860,14 @@ function CircuitBox({
       />
 
       {/* corners */}
+
       <div className="absolute left-2 top-2 h-1 w-1 rounded-full bg-black/20 dark:bg-white/25" />
       <div className="absolute right-2 top-2 h-1 w-1 rounded-full bg-black/20 dark:bg-white/25" />
       <div className="absolute bottom-2 left-2 h-1 w-1 rounded-full bg-black/15 dark:bg-white/18" />
       <div className="absolute bottom-2 right-2 h-1 w-1 rounded-full bg-black/15 dark:bg-white/18" />
 
       {/* label */}
+
       <div className="relative flex h-full items-center justify-center">
         <span className="text-[25px] font-black tracking-[-0.055em] text-slate-950 dark:text-white sm:text-[34px] lg:text-[43px]">
           {label}
@@ -1635,17 +1875,11 @@ function CircuitBox({
       </div>
 
       {/* electrical sweep */}
+
       {!reduceMotion && (
-        <motion.div
-          animate={{
-            x: ["-150%", "250%"],
-          }}
-          transition={{
-            duration: 3.5,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+        <div
           className="
+            uc-circuit-pulse
             absolute
             bottom-0
             left-0
@@ -1657,11 +1891,10 @@ function CircuitBox({
             to-transparent
             shadow-[0_0_12px_2px_rgba(103,232,249,.45)]
             dark:via-cyan-300
-            dark:shadow-[0_0_12px_2px_rgba(103,232,249,.65)]
           "
         />
       )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -1674,21 +1907,15 @@ function ElectricalPulse({
 }: {
   reduceMotion: boolean;
 }) {
-  if (reduceMotion) return null;
+  if (reduceMotion) {
+    return null;
+  }
 
   return (
     <>
-      <motion.div
-        animate={{
-          x: ["-20%", "120%"],
-          opacity: [0, 1, 1, 0],
-        }}
-        transition={{
-          duration: 1.8,
-          repeat: Infinity,
-          ease: "linear",
-        }}
+      <div
         className="
+          uc-circuit-pulse
           absolute
           left-0
           top-1/2
@@ -1698,31 +1925,23 @@ function ElectricalPulse({
           bg-cyan-500
           shadow-[0_0_12px_3px_rgba(103,232,249,.55)]
           dark:bg-cyan-300
-          dark:shadow-[0_0_12px_3px_rgba(103,232,249,.85)]
         "
       />
 
-      <motion.div
-        animate={{
-          x: ["-20%", "120%"],
-          opacity: [0, 0.75, 0],
-        }}
-        transition={{
-          duration: 1.8,
-          delay: 0.9,
-          repeat: Infinity,
-          ease: "linear",
-        }}
+      <div
         className="
+          uc-circuit-pulse
           absolute
           left-0
           top-[calc(50%+6px)]
           h-px
           w-5
           bg-blue-500
-          shadow-[0_0_10px_2px_rgba(59,130,246,.45)]
           dark:bg-blue-400
         "
+        style={{
+          animationDelay: "900ms",
+        }}
       />
     </>
   );
@@ -1754,19 +1973,9 @@ function CircuitTrack({
       />
 
       {!reduceMotion && (
-        <motion.div
-          animate={{
-            x: reverse
-              ? ["70%", "0%", "70%"]
-              : ["0%", "70%", "0%"],
-            opacity: [0, 1, 0],
-          }}
-          transition={{
-            duration: 2.2,
-            repeat: Infinity,
-            ease: "linear",
-          }}
-          className="
+        <div
+          className={`
+            uc-circuit-pulse
             absolute
             top-1/2
             h-[2px]
@@ -1774,8 +1983,18 @@ function CircuitTrack({
             bg-cyan-500
             shadow-[0_0_14px_4px_rgba(103,232,249,.45)]
             dark:bg-cyan-300
-            dark:shadow-[0_0_14px_4px_rgba(103,232,249,.7)]
-          "
+            ${
+              reverse
+                ? "right-0"
+                : "left-0"
+            }
+          `}
+          style={{
+            animationDirection:
+              reverse
+                ? "reverse"
+                : "normal",
+          }}
         />
       )}
     </>
@@ -1801,17 +2020,9 @@ function CircuitNode({
         ${className}
       `}
     >
-      <motion.div
-        animate={{
-          scale: [0.8, 1.2, 0.8],
-          opacity: [0.48, 1, 0.48],
-        }}
-        transition={{
-          duration: 2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
+      <div
         className="
+          uc-node-pulse
           relative
           h-3
           w-3
@@ -1837,12 +2048,13 @@ function CircuitNode({
             rounded-full
           "
           style={{
-            background: BRAND_CYAN,
+            background:
+              BRAND_CYAN,
             boxShadow:
               "0 0 10px 3px rgba(103,232,249,.55)",
           }}
         />
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -1876,19 +2088,10 @@ function VisualStage({
         dark:shadow-[0_35px_100px_rgba(0,0,0,.42)]
       "
     >
-      {/* =================================================
-          ROTATING BORDER
-      ================================================= */}
-
       {!reduceMotion && (
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{
-            duration: 9,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+        <div
           className="
+            uc-rotating-border
             pointer-events-none
             absolute
             -inset-[90%]
@@ -1909,351 +2112,258 @@ function VisualStage({
           dark:bg-[#080a0c]
         "
       >
-        {/* =================================================
-            IMAGE
-        ================================================= */}
+        {/* IMAGE */}
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeCase.number}
-            initial={{
-              opacity: 0,
-              scale: 1.045,
-              filter: "blur(14px)",
+        <div
+          key={activeCase.number}
+          className="
+            uc-image-reveal
+            absolute
+            inset-0
+          "
+        >
+          <img
+            src={activeCase.image}
+            alt={activeCase.title}
+            loading="lazy"
+            decoding="async"
+            width={1800}
+            height={1125}
+            sizes="(min-width: 1024px) 65vw, 100vw"
+            className="h-full w-full object-cover"
+          />
+
+          <div className="absolute inset-0 bg-black/[0.18] dark:bg-black/[0.28]" />
+
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_62%_42%,transparent_0%,rgba(0,0,0,.06)_42%,rgba(0,0,0,.42)_100%)] dark:bg-[radial-gradient(circle_at_62%_42%,transparent_0%,rgba(0,0,0,.18)_42%,rgba(0,0,0,.74)_100%)]" />
+
+          {/* GRID */}
+
+          <div
+            aria-hidden="true"
+            className="
+              pointer-events-none
+              absolute
+              inset-0
+            "
+            style={{
+              opacity: 0.095,
+              backgroundImage: `
+                linear-gradient(
+                  rgba(255,255,255,.95) 1px,
+                  transparent 1px
+                ),
+                linear-gradient(
+                  90deg,
+                  rgba(255,255,255,.95) 1px,
+                  transparent 1px
+                )
+              `,
+              backgroundSize: "56px 56px",
+              maskImage:
+                "linear-gradient(to bottom, transparent 0%, black 12%, black 82%, transparent 100%)",
+              WebkitMaskImage:
+                "linear-gradient(to bottom, transparent 0%, black 12%, black 82%, transparent 100%)",
             }}
-            animate={{
-              opacity: 1,
-              scale: 1,
-              filter: "blur(0px)",
+          />
+
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-[0.06]"
+            style={{
+              backgroundImage: `
+                linear-gradient(
+                  rgba(103,232,249,.9) 1px,
+                  transparent 1px
+                ),
+                linear-gradient(
+                  90deg,
+                  rgba(103,232,249,.9) 1px,
+                  transparent 1px
+                )
+              `,
+              backgroundSize: "224px 224px",
             }}
-            exit={{
-              opacity: 0,
-              scale: 0.975,
-              filter: "blur(10px)",
-            }}
-            transition={{
-              duration: 0.8,
-              ease: [0.16, 1, 0.3, 1],
-            }}
-            className="absolute inset-0"
-          >
-            <img
-              src={activeCase.image}
-              alt={activeCase.title}
-              className="h-full w-full object-cover"
-            />
+          />
 
-            {/* image contrast */}
-            <div className="absolute inset-0 bg-black/[0.18] dark:bg-black/[0.28]" />
+          {/* SCAN */}
 
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_62%_42%,transparent_0%,rgba(0,0,0,.06)_42%,rgba(0,0,0,.42)_100%)] dark:bg-[radial-gradient(circle_at_62%_42%,transparent_0%,rgba(0,0,0,.18)_42%,rgba(0,0,0,.74)_100%)]" />
-
-            {/* =================================================
-                ARCHITECTURAL GRID
-            ================================================= */}
-
+          {!reduceMotion && (
             <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0"
-              style={{
-                opacity: 0.095,
-                backgroundImage: `
-                  linear-gradient(
-                    rgba(255,255,255,.95) 1px,
-                    transparent 1px
-                  ),
-                  linear-gradient(
-                    90deg,
-                    rgba(255,255,255,.95) 1px,
-                    transparent 1px
-                  )
-                `,
-                backgroundSize:
-                  "56px 56px",
-                maskImage:
-                  "linear-gradient(to bottom, transparent 0%, black 12%, black 82%, transparent 100%)",
-                WebkitMaskImage:
-                  "linear-gradient(to bottom, transparent 0%, black 12%, black 82%, transparent 100%)",
-              }}
-            />
-
-            {/* cyan technical grid glow */}
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 opacity-[0.06]"
-              style={{
-                backgroundImage: `
-                  linear-gradient(
-                    rgba(103,232,249,.9) 1px,
-                    transparent 1px
-                  ),
-                  linear-gradient(
-                    90deg,
-                    rgba(103,232,249,.9) 1px,
-                    transparent 1px
-                  )
-                `,
-                backgroundSize:
-                  "224px 224px",
-              }}
-            />
-
-            {/* =================================================
-                SCAN LINE
-            ================================================= */}
-
-            {!reduceMotion && (
-              <motion.div
-                animate={{
-                  y: ["-5%", "680%"],
-                }}
-                transition={{
-                  duration: 5.5,
-                  repeat: Infinity,
-                  ease: "linear",
-                }}
-                className="
-                  absolute
-                  left-0
-                  top-0
-                  h-px
-                  w-full
-                  bg-cyan-300/60
-                  shadow-[0_0_28px_7px_rgba(103,232,249,.10)]
-                "
-              />
-            )}
-
-            {/* =================================================
-                TECHNICAL TARGETS
-            ================================================= */}
-
-            <TechnicalNode
-              className="left-[13%] top-[23%]"
-              delay={0}
-              reduceMotion={reduceMotion}
-            />
-
-            <TechnicalNode
-              className="right-[20%] top-[30%]"
-              delay={0.7}
-              reduceMotion={reduceMotion}
-            />
-
-            <TechnicalNode
-              className="left-[33%] bottom-[28%]"
-              delay={1.25}
-              reduceMotion={reduceMotion}
-            />
-
-            <TechnicalNode
-              className="right-[15%] bottom-[18%]"
-              delay={1.9}
-              reduceMotion={reduceMotion}
-            />
-
-            {/* =================================================
-                CONNECTION PATHS
-            ================================================= */}
-
-            <svg
               className="
-                pointer-events-none
+                uc-scan
                 absolute
-                inset-0
-                h-full
+                left-0
+                top-0
+                h-px
                 w-full
-                opacity-45
+                bg-cyan-300/60
+                shadow-[0_0_28px_7px_rgba(103,232,249,.10)]
               "
-              viewBox="0 0 1000 700"
-              preserveAspectRatio="none"
-            >
-              <path
-                d="M130 160 C300 100 350 320 520 280 S750 200 850 220"
-                fill="none"
-                stroke="rgba(103,232,249,.22)"
-                strokeWidth="1"
-                strokeDasharray="3 10"
-              />
+            />
+          )}
 
-              <path
-                d="M280 500 C400 430 500 520 650 440 S800 350 900 390"
-                fill="none"
-                stroke="rgba(103,232,249,.14)"
-                strokeWidth="1"
-                strokeDasharray="2 12"
-              />
+          {/* TECHNICAL NODES */}
 
-              {!reduceMotion && (
-                <>
-                  <motion.circle
-                    r="3"
-                    fill={BRAND_CYAN}
-                    animate={{
-                      opacity: [0.15, 1, 0.15],
-                    }}
-                  >
-                    <animateMotion
-                      dur="5s"
-                      repeatCount="indefinite"
-                      path="M130 160 C300 100 350 320 520 280 S750 200 850 220"
-                    />
-                  </motion.circle>
+          <TechnicalNode
+            className="left-[13%] top-[23%]"
+            delay={0}
+            reduceMotion={reduceMotion}
+          />
 
-                  <motion.circle
-                    r="2.5"
-                    fill="#60a5fa"
-                    animate={{
-                      opacity: [0.1, 0.9, 0.1],
-                    }}
-                  >
-                    <animateMotion
-                      dur="6.5s"
-                      repeatCount="indefinite"
-                      path="M280 500 C400 430 500 520 650 440 S800 350 900 390"
-                    />
-                  </motion.circle>
-                </>
-              )}
-            </svg>
+          <TechnicalNode
+            className="right-[20%] top-[30%]"
+            delay={0.7}
+            reduceMotion={reduceMotion}
+          />
 
-            {/* =================================================
-                TOP HUD
-            ================================================= */}
+          <TechnicalNode
+            className="left-[33%] bottom-[28%]"
+            delay={1.25}
+            reduceMotion={reduceMotion}
+          />
 
-            <div className="absolute left-7 right-7 top-7 flex items-start justify-between sm:left-8 sm:right-8 sm:top-8">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{
-                      background: BRAND_CYAN,
-                      boxShadow:
-                        "0 0 12px 3px rgba(103,232,249,.5)",
-                    }}
-                  />
+          <TechnicalNode
+            className="right-[15%] bottom-[18%]"
+            delay={1.9}
+            reduceMotion={reduceMotion}
+          />
 
-                  <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/75">
-                    Renderuim Engine
+          {/* CONNECTION PATHS */}
+
+          <svg
+            className="
+              pointer-events-none
+              absolute
+              inset-0
+              h-full
+              w-full
+              opacity-45
+            "
+            viewBox="0 0 1000 700"
+            preserveAspectRatio="none"
+          >
+            <path
+              d="M130 160 C300 100 350 320 520 280 S750 200 850 220"
+              fill="none"
+              stroke="rgba(103,232,249,.22)"
+              strokeWidth="1"
+              strokeDasharray="3 10"
+            />
+
+            <path
+              d="M280 500 C400 430 500 520 650 440 S800 350 900 390"
+              fill="none"
+              stroke="rgba(103,232,249,.14)"
+              strokeWidth="1"
+              strokeDasharray="2 12"
+            />
+          </svg>
+
+          {/* TOP HUD */}
+
+          <div className="absolute left-7 right-7 top-7 flex items-start justify-between sm:left-8 sm:right-8 sm:top-8">
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{
+                    background:
+                      BRAND_CYAN,
+                    boxShadow:
+                      "0 0 12px 3px rgba(103,232,249,.5)",
+                  }}
+                />
+
+                <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/75">
+                  Renderuim Engine
+                </span>
+              </div>
+
+              <div className="mt-2 text-[9px] uppercase tracking-[0.2em] text-white/36">
+                {activeCase.label}
+              </div>
+            </div>
+
+            <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5 font-mono text-[8px] text-white/45 backdrop-blur-sm lg:backdrop-blur-xl">
+              {activeCase.number} / 04
+            </div>
+          </div>
+
+          {/* SIDE LABEL */}
+
+          <div className="absolute right-6 top-1/2 hidden -translate-y-1/2 rotate-90 md:block">
+            <span className="font-mono text-[7px] uppercase tracking-[0.35em] text-white/25">
+              ARCHITECTURAL VISUAL SYSTEM
+            </span>
+          </div>
+
+          {/* ACTIVE WORKFLOW */}
+
+          <div
+            className="
+              uc-reveal
+              absolute
+              bottom-7
+              left-7
+              sm:bottom-8
+              sm:left-8
+            "
+          >
+            <div className="mb-2 font-mono text-[9px] uppercase tracking-[0.3em] text-white/36">
+              ACTIVE WORKFLOW
+            </div>
+
+            <div className="text-4xl font-black tracking-[-0.05em] text-white sm:text-5xl">
+              {activeCase.metric}
+            </div>
+          </div>
+
+          {/* PIPELINE */}
+
+          <div className="absolute bottom-7 right-7 hidden items-center gap-1.5 sm:bottom-8 sm:right-8 md:flex">
+            {activeCase.steps.map(
+              (step) => (
+                <div
+                  key={step}
+                  className="
+                    rounded-xl
+                    border
+                    border-white/[0.12]
+                    bg-black/30
+                    px-3
+                    py-2
+                    backdrop-blur-sm
+                    lg:backdrop-blur-xl
+                  "
+                >
+                  <span className="font-mono text-[8px] tracking-[0.18em] text-white/68">
+                    {step}
                   </span>
                 </div>
+              ),
+            )}
+          </div>
 
-                <div className="mt-2 text-[9px] uppercase tracking-[0.2em] text-white/36">
-                  {activeCase.label}
-                </div>
-              </div>
+          {/* OVERSIZED INDEX */}
 
-              <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5 font-mono text-[8px] text-white/45 backdrop-blur-xl">
-                {activeCase.number} / 04
-              </div>
-            </div>
-
-            {/* =================================================
-                SIDE TECH LABEL
-            ================================================= */}
-
-            <div className="absolute right-6 top-1/2 hidden -translate-y-1/2 rotate-90 md:block">
-              <span className="font-mono text-[7px] uppercase tracking-[0.35em] text-white/25">
-                ARCHITECTURAL VISUAL SYSTEM
-              </span>
-            </div>
-
-            {/* =================================================
-                ACTIVE WORKFLOW
-            ================================================= */}
-
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: 18,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              transition={{
-                delay: 0.24,
-              }}
-              className="absolute bottom-7 left-7 sm:bottom-8 sm:left-8"
-            >
-              <div className="mb-2 font-mono text-[9px] uppercase tracking-[0.3em] text-white/36">
-                ACTIVE WORKFLOW
-              </div>
-
-              <div className="text-4xl font-black tracking-[-0.05em] text-white sm:text-5xl">
-                {activeCase.metric}
-              </div>
-            </motion.div>
-
-            {/* =================================================
-                PIPELINE
-            ================================================= */}
-
-            <div className="absolute bottom-7 right-7 hidden items-center gap-1.5 sm:bottom-8 sm:right-8 md:flex">
-              {activeCase.steps.map(
-                (step, index) => (
-                  <div
-                    key={step}
-                    className="flex items-center"
-                  >
-                    <motion.div
-                      initial={{
-                        opacity: 0,
-                        y: 8,
-                      }}
-                      animate={{
-                        opacity: 1,
-                        y: 0,
-                      }}
-                      transition={{
-                        delay:
-                          0.12 +
-                          index * 0.07,
-                      }}
-                      className="
-                        rounded-xl
-                        border
-                        border-white/[0.12]
-                        bg-black/30
-                        px-3
-                        py-2
-                        backdrop-blur-xl
-                      "
-                    >
-                      <span className="font-mono text-[8px] tracking-[0.18em] text-white/68">
-                        {step}
-                      </span>
-                    </motion.div>
-
-                    {index <
-                      activeCase.steps.length -
-                        1 && (
-                      <div className="mx-1 h-px w-3 bg-white/15" />
-                    )}
-                  </div>
-                ),
-              )}
-            </div>
-
-            {/* oversized index */}
-            <div
-              aria-hidden="true"
-              className="
-                pointer-events-none
-                absolute
-                bottom-[-35px]
-                right-[-10px]
-                select-none
-                text-[190px]
-                font-black
-                leading-none
-                text-white/[0.035]
-              "
-            >
-              {activeCase.number}
-            </div>
-          </motion.div>
-        </AnimatePresence>
+          <div
+            aria-hidden="true"
+            className="
+              pointer-events-none
+              absolute
+              bottom-[-35px]
+              right-[-10px]
+              select-none
+              text-[190px]
+              font-black
+              leading-none
+              text-white/[0.035]
+            "
+          >
+            {activeCase.number}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2265,10 +2375,8 @@ function VisualStage({
 
 function MobileVisual({
   activeCase,
-  reduceMotion,
 }: {
   activeCase: UseCase;
-  reduceMotion: boolean;
 }) {
   return (
     <div
@@ -2286,119 +2394,65 @@ function MobileVisual({
         lg:hidden
       "
     >
-      <AnimatePresence mode="wait">
-        <motion.img
+      <picture>
+        <source
+          media="(max-width: 1023px)"
+          srcSet={activeCase.mobileImage}
+        />
+
+        <img
           key={activeCase.image}
           src={activeCase.image}
           alt={activeCase.title}
-          initial={
-            reduceMotion
-              ? undefined
-              : {
-                  opacity: 0,
-                  scale: 1.07,
-                  filter: "blur(10px)",
-                }
-          }
-          animate={{
-            opacity: 1,
-            scale: 1,
-            filter: "blur(0px)",
-          }}
-          exit={{
-            opacity: 0,
-          }}
-          transition={{
-            duration: 0.7,
-            ease: [0.16, 1, 0.3, 1],
-          }}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      </AnimatePresence>
-
-      {/* contrast */}
-      <div className="absolute inset-0 bg-black/40" />
-
-      {/* =================================================
-          MOBILE GRID
-      ================================================= */}
-
-      <div
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={{
-          opacity: 0.16,
-          backgroundImage: `
-            linear-gradient(
-              rgba(255,255,255,.9) 1px,
-              transparent 1px
-            ),
-            linear-gradient(
-              90deg,
-              rgba(255,255,255,.9) 1px,
-              transparent 1px
-            )
-          `,
-          backgroundSize: "36px 36px",
-          maskImage:
-            "linear-gradient(to bottom, transparent 0%, black 15%, black 82%, transparent 100%)",
-          WebkitMaskImage:
-            "linear-gradient(to bottom, transparent 0%, black 15%, black 82%, transparent 100%)",
-        }}
-      />
-
-      {/* cyan major grid */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 opacity-[0.07]"
-        style={{
-          backgroundImage: `
-            linear-gradient(
-              rgba(103,232,249,.95) 1px,
-              transparent 1px
-            ),
-            linear-gradient(
-              90deg,
-              rgba(103,232,249,.95) 1px,
-              transparent 1px
-            )
-          `,
-          backgroundSize: "108px 108px",
-        }}
-      />
-
-      {/* scan */}
-      {!reduceMotion && (
-        <motion.div
-          animate={{
-            y: ["0%", "650%"],
-          }}
-          transition={{
-            duration: 4.8,
-            repeat: Infinity,
-            ease: "linear",
-          }}
+          loading="lazy"
+          decoding="async"
+          width={900}
+          height={563}
+          sizes="100vw"
           className="
-            absolute
-            left-0
-            top-0
-            h-px
+            h-full
             w-full
-            bg-cyan-300/60
-            shadow-[0_0_24px_7px_rgba(103,232,249,.12)]
+            object-cover
           "
         />
-      )}
+      </picture>
 
-      {/* top HUD */}
+      {/* contrast */}
+
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* MOBILE GRID */}
+
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 opacity-[0.13]"
+        style={{
+          backgroundImage: `
+            linear-gradient(
+              rgba(255,255,255,.9) 1px,
+              transparent 1px
+            ),
+            linear-gradient(
+              90deg,
+              rgba(255,255,255,.9) 1px,
+              transparent 1px
+            )
+          `,
+          backgroundSize: "42px 42px",
+        }}
+      />
+
+      {/* TOP HUD */}
+
       <div className="absolute left-5 right-5 top-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span
             className="h-1.5 w-1.5 rounded-full"
             style={{
-              background: BRAND_CYAN,
+              background:
+                BRAND_CYAN,
               boxShadow:
-                "0 0 10px rgba(103,232,249,.7)",
+                "0 0 8px rgba(103,232,249,.6)",
             }}
           />
 
@@ -2407,12 +2461,13 @@ function MobileVisual({
           </span>
         </div>
 
-        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 font-mono text-[8px] text-white/45 backdrop-blur-xl">
+        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 font-mono text-[8px] text-white/45">
           {activeCase.number} / 04
         </span>
       </div>
 
-      {/* bottom */}
+      {/* BOTTOM */}
+
       <div className="absolute bottom-5 left-5">
         <div className="mb-1 font-mono text-[8px] uppercase tracking-[0.24em] text-white/38">
           Active workflow
@@ -2423,7 +2478,8 @@ function MobileVisual({
         </div>
       </div>
 
-      {/* corner brackets */}
+      {/* CORNER BRACKETS */}
+
       <div className="absolute left-3 top-3 h-4 w-4 border-l border-t border-cyan-300/35" />
       <div className="absolute right-3 top-3 h-4 w-4 border-r border-t border-cyan-300/35" />
       <div className="absolute bottom-3 left-3 h-4 w-4 border-b border-l border-cyan-300/25" />
@@ -2446,28 +2502,20 @@ function TechnicalNode({
   reduceMotion: boolean;
 }) {
   return (
-    <motion.div
-      className={`absolute z-20 ${className}`}
-      initial={{
-        opacity: reduceMotion ? 1 : 0,
-      }}
-      animate={
-        reduceMotion
-          ? {
-              opacity: 1,
-            }
-          : {
-              opacity: [0.2, 1, 0.2],
-              scale: [0.8, 1.15, 0.8],
-            }
-      }
-      transition={{
-        duration: 2.8,
-        delay,
-        repeat: reduceMotion
-          ? 0
-          : Infinity,
-        ease: "easeInOut",
+    <div
+      className={`
+        absolute
+        z-20
+        ${className}
+        ${
+          !reduceMotion
+            ? "uc-node-pulse"
+            : ""
+        }
+      `}
+      style={{
+        animationDelay:
+          `${delay}s`,
       }}
     >
       <div
@@ -2493,13 +2541,13 @@ function TechnicalNode({
             rounded-full
           "
           style={{
-            background: BRAND_CYAN,
+            background:
+              BRAND_CYAN,
             boxShadow:
               "0 0 15px 4px rgba(103,232,249,.35)",
           }}
         />
       </div>
-    </motion.div>
+    </div>
   );
 }
-

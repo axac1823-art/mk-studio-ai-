@@ -29,7 +29,12 @@ def run(job: dict) -> None:
         mark_processing(conn, job["id"])
         try:
             req = {**input_, "prompt": build_feature_prompt(feature, input_)}
-            candidates = order_candidates(MODEL_CATALOG[feature], input_.get("quality") or "standard", input_.get("model"))
+            feature_candidates = MODEL_CATALOG[feature]
+            if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
+                # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
+                # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
+                feature_candidates = [candidate for candidate in feature_candidates if candidate.max_references > 0]
+            candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
             outcome = execute_with_fallback(feature, candidates, req)
 
             result_asset_id = None

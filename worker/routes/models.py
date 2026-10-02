@@ -21,6 +21,7 @@ def list_models() -> dict:
     """
     return {
         "image": list_feature_models("print_render", include_costs=True),
+        "background_remover": list_feature_models("background_remover", include_costs=True),
         "video": (
             list_feature_models("animate", include_costs=True)
             + list_feature_models("video_to_video", include_costs=True)

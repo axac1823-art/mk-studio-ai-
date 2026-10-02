@@ -30,6 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const assets = await listAssets(user.id, {
     projectId: project.id,
     type,
+    generatedOnly: true,
     feature: featureParam && featureParam !== "all" ? featureParam : undefined,
   });
   return NextResponse.json({

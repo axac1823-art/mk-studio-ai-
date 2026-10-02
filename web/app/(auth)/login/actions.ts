@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -59,17 +59,38 @@ export async function signInWithPassword(
   redirect(redirectTo);
 }
 
-export async function signInWithGoogle(
-  _prevState: unknown,
-  formData: FormData
-): Promise<{ error?: string; url?: string }> {
+export async function signInWithGoogle(): Promise<{ error?: string; url?: string }> {
   const supabase = createClient();
-  const origin = String(formData.get("origin") ?? "http://localhost:3000");
+  const requestHeaders = headers();
+  const originHeader = requestHeaders.get("origin");
+  const requestHost =
+    requestHeaders.get("x-forwarded-host")?.split(",")[0]?.trim() ||
+    requestHeaders.get("host");
+
+  if (!originHeader || !requestHost) {
+    return { error: "Could not determine the sign-in address." };
+  }
+
+  let origin: URL;
+  try {
+    origin = new URL(originHeader);
+  } catch {
+    return { error: "Could not determine the sign-in address." };
+  }
+
+  if (
+    !["http:", "https:"].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.host.toLowerCase() !== requestHost.toLowerCase()
+  ) {
+    return { error: "Could not determine the sign-in address." };
+  }
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin}/auth/callback`,
+      redirectTo: `${origin.origin}/auth/callback`,
     },
   });
 
@@ -119,7 +140,7 @@ export async function signUp(
   }
 
   try {
-    // Synchronise la ligne utilisateur dans notre schéma public.
+    // Synchronise la ligne utilisateur dans notre schÃ©ma public.
     await sql`
       INSERT INTO users (id, email, display_name)
       VALUES (${user.id}, ${email}, ${fullName})
@@ -127,10 +148,10 @@ export async function signUp(
                                      display_name = EXCLUDED.display_name
     `;
 
-    // Projet par défaut.
+    // Projet par dÃ©faut.
     const project = await createProject(user.id, "General");
 
-    // Crédits de bienvenue (configurable dans app_config).
+    // CrÃ©dits de bienvenue (configurable dans app_config).
     const configRows = await sql<Array<{ value_int: number | null }>>`
       SELECT value_int FROM app_config WHERE key = 'signup_bonus_credits'
     `;
@@ -142,7 +163,7 @@ export async function signUp(
       `;
     }
 
-    // Marque le projet par défaut comme cover initial (optionnel).
+    // Marque le projet par dÃ©faut comme cover initial (optionnel).
     await sql`
       UPDATE users SET preferences = jsonb_set(
         COALESCE(preferences, '{}'::jsonb),
@@ -151,8 +172,8 @@ export async function signUp(
       ) WHERE id = ${user.id}
     `;
   } catch (err) {
-    // On ne bloque pas l'inscription si la synchro DB échoue ; elle sera
-    // rattrapée au callback / prochain login.
+    // On ne bloque pas l'inscription si la synchro DB Ã©choue ; elle sera
+    // rattrapÃ©e au callback / prochain login.
     console.error("signup sync failed", err);
   }
 

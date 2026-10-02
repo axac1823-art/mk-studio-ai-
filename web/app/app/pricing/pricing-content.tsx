@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Check, ChevronDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +22,9 @@ interface PricingPlan {
 
 interface PricingContentProps {
   plans: PricingPlan[];
-  balance: number;
-  displayName: string;
+  balance?: number;
+  displayName?: string;
+  isAuthenticated?: boolean;
 }
 
 const FAQS = [
@@ -67,7 +69,12 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(0)}`;
 }
 
-export function PricingContent({ plans, balance, displayName }: PricingContentProps) {
+export function PricingContent({
+  plans,
+  balance,
+  displayName,
+  isAuthenticated = true,
+}: PricingContentProps) {
   const [isYearly, setIsYearly] = useState(true);
 
   return (
@@ -79,10 +86,18 @@ export function PricingContent({ plans, balance, displayName }: PricingContentPr
             Simple plans for architectural visualization professionals.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{displayName}</span>
-          <Badge variant="secondary">{balance.toLocaleString()} credits</Badge>
-        </div>
+        {isAuthenticated ? (
+          <div className="flex items-center gap-3">
+            {displayName && <span className="text-sm text-muted-foreground">{displayName}</span>}
+            {balance !== undefined && (
+              <Badge variant="secondary">{balance.toLocaleString()} credits</Badge>
+            )}
+          </div>
+        ) : (
+          <Link href="/login" className="text-sm font-medium text-primary hover:underline">
+            Sign in
+          </Link>
+        )}
       </header>
 
       <section className="flex flex-col items-center gap-6">
@@ -129,7 +144,12 @@ export function PricingContent({ plans, balance, displayName }: PricingContentPr
                       </li>
                     ))}
                   </ul>
-                  <SubscribeButton plan={plan.plan} highlighted={plan.highlighted} billing={isYearly ? "yearly" : "monthly"} />
+                  <SubscribeButton
+                    plan={plan.plan}
+                    highlighted={plan.highlighted}
+                    billing={isYearly ? "yearly" : "monthly"}
+                    isAuthenticated={isAuthenticated}
+                  />
                 </CardContent>
               </Card>
             );

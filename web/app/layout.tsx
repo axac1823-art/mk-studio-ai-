@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { getSiteUrl } from "@/lib/site-url";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -16,19 +17,57 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Renderuim — AI architectural rendering",
+  metadataBase: getSiteUrl(),
+  title: {
+    default: "Renderuim | AI Architectural Rendering",
+    template: "%s | Renderuim",
+  },
   description:
-    "Turn rough 3D viewport screenshots (SketchUp, Revit, 3ds Max) into photorealistic renders with AI.",
+    "Create architectural renders, mood variations, alternate views, and presentation videos from your design workflow with Renderuim.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Renderuim",
+    title: "Renderuim | AI Architectural Rendering",
+    description:
+      "Create architectural renders, mood variations, alternate views, and presentation videos from your design workflow.",
+    url: "/",
+    images: [
+      {
+        url: "/hero.webp",
+        alt: "Architectural visualization created with Renderuim",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Renderuim | AI Architectural Rendering",
+    description:
+      "Create architectural renders, mood variations, alternate views, and presentation videos with Renderuim.",
+    images: ["/hero.webp"],
+  },
 };
 
 const themeInitScript = `
   (function() {
+    let theme = "dark";
     try {
-      const theme = localStorage.getItem("renderuim-theme") || "dark";
-      document.documentElement.classList.add(theme);
-    } catch {
-      document.documentElement.classList.add("dark");
-    }
+      theme = localStorage.getItem("renderuim-theme") === "light" ? "light" : "dark";
+    } catch {}
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(theme);
+    var desktop = window.matchMedia("(min-width: 768px)").matches;
+    var heroImage = desktop
+      ? (theme === "dark" ? "/hero.webp" : "/hero_white.webp")
+      : (theme === "dark" ? "/mobile_hero.webp" : "/mobile_lightmod.webp");
+    var preload = document.createElement("link");
+    preload.rel = "preload";
+    preload.as = "image";
+    preload.href = heroImage;
+    preload.setAttribute("fetchpriority", "high");
+    document.head.appendChild(preload);
   })();
 `;
 
@@ -39,10 +78,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <ThemeProvider>
           {children}
         </ThemeProvider>

@@ -61,7 +61,7 @@ export function UserMenu({ user }: UserMenuProps) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/app/pricing" className="cursor-pointer">
+          <Link href="/pricing" className="cursor-pointer">
             <CreditCard className="h-4 w-4" />
             Pricing
           </Link>

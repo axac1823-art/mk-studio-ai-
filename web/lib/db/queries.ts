@@ -109,13 +109,19 @@ export async function listProjects(userId: string): Promise<DbProjectWithMeta[]>
     SELECT p.*,
       COALESCE(cover.storage_path, latest.storage_path) AS cover_path,
       (SELECT count(*)::int FROM assets a2
-        WHERE a2.project_id = p.id AND NOT a2.is_trashed) AS asset_count
+        WHERE a2.project_id = p.id
+          AND (a2.generation_id IS NOT NULL OR a2.video_job_id IS NOT NULL)
+          AND NOT a2.is_trashed) AS asset_count
     FROM projects p
     LEFT JOIN assets cover
-      ON cover.id = p.cover_asset_id AND NOT cover.is_trashed
+      ON cover.id = p.cover_asset_id
+        AND (cover.generation_id IS NOT NULL OR cover.video_job_id IS NOT NULL)
+        AND NOT cover.is_trashed
     LEFT JOIN LATERAL (
       SELECT storage_path FROM assets a
-      WHERE a.project_id = p.id AND NOT a.is_trashed
+      WHERE a.project_id = p.id
+        AND (a.generation_id IS NOT NULL OR a.video_job_id IS NOT NULL)
+        AND NOT a.is_trashed
       ORDER BY a.created_at DESC
       LIMIT 1
     ) latest ON true
@@ -160,6 +166,65 @@ export async function insertJob(input: {
     VALUES (${input.userId}, ${input.projectId}, ${input.type}, ${sql.json(input.jobInput as JSONValue)}, ${input.parentGenerationId ?? null})
     RETURNING id`;
   return rows[0].id;
+}
+
+export class InsufficientCreditsError extends Error {
+  constructor(public readonly balance: number) {
+    super("insufficient credits");
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+/** Crée un Audio Job et réserve ses crédits sous le verrou du user. */
+export async function createAudioJobWithReservation(input: {
+  userId: string;
+  projectId: string;
+  type: "voice_generator" | "dialogue_generator";
+  jobInput: Record<string, unknown>;
+  idempotencyKey: string;
+  creditCost: number;
+}): Promise<{ jobId: string; status: DbJob["status"]; duplicate: boolean }> {
+  return sql.begin(async (tx) => {
+    const users = await tx<Array<{ id: string }>>`
+      SELECT id FROM users WHERE id = ${input.userId} FOR UPDATE`;
+    if (!users[0]) throw new Error("user not found");
+
+    const existing = await tx<Array<{ id: string; status: DbJob["status"] }>>`
+      SELECT id, status FROM jobs
+      WHERE user_id = ${input.userId} AND idempotency_key = ${input.idempotencyKey}
+      LIMIT 1`;
+    if (existing[0]) {
+      return { jobId: existing[0].id, status: existing[0].status, duplicate: true };
+    }
+
+    const projects = await tx<Array<{ id: string }>>`
+      SELECT id FROM projects WHERE id = ${input.projectId} AND user_id = ${input.userId}`;
+    if (!projects[0]) throw new Error("project not found");
+
+    const balances = await tx<Array<{ available: number }>>`
+      SELECT (
+        COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE user_id = ${input.userId}), 0)
+        - COALESCE((SELECT SUM(amount) FROM audio_credit_reservations
+                    WHERE user_id = ${input.userId} AND status = 'reserved'), 0)
+      )::int AS available`;
+    const available = balances[0]?.available ?? 0;
+    if (available < input.creditCost) throw new InsufficientCreditsError(available);
+
+    const jobs = await tx<Array<{ id: string }>>`
+      INSERT INTO jobs (user_id, project_id, type, input, idempotency_key)
+      VALUES (
+        ${input.userId}, ${input.projectId}, ${input.type},
+        ${tx.json(input.jobInput as JSONValue)}, ${input.idempotencyKey}
+      )
+      RETURNING id`;
+    const jobId = jobs[0].id;
+
+    await tx`
+      INSERT INTO audio_credit_reservations (job_id, user_id, amount, status)
+      VALUES (${jobId}, ${input.userId}, ${input.creditCost}, 'reserved')`;
+
+    return { jobId, status: "pending", duplicate: false };
+  });
 }
 
 /** Crée un video_job (Video Generator). */
@@ -231,7 +296,19 @@ export async function getJobForUser(jobId: string, userId: string): Promise<DbJo
 /** Marque un job failed quand le DÉMARRAGE côté worker a échoué (le job
  *  n'a jamais tourné — message générique, aucun débit). */
 export async function markJobFailed(jobId: string): Promise<void> {
-  await sql`UPDATE jobs SET status = 'failed', error_message = 'Generation failed, please try again.' WHERE id = ${jobId} AND status = 'pending'`;
+  await sql.begin(async (tx) => {
+    const failed = await tx<Array<{ id: string }>>`
+      UPDATE jobs
+      SET status = 'failed', error_message = 'Generation failed, please try again.'
+      WHERE id = ${jobId} AND status = 'pending'
+      RETURNING id`;
+    if (failed[0]) {
+      await tx`
+        UPDATE audio_credit_reservations
+        SET status = 'released', updated_at = now()
+        WHERE job_id = ${jobId} AND status = 'reserved'`;
+    }
+  });
 }
 
 /** Enregistre le modèle ayant servi (pour historique + debug). */
@@ -259,6 +336,7 @@ export async function listAssets(
     favorite?: boolean;
     trashed?: boolean;
     uploadsOnly?: boolean;
+    generatedOnly?: boolean;
   } = {}
 ): Promise<DbAsset[]> {
   return sql<DbAsset[]>`
@@ -283,7 +361,8 @@ export async function listAssets(
       )))
       AND (${filters.favorite ?? null}::boolean IS NULL OR is_favorite = ${filters.favorite ?? null})
       AND is_trashed = ${filters.trashed ?? false}
-      AND (${!filters.uploadsOnly}::boolean OR generation_id IS NULL)
+      AND (${!filters.uploadsOnly}::boolean OR (generation_id IS NULL AND video_job_id IS NULL))
+      AND (${!filters.generatedOnly}::boolean OR (generation_id IS NOT NULL OR video_job_id IS NOT NULL))
     ORDER BY created_at DESC`;
 }
 
@@ -333,7 +412,11 @@ export async function getVideoActionMargins(): Promise<Record<string, number>> {
 /** Solde = somme du ledger (append-only : mint/spend/refund/expire). */
 export async function getLedgerBalance(userId: string): Promise<number> {
   const rows = await sql<Array<{ balance: number | null }>>`
-    SELECT COALESCE(SUM(delta), 0)::int AS balance FROM credit_ledger WHERE user_id = ${userId}`;
+    SELECT (
+      COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE user_id = ${userId}), 0)
+      - COALESCE((SELECT SUM(amount) FROM audio_credit_reservations
+                  WHERE user_id = ${userId} AND status = 'reserved'), 0)
+    )::int AS balance`;
   return rows[0]?.balance ?? 0;
 }
 

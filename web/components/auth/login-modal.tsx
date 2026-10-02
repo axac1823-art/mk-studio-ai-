@@ -13,11 +13,16 @@ import { cn } from "@/lib/utils";
 interface LoginModalProps {
   /** If true, the modal is rendered as a standalone page (no close button, full screen). */
   standalone?: boolean;
+  initialMode?: "login" | "signup";
   /** Called when the user closes the modal. */
   onClose?: () => void;
 }
 
-export function LoginModal({ standalone = false, onClose }: LoginModalProps) {
+export function LoginModal({
+  standalone = false,
+  initialMode,
+  onClose,
+}: LoginModalProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -27,6 +32,7 @@ export function LoginModal({ standalone = false, onClose }: LoginModalProps) {
     // Remove the login query param without reloading.
     const params = new URLSearchParams(searchParams.toString());
     params.delete("login");
+    params.delete("mode");
     params.delete("redirectTo");
     const query = params.toString();
     router.replace(query ? `/?${query}` : "/", { scroll: false });
@@ -80,7 +86,7 @@ export function LoginModal({ standalone = false, onClose }: LoginModalProps) {
           {/* Left: form */}
           <div className="flex w-full flex-col items-center justify-center p-8 sm:p-12 lg:w-[55%]">
             <div className="w-full max-w-sm">
-              <AuthForm />
+              <AuthForm initialMode={initialMode} />
             </div>
           </div>
 

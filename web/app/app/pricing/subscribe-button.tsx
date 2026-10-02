@@ -8,13 +8,24 @@ interface SubscribeButtonProps {
   plan: string;
   highlighted: boolean;
   billing: "monthly" | "yearly";
+  isAuthenticated?: boolean;
 }
 
-export function SubscribeButton({ plan, highlighted, billing }: SubscribeButtonProps) {
+export function SubscribeButton({
+  plan,
+  highlighted,
+  billing,
+  isAuthenticated = true,
+}: SubscribeButtonProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function subscribe() {
+    if (!isAuthenticated) {
+      window.location.href = "/signup?redirectTo=%2Fpricing";
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {

@@ -63,7 +63,7 @@ export function AppHeader({ user, balance }: AppHeaderProps) {
           size="sm"
           className="hidden gap-1.5 text-foreground sm:flex"
         >
-          <Link href="/app/pricing">
+          <Link href="/pricing">
             <Zap className="h-4 w-4 text-amber-400" />
             {balance.toLocaleString()} credits
           </Link>
@@ -76,7 +76,7 @@ export function AppHeader({ user, balance }: AppHeaderProps) {
           className="h-9 w-9 sm:hidden"
           aria-label="Credits"
         >
-          <Link href="/app/pricing">
+          <Link href="/pricing">
             <Zap className="h-[1.1rem] w-[1.1rem] text-amber-400" />
           </Link>
         </Button>

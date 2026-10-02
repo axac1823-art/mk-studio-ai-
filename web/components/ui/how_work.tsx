@@ -2053,10 +2053,9 @@ export default function HowItWorks() {
                 "
               >
                 <Image
-                  src="/appartment.png"
+                  src="/appartment.webp"
                   alt="Contemporary apartment architectural visualization"
                   fill
-                  priority
                   sizes="(max-width: 768px) 100vw, 840px"
                   className="object-cover"
                 />

@@ -250,7 +250,7 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
           )}
           title="Credits"
         >
-          <Link href="/app/pricing">
+          <Link href="/pricing">
             <CreditCard className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="hidden md:inline">{balance.toLocaleString()} credits</span>}
           </Link>
