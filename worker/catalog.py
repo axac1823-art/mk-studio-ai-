@@ -388,6 +388,12 @@ IMAGE_EDIT_CANDIDATES: list[Candidate] = [
 
 ANIMATE_CANDIDATES: list[Candidate] = [
     Candidate(
+        "comfyui-minimax-h3", "MiniMax H3 (Local ComfyUI)", "Local MiniMax H3 image-to-video generation",
+        "comfyui", "minimax-h3", 1, 0, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        lambda req: req, extract_video_url,
+        supports_image_to_video=True, supports_start_end_frame=True,
+    ),
+    Candidate(
         "kling-seedance-1.6", "Kling Seedance 1.6", "Kling's latest cinematic video model",
         "kling", "seedance-1.6", 20, 100, 0, VIDEO_TIMEOUT_MS, ("pro",),
         kling_video_input, extract_video_url,

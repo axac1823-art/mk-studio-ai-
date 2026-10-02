@@ -528,17 +528,13 @@ export default function VideoGeneratorPage() {
                 className={cn("w-full rounded-xl bg-black", aspectRatioClass(state.aspectRatio))}
               />
             </div>
-          ) : state.startImagePreview ? (
-            <div className="flex w-full max-w-4xl flex-col items-center gap-4">
-              <div className={cn("relative w-full overflow-hidden rounded-xl border bg-muted", aspectRatioClass(state.aspectRatio))}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={state.startImagePreview}
-                  alt="Start frame preview"
-                  className="h-full w-full object-contain"
-                />
-              </div>
-              <p className="text-sm text-muted-foreground">Start frame preview</p>
+          ) : isBusy ? (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+              <p className="text-lg font-semibold">Generating video…</p>
+              <p className="text-sm text-muted-foreground">
+                This may take a few minutes depending on the complexity of your shots.
+              </p>
             </div>
           ) : isVideoMode ? (
             <div className="flex flex-col items-center gap-4 text-center">
