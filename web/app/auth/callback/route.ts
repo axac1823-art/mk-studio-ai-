@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getSiteUrl } from "@/lib/site-url";
 import sql from "@/lib/db";
 import { createProject } from "@/lib/db/queries";
 
@@ -12,10 +11,9 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type");
   const callbackError = searchParams.get("error");
 
-  const siteUrl = getSiteUrl();
-
+  // Always redirect back to the origin that actually handled the callback.\n  // This prevents stale/misconfigured APP_URL values such as 0.0.0.0:3000\n  // from sending production users to an invalid address.\n  const siteOrigin = new URL(request.url).origin;\n
   if (callbackError) {
-    const loginUrl = new URL("/login", siteUrl);
+    const loginUrl = new URL("/login", siteOrigin);
     loginUrl.searchParams.set("error", "oauth_callback_failed");
     return NextResponse.redirect(loginUrl);
   }
@@ -26,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     if (error || !data.user) {
       console.error("OAuth callback exchange failed:", error);
-      const loginUrl = new URL("/login", siteUrl);
+      const loginUrl = new URL("/login", siteOrigin);
       loginUrl.searchParams.set("error", "oauth_callback_failed");
       return NextResponse.redirect(loginUrl);
     }
@@ -35,10 +33,10 @@ export async function GET(request: NextRequest) {
   }
 
   if (type === "recovery") {
-    return NextResponse.redirect(new URL("/reset-password", siteUrl));
+    return NextResponse.redirect(new URL("/reset-password", siteOrigin));
   }
 
-  return NextResponse.redirect(new URL("/", siteUrl));
+  return NextResponse.redirect(new URL("/", siteOrigin));
 }
 
 async function syncUserFromAuth(authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) {
