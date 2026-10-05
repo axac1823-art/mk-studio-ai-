@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 import sql from "@/lib/db";
 import { createProject } from "@/lib/db/queries";
 
@@ -8,23 +9,36 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const type = searchParams.get("type"); // "recovery" pour reset password
+  const type = searchParams.get("type");
+  const callbackError = searchParams.get("error");
+
+  const siteUrl = getSiteUrl();
+
+  if (callbackError) {
+    const loginUrl = new URL("/login", siteUrl);
+    loginUrl.searchParams.set("error", "oauth_callback_failed");
+    return NextResponse.redirect(loginUrl);
+  }
 
   if (code) {
     const supabase = createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error && data.user) {
-      // S'assure que la ligne public.users existe (OAuth ou confirmation email).
-      await syncUserFromAuth(data.user);
+    if (error || !data.user) {
+      console.error("OAuth callback exchange failed:", error);
+      const loginUrl = new URL("/login", siteUrl);
+      loginUrl.searchParams.set("error", "oauth_callback_failed");
+      return NextResponse.redirect(loginUrl);
     }
+
+    await syncUserFromAuth(data.user);
   }
 
   if (type === "recovery") {
-    return NextResponse.redirect(new URL("/reset-password", request.url));
+    return NextResponse.redirect(new URL("/reset-password", siteUrl));
   }
 
-  return NextResponse.redirect(new URL("/", request.url));
+  return NextResponse.redirect(new URL("/", siteUrl));
 }
 
 async function syncUserFromAuth(authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) {
