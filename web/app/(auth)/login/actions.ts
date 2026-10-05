@@ -34,11 +34,18 @@ function getOAuthOrigin(): string | null {
   if (configured) {
     try {
       const url = new URL(configured);
-      if (url.protocol === "http:" || url.protocol === "https:") {
+      const invalidProductionHost =
+        process.env.VERCEL_ENV === "production" &&
+        ["0.0.0.0", "localhost", "127.0.0.1", "::1"].includes(url.hostname);
+
+      if (
+        !invalidProductionHost &&
+        (url.protocol === "http:" || url.protocol === "https:")
+      ) {
         return url.origin;
       }
     } catch {
-      return null;
+      // Ignore an invalid/stale configured URL and fall back to the request origin.
     }
   }
 
