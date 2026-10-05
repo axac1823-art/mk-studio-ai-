@@ -11,7 +11,11 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type");
   const callbackError = searchParams.get("error");
 
-  // Always redirect back to the origin that actually handled the callback.\n  // This prevents stale/misconfigured APP_URL values such as 0.0.0.0:3000\n  // from sending production users to an invalid address.\n  const siteOrigin = new URL(request.url).origin;\n
+  // Always redirect back to the origin that actually handled the callback.
+  // This prevents stale/misconfigured APP_URL values such as 0.0.0.0:3000
+  // from sending production users to an invalid address.
+  const siteOrigin = new URL(request.url).origin;
+
   if (callbackError) {
     const loginUrl = new URL("/login", siteOrigin);
     loginUrl.searchParams.set("error", "oauth_callback_failed");
@@ -39,7 +43,11 @@ export async function GET(request: NextRequest) {
   return NextResponse.redirect(new URL("/", siteOrigin));
 }
 
-async function syncUserFromAuth(authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) {
+async function syncUserFromAuth(authUser: {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, unknown>;
+}) {
   const email = authUser.email ?? "";
   const fullName = String(authUser.user_metadata?.full_name ?? "");
 
