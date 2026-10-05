@@ -1,26 +1,32 @@
 /**
  * Canonical public site URL.
  *
- * In production this must be an HTTPS public URL. In local development,
- * use the actual local origin instead of a hard-coded LAN address.
+ * In production this must be an HTTPS public URL. Local development can use
+ * localhost, but internal/invalid hosts such as 0.0.0.0 must never become a
+ * public redirect target.
  */
 export function getSiteUrl(): URL {
-  const configuredUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL?.trim(),
+    process.env.NEXT_PUBLIC_SITE_URL?.trim(),
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : null);
+      : null,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+  ].filter(Boolean) as string[];
 
-  if (configuredUrl) {
+  for (const configuredUrl of candidates) {
     try {
       const url = new URL(configuredUrl);
-      if (url.protocol === "http:" || url.protocol === "https:") {
+      const invalidHost = ["0.0.0.0", "::", "localhost", "127.0.0.1", "::1"].includes(
+        url.hostname
+      );
+
+      if (!invalidHost && (url.protocol === "http:" || url.protocol === "https:")) {
         return url;
       }
     } catch {
-      // Fall through to localhost for local development.
+      // Try the next configured URL.
     }
   }
 
