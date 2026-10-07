@@ -22,7 +22,10 @@ export function AppShell({ user, balance, lowThreshold, children }: AppShellProp
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const pathname = usePathname();
   const projectId = pathname.match(/^\/app\/projects\/([^/]+)/)?.[1];
-  const isProjectLibrary = pathname.startsWith("/app/projects");
+  const isProjectLibrary =
+    pathname.startsWith("/app/projects") ||
+    pathname.startsWith("/app/uploads") ||
+    pathname.startsWith("/app/trash");
 
   return (
     <div className="flex min-h-screen w-full">
