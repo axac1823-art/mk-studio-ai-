@@ -6,7 +6,7 @@
 // celui du studio (border-r, actif = bg-accent).
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderOpen, Home, Search, Star, Trash2, Upload } from "lucide-react";
+import { FolderOpen, Home, Search, Trash2, Upload } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { href: "/app/dashboard", label: "Home", icon: Home },
   { href: "/app/search", label: "Search", icon: Search },
   { href: "/app/projects", label: "Projects", icon: FolderOpen },
-  { href: "/app/favorites", label: "Favorites", icon: Star },
   { href: "/app/uploads", label: "Uploads", icon: Upload },
   { href: "/app/trash", label: "Trash", icon: Trash2 },
 ] as const;

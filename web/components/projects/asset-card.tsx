@@ -65,7 +65,7 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
 
   // Pas de logique métier ici : simple bascule de flag côté API, puis
   // notification à la page (qui refetch et fait disparaître la carte si
-  // elle sort du filtre courant — ex. défavoriser dans /app/favorites).
+  // elle sort du filtre courant — par exemple dans Projects > Favorites).
   const patch = async (body: { isFavorite?: boolean; isTrashed?: boolean }) => {
     if (busy) return;
     setBusy(true);

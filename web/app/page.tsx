@@ -5,6 +5,7 @@ import { JobNotificationsProvider } from "@/components/jobs/job-notifications";
 import { SessionTimeout } from "@/components/auth/session-timeout";
 import { LandingPage } from "@/components/landing/landing-page";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import HomePage from "@/components/ui/Hero";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,10 @@ export default async function RootPage({
   const user = await getCurrentUser();
   const params = await searchParams;
   const showLogin = params.login === "true";
+  const showSignup = params.mode === "signup";
 
   if (!user) {
-    return <LandingPage login={showLogin} />;
+    return <LandingPage login={showLogin} signup={showSignup} hero={<HomePage />} />;
   }
 
   const [balance, lowThreshold] = await Promise.all([

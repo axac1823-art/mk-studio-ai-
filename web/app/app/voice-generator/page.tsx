@@ -17,6 +17,7 @@ import {
   computeDisplayCost,
   type CostsConfig,
 } from "@/lib/config/action-costs";
+import { generateUuid } from "@/lib/generate-uuid";
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_TEXT_LENGTH = 5000;
@@ -58,7 +59,7 @@ const EMOTIONS = [
 ];
 
 function createId() {
-  return crypto.randomUUID();
+  return generateUuid();
 }
 
 function createCharacter(
@@ -553,8 +554,7 @@ export default function VoiceGeneratorPage() {
     setError(null);
     setAudioUrl(null);
 
-    idempotencyKeyRef.current ??=
-      crypto.randomUUID();
+    idempotencyKeyRef.current ??= generateUuid();
 
     const form = new FormData();
 

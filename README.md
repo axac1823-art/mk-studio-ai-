@@ -302,3 +302,9 @@ Vérification rapide :
 - Facturation Stripe (Checkout + Customer Portal + webhooks) et plans d'abonnement.
 - Stockage distant S3/Supabase Storage à la place de `worker/storage/`.
 - Queue externe (BullMQ) pour remplacer `BackgroundTasks` à grande échelle.
+
+
+## COMANDE FOR RUIN WORKER 
+ .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000    
+## COMMANDE FOR RUN WEB 
+npm start -- -H 0.0.0.0 

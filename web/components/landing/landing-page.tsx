@@ -1,22 +1,10 @@
-"use client";
-
-import HomePage from "@/components/ui/Hero";
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type ReactNode,
-} from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { RenderuimLogo } from "@/components/icons/renderuim";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ElectricalCircuitOverlay } from "@/components/ui/electrical-circuit-overlay";
+import { LandingActions } from "@/components/landing/landing-actions";
+import { LandingLazySections } from "@/components/landing/landing-lazy-sections";
 
 
 
@@ -34,95 +22,11 @@ import { ElectricalCircuitOverlay } from "@/components/ui/electrical-circuit-ove
 
 
 
-const LoginModal = dynamic(() =>
-  import("@/components/auth/login-modal").then((mod) => mod.LoginModal)
-);
 interface LandingPageProps {
   login?: boolean;
+  signup?: boolean;
+  hero: ReactNode;
 }
-type LazyLoader<TProps extends object> = () => Promise<ComponentType<TProps>>;
-
-function LazyViewportSection<TProps extends object>({
-  id,
-  loader,
-  props,
-  rootMargin = "150px 0px",
-  className = "relative min-h-screen",
-}: {
-  id?: string;
-  loader: LazyLoader<TProps>;
-  props: TProps;
-  rootMargin?: string;
-  className?: string;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [LoadedComponent, setLoadedComponent] =
-    useState<ComponentType<TProps> | null>(null);
-
-  useEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-
-    let cancelled = false;
-
-    const load = async () => {
-      const Component = await loader();
-
-      if (!cancelled) {
-        setLoadedComponent(() => Component);
-      }
-    };
-
-    const isMobile = window.matchMedia("(max-width: 1023px)").matches;
-
-    // Desktop: keep the current behavior.
-    if (!isMobile || !("IntersectionObserver" in window)) {
-      void load();
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          observer.disconnect();
-          void load();
-        }
-      },
-      {
-        rootMargin,
-      }
-    );
-
-    observer.observe(node);
-
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-    };
-  }, [loader, rootMargin]);
-
-  return (
-    <div ref={containerRef} id={id} className={className}>
-      {LoadedComponent ? <LoadedComponent {...props} /> : null}
-    </div>
-  );
-}
-const loadAIShowcase = () =>
-  import("@/components/ui/ai-showcase").then((mod) => mod.default);
-
-const loadToolsArena = () =>
-  import("@/components/ui/tools-arena").then((mod) => mod.ToolsArena);
-
-const loadUseCasesShowcase = () =>
-  import("@/components/ui/use-cases-showcase").then((mod) => mod.default);
-
-const loadIndustriesShowcase = () =>
-  import("@/components/ui/industries-showcase-section").then(
-    (mod) => mod.default
-  );
 function FooterColumn({
   title,
   children,
@@ -139,66 +43,6 @@ function FooterColumn({
     </div>
   );
 }
-function LazyHowItWorks() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [HowItWorksComponent, setHowItWorksComponent] =
-    useState<ComponentType | null>(null);
-
-  useEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-
-    let cancelled = false;
-
-    const load = async () => {
-      const mod = await import("@/components/ui/HowItWorks");
-
-      if (!cancelled) {
-        setHowItWorksComponent(() => mod.default);
-      }
-    };
-
-    // Keep desktop behavior immediate.
-    const isMobile = window.matchMedia("(max-width: 1023px)").matches;
-
-    if (!isMobile || !("IntersectionObserver" in window)) {
-      void load();
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          observer.disconnect();
-          void load();
-        }
-      },
-      {
-        rootMargin: "600px 0px",
-      }
-    );
-
-    observer.observe(node);
-
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <div
-      ref={containerRef}
-      id="how-it-works"
-      className="relative min-h-[400vh]"
-    >
-      {HowItWorksComponent ? <HowItWorksComponent /> : null}
-    </div>
-  );
-}
 function FooterLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
@@ -210,35 +54,11 @@ function FooterLink({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-export function LandingPage({ login = false }: LandingPageProps) {
-  return (
-    <Suspense fallback={<LandingSkeleton />}>
-      <LandingContent initialLogin={login} />
-    </Suspense>
-  );
-}
-
-function LandingSkeleton() {
-  return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-background">
-      <RenderuimLogo showWordmark />
-    </div>
-  );
-}
-
-function LandingContent({ initialLogin }: { initialLogin: boolean }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const showLogin = searchParams.get("login") === "true" || initialLogin;
-
-  const openLogin = useCallback(() => {
-    router.push("/?login=true", { scroll: false });
-  }, [router]);
-
-  const openSignup = useCallback(() => {
-    router.push("/?login=true&mode=signup", { scroll: false });
-  }, [router]);
-
+export function LandingPage({
+  login = false,
+  signup = false,
+  hero,
+}: LandingPageProps) {
   return (
     <>
       <div className="relative min-h-screen w-full overflow-hidden bg-background">
@@ -289,43 +109,18 @@ function LandingContent({ initialLogin }: { initialLogin: boolean }) {
               </nav>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
-                <Button variant="ghost" onClick={openLogin}>
-                  Log in
-                </Button>
-                <Button onClick={openSignup}>Sign up</Button>
+                <LandingActions
+                  initialLogin={login}
+                  initialSignup={signup}
+                />
               </div>
             </div>
           </header>
 
           {/* Hero section */}
-          <HomePage />
+          {hero}
 
-          <LazyViewportSection
-            loader={loadAIShowcase}
-            props={{}}
-            className="relative min-h-screen"
-          />
-
-          <LazyHowItWorks />
-
-          <LazyViewportSection
-            id="tools"
-            loader={loadToolsArena}
-            props={{ onToolClick: openLogin }}
-            className="relative min-h-screen"
-          />
-
-          <LazyViewportSection
-            loader={loadUseCasesShowcase}
-            props={{}}
-            className="relative min-h-screen"
-          />
-
-          <LazyViewportSection
-            loader={loadIndustriesShowcase}
-            props={{ openLogin }}
-            className="relative min-h-screen"
-          />
+          <LandingLazySections />
           <footer
             id="footer"
             data-circuit-section="footer"
@@ -686,14 +481,6 @@ function LandingContent({ initialLogin }: { initialLogin: boolean }) {
         </div>
       </div>
 
-      {showLogin && (
-        <LoginModal
-          initialMode={
-            searchParams.get("mode") === "signup" ? "signup" : "login"
-          }
-          onClose={() => router.push("/", { scroll: false })}
-        />
-      )}
     </>
   );
 }

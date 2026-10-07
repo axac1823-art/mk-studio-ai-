@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 import { createProject } from "@/lib/db/queries";
 import sql from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -21,7 +22,11 @@ export async function signInWithPassword(
 ): Promise<{ error?: string; field?: string } | void> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const redirectTo = String(formData.get("redirectTo") ?? "/");
+  const requestedRedirect = String(formData.get("redirectTo") ?? "/");
+  const redirectPath =
+    requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
+      ? requestedRedirect
+      : "/";
 
   if (!email || !password) {
     return { error: "Email and password are required." };
@@ -56,46 +61,29 @@ export async function signInWithPassword(
   }
 
   revalidatePath("/", "layout");
-  redirect(redirectTo);
+  redirect(new URL(redirectPath, getSiteUrl()).toString());
 }
 
-export async function signInWithGoogle(): Promise<{ error?: string; url?: string }> {
+export async function signInWithGoogle(): Promise<{
+  error?: string;
+  url?: string;
+}> {
   const supabase = createClient();
-  const requestHeaders = headers();
-  const originHeader = requestHeaders.get("origin");
-  const requestHost =
-    requestHeaders.get("x-forwarded-host")?.split(",")[0]?.trim() ||
-    requestHeaders.get("host");
-
-  if (!originHeader || !requestHost) {
-    return { error: "Could not determine the sign-in address." };
-  }
-
-  let origin: URL;
-  try {
-    origin = new URL(originHeader);
-  } catch {
-    return { error: "Could not determine the sign-in address." };
-  }
-
-  if (
-    !["http:", "https:"].includes(origin.protocol) ||
-    origin.username ||
-    origin.password ||
-    origin.host.toLowerCase() !== requestHost.toLowerCase()
-  ) {
-    return { error: "Could not determine the sign-in address." };
-  }
+  const redirectTo = new URL("/auth/callback", getSiteUrl()).toString();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin.origin}/auth/callback`,
+      redirectTo,
     },
   });
 
   if (error || !data.url) {
-    return { error: "Could not start Google sign-in." };
+    console.error("Google OAuth error:", error);
+
+    return {
+      error: "Could not start Google sign-in.",
+    };
   }
 
   return { url: data.url };
@@ -122,11 +110,13 @@ export async function signUp(
   }
 
   const supabase = createClient();
+  const origin = getSiteUrl().origin;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { full_name: fullName },
+      emailRedirectTo: `${origin}/auth/callback`,
     },
   });
 

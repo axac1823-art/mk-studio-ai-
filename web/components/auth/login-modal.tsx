@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 
@@ -25,6 +26,7 @@ export function LoginModal({
 }: LoginModalProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
 
   const handleClose = useCallback(() => {
     if (standalone) return;
@@ -39,6 +41,7 @@ export function LoginModal({
   }, [standalone, onClose, router, searchParams]);
 
   useEffect(() => {
+    setMounted(true);
     if (standalone) return;
 
     function handleEscape(event: KeyboardEvent) {
@@ -53,7 +56,7 @@ export function LoginModal({
     };
   }, [standalone, handleClose]);
 
-  return (
+  const modal = (
     <div
       className={cn(
         "fixed inset-0 z-50 flex items-center justify-center",
@@ -124,4 +127,10 @@ export function LoginModal({
       )}
     </div>
   );
+
+  // The landing header uses backdrop-filter, which creates a containing
+  // block for fixed descendants. Portal the overlay to the document body so
+  // its fixed positioning and centering are relative to the viewport.
+  if (standalone) return modal;
+  return mounted ? createPortal(modal, document.body) : null;
 }
