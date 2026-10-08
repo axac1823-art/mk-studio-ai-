@@ -10,11 +10,8 @@ import {
   Home,
   Image as ImageIcon,
   Menu,
-  Plus,
-  Star,
-  Trash2,
-  Upload,
   Mic,
+  Search,
   Settings,
   Video,
 } from "lucide-react";
@@ -145,35 +142,10 @@ export function AppSidebar({
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2.5 py-3">
-        <ToolPickerPopover defaultTab="image" placement="right">
-          <Button
-            type="button"
-            size="sm"
-            className={cn(
-              "h-9 w-full justify-center gap-2 rounded-lg px-3 text-xs font-semibold shadow-sm",
-              collapsed && "px-0",
-            )}
-            aria-label="Create new"
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="hidden md:inline">Create</span>}
-          </Button>
-        </ToolPickerPopover>
-
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2.5 py-3">
         <nav aria-label="Main navigation" className="flex shrink-0 flex-col gap-0.5">
-          {!collapsed && (
-            <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-              Workspace
-            </p>
-          )}
-          <NavLink
-            href="/app/dashboard"
-            icon={Home}
-            label="Home"
-            active={pathname === "/app/dashboard"}
-            collapsed={collapsed}
-          />
+          <NavLink href="/app/dashboard" icon={Home} label="Home" active={pathname === "/app/dashboard"} collapsed={collapsed} />
+          <NavLink href="/app/search" icon={Search} label="Search" active={pathname.startsWith("/app/search")} collapsed={collapsed} />
           <NavLink
             href="/app/projects"
             icon={FolderOpen}
@@ -184,26 +156,13 @@ export function AppSidebar({
         </nav>
 
         {!collapsed && (
-          <>
-            <section className="hidden shrink-0 flex-col gap-0.5 border-t border-border pt-2 md:flex">
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                Generate
-              </p>
-              <ToolCategoryLink category="image" pathname={pathname} icon={ImageIcon} label="Image" />
-              <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" />
-              <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" />
-              <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" />
-            </section>
-
-            <section className="hidden shrink-0 flex-col gap-0.5 border-t border-border pt-2 md:flex">
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                Library
-              </p>
-              <NavLink href="/app/favorites" icon={Star} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
-              <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
-              <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
-            </section>
-          </>
+          <section className="hidden shrink-0 flex-col gap-0.5 border-t border-border pt-2 md:flex">
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Create</p>
+            <ToolCategoryLink category="image" pathname={pathname} icon={ImageIcon} label="Image" />
+            <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" />
+            <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" />
+            <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" />
+          </section>
         )}
       </div>
 

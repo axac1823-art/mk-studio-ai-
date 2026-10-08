@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import type { DbUser } from "@/lib/db/queries";
 
 interface UserMenuProps {
@@ -67,10 +66,6 @@ export function UserMenu({ user }: UserMenuProps) {
             Pricing
           </Link>
         </DropdownMenuItem>
-        <div className="flex items-center justify-between border-t px-2 py-2">
-          <span className="text-sm text-muted-foreground">Theme</span>
-          <ThemeToggle variant="ghost" size="icon" />
-        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/logout" className="cursor-pointer text-destructive focus:text-destructive">

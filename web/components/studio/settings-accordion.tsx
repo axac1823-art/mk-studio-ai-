@@ -1,5 +1,9 @@
 "use client";
 
+// Panneau "Render Settings" repliable (chevron) : révèle les sous-options
+// propres à la fonctionnalité — pour Print Render : presets de matériau et
+// d'éclairage. D'autres features y ajouteront leurs options (ex. Object
+// Swap : sélecteur de catégorie catalogue).
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
@@ -16,37 +20,32 @@ interface SettingsAccordionProps {
 }
 
 export function SettingsAccordion({
-  label = "Design",
+  label = "Customize Design",
   materialId,
   lightingId,
   onMaterialChange,
   onLightingChange,
 }: SettingsAccordionProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <section className="flex flex-col gap-2" aria-labelledby="design-heading">
+    <div className="rounded-lg border">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
-        className="flex w-full items-center justify-between py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex w-full items-center justify-between p-3 text-left"
       >
-        <span id="design-heading" className="text-sm font-semibold tracking-wide">
-          {label}
-        </span>
+        <span className="text-sm font-medium">{label}</span>
         <ChevronDown
-          className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
-            isOpen && "rotate-180",
-          )}
+          className={cn("h-4 w-4 text-muted-foreground transition-transform", isOpen && "rotate-180")}
         />
       </button>
 
       {isOpen && (
-        <div className="flex flex-col gap-4 border-t pt-3">
+        <div className="flex flex-col gap-4 border-t p-3">
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Material</span>
+            <span className="text-xs font-medium text-muted-foreground">Material style</span>
             <PresetGrid items={MATERIAL_PRESETS} value={materialId} onChange={onMaterialChange} />
           </div>
           <div className="flex flex-col gap-2">
@@ -55,6 +54,6 @@ export function SettingsAccordion({
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }

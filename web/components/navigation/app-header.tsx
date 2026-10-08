@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Bell, Search, Zap } from "lucide-react";
+import { Zap, Bell } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { DashboardSearch } from "@/components/navigation/DashboardSearch";
+import { RenderuimLogo } from "@/components/icons/renderuim";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/navigation/user-menu";
 import { useJobNotifications } from "@/components/jobs/job-notifications";
+import { cn } from "@/lib/utils";
 import type { DbUser } from "@/lib/db/queries";
 
 interface AppHeaderProps {
@@ -40,88 +41,32 @@ function HeaderNotificationBell() {
   );
 }
 
-function getPageContext(pathname: string): string {
-  if (pathname === "/app/dashboard") return "Home";
-  if (pathname.startsWith("/app/projects")) return "Projects";
-  if (
-    pathname.startsWith("/app/favorites") ||
-    pathname.startsWith("/app/uploads") ||
-    pathname.startsWith("/app/trash")
-  ) {
-    return "Library";
-  }
-  if (pathname.startsWith("/app/settings")) return "Settings";
-
-  if (
-    pathname.startsWith("/app/ai-image-generator") ||
-    pathname.startsWith("/app/image-") ||
-    pathname.startsWith("/app/image-generator") ||
-    pathname.startsWith("/app/ambiance-change") ||
-    pathname.startsWith("/app/plan-to-render") ||
-    pathname.startsWith("/app/multi-angle") ||
-    pathname.startsWith("/app/variations") ||
-    pathname.startsWith("/app/upscale") ||
-    pathname.startsWith("/app/background-remover") ||
-    pathname.startsWith("/app/exterior-to-interior")
-  ) return "Image";
-
-  if (
-    pathname.startsWith("/app/ai-video-generator") ||
-    pathname.startsWith("/app/video-") ||
-    pathname.startsWith("/app/clip-editor")
-  ) return "Video";
-
-  if (
-    pathname.startsWith("/app/voice") ||
-    pathname.startsWith("/app/audio")
-  ) return "Audio";
-
-  if (
-    pathname.startsWith("/app/3d") ||
-    pathname.startsWith("/app/3d-generator") ||
-    pathname.startsWith("/app/text-to-3d")
-  ) return "3D";
-
-  return "Workspace";
-}
-
 export function AppHeader({ user, balance }: AppHeaderProps) {
-  const pathname = usePathname();
-  const pageContext = getPageContext(pathname);
-
   return (
-    <header className="sticky top-0 z-30 flex h-14 w-full items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-5">
-      <div className="min-w-0 shrink-0">
-        <span className="truncate text-sm font-medium text-foreground">{pageContext}</span>
-      </div>
+    <header
+      className={cn(
+        "sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      )}
+    >
+      <Link
+        href="/app/dashboard"
+        className="flex items-center gap-2 text-foreground"
+      >
+        <RenderuimLogo className="h-6 w-6" />
+        <span className="hidden font-semibold md:inline">Renderuim</span>
+      </Link>
 
-      <div className="hidden min-w-0 flex-1 justify-center sm:flex">
-        <DashboardSearch compact placeholder="Search tools..." />
-      </div>
-
-      <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
-        <Button
-          asChild
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 sm:hidden"
-          aria-label="Search tools"
-        >
-          <Link href="/app/search">
-            <Search className="h-[1.05rem] w-[1.05rem]" />
-          </Link>
-        </Button>
-
+      <div className="flex items-center gap-1 sm:gap-2">
         <Button
           asChild
           variant="ghost"
           size="sm"
           className="hidden gap-1.5 text-foreground sm:flex"
         >
-          <a href="/pricing">
+          <Link href="/pricing">
             <Zap className="h-4 w-4 text-amber-400" />
             {balance.toLocaleString()} credits
-          </a>
+          </Link>
         </Button>
 
         <Button
@@ -131,12 +76,13 @@ export function AppHeader({ user, balance }: AppHeaderProps) {
           className="h-9 w-9 sm:hidden"
           aria-label="Credits"
         >
-          <a href="/pricing">
+          <Link href="/pricing">
             <Zap className="h-[1.1rem] w-[1.1rem] text-amber-400" />
-          </a>
+          </Link>
         </Button>
 
         <HeaderNotificationBell />
+        <ThemeToggle variant="ghost" size="icon" />
         <UserMenu user={user} />
       </div>
     </header>

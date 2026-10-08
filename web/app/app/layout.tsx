@@ -26,10 +26,6 @@ export default async function AppLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const hasSupabaseConfig = Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
   const { dbUser } = await requireAuth();
   const [balance, lowThreshold] = await Promise.all([
     getLedgerBalance(dbUser.id),
@@ -38,7 +34,7 @@ export default async function AppLayout({
 
   return (
     <JobNotificationsProvider>
-      {hasSupabaseConfig && <SessionTimeout />}
+      <SessionTimeout />
       <AppShell user={dbUser} balance={balance} lowThreshold={lowThreshold}>
         {children}
       </AppShell>

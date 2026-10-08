@@ -56,8 +56,9 @@ export function UpscalePanel({
   onGenerate,
 }: UpscalePanelProps) {
   const hasEnoughCredits = balance === null || balance >= cost;
-  const hasSource = uploadFile !== null || uploadPreviewUrl !== null;
+  const hasSource = uploadFile !== null;
   const canGenerate = hasSource && hasEnoughCredits && !isBusy;
+  const modelName = selectedModel ? models.find((m) => m.key === selectedModel)?.name : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -68,10 +69,6 @@ export function UpscalePanel({
           onFileSelected={(file) => {
             onUploadFileSelected(file, URL.createObjectURL(file));
           }}
-          title="Drop your image"
-          description="or click to browse — PNG, JPEG, WebP up to 10 MB"
-          ariaLabel="Upload an image to upscale"
-          previewAlt="Image to upscale preview"
         />
         {uploadFile && (
           <Button
@@ -89,12 +86,14 @@ export function UpscalePanel({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">Upscale model</span>
-        <Select value={selectedModel || "__auto__"} onValueChange={(value) => onModelChange(value === "__auto__" ? "" : value)} disabled={models.length === 0}>
+        <Select value={selectedModel} onValueChange={onModelChange} disabled={models.length === 0}>
           <SelectTrigger>
-            <SelectValue placeholder={models.length === 0 ? "No upscale models configured" : "Auto (recommended)"} />
+            <SelectValue placeholder={models.length === 0 ? "No upscale models configured" : "Auto (recommended)"}>
+              {modelName ?? "Auto (recommended)"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__auto__">Auto (recommended)</SelectItem>
+            <SelectItem value="">Auto (recommended)</SelectItem>
             {models.map((model) => (
               <SelectItem key={model.key} value={model.key}>
                 <div className="flex flex-col items-start">

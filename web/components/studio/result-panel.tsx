@@ -1,43 +1,25 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import {
-  Download,
-  Expand,
-  Loader2,
-  Minimize2,
-  MoreHorizontal,
-} from "lucide-react";
+// Panneau de résultat : états de chargement (avec étape courante,
+// libellés PRODUIT génériques), comparateur avant/après pour les images,
+// lecteur vidéo pour Animate, et vignettes de variations si quantité > 1.
+import { useState } from "react";
+import { Download, Loader2, MoveHorizontal } from "lucide-react";
 
-import { CompareSlider } from "@/components/compare-slider";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CompareSlider } from "@/components/compare-slider";
 import { saveResult } from "@/lib/download";
 import { cn } from "@/lib/utils";
 
 export type ResultState =
   | { status: "idle" }
   | { status: "busy"; stage?: string }
-  | {
-      status: "done";
-      kind: "image" | "video";
-      beforeUrl: string | null;
-      outputUrls: string[];
-    };
+  | { status: "done"; kind: "image" | "video"; beforeUrl: string | null; outputUrls: string[] };
 
+/** Traduction des étapes internes en libellés utilisateur — toujours
+ *  génériques, jamais de nom de modèle/fournisseur. */
 const STAGE_LABELS: Record<string, string> = {
   render: "Generating your render",
   upscaling: "Upscaling to your selected resolution",
@@ -46,306 +28,87 @@ const STAGE_LABELS: Record<string, string> = {
   merging: "Assembling the final video",
 };
 
-interface NextAction {
-  label: string;
-  href: string;
-}
-
 interface ResultPanelProps {
   result: ResultState;
-  error?: string | null;
-  nextActions?: NextAction[];
 }
 
-function StageFrame({
-  children,
-  fullscreen = false,
-}: {
-  children: ReactNode;
-  fullscreen?: boolean;
-}) {
+function ExampleBeforeAfter() {
   return (
-    <div
-      className={cn(
-        "relative flex min-h-[300px] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/30 sm:min-h-[340px]",
-        !fullscreen && "aspect-[4/3]",
-        fullscreen && "h-full min-h-0 rounded-none border-0 bg-black",
-      )}
-    >
-      {children}
+    <div className="relative aspect-video w-full max-w-xs overflow-hidden rounded-md border">
+      <div className="absolute inset-0 flex">
+        <div className="flex-1 bg-gradient-to-br from-muted to-muted-foreground/20" />
+        <div className="flex-1 bg-gradient-to-bl from-primary/20 to-muted" />
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/50" />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background p-1.5 shadow">
+        <MoveHorizontal className="h-3 w-3 text-muted-foreground" />
+      </div>
+      <div className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">Before</div>
+      <div className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">After</div>
     </div>
   );
 }
 
-function ActionRow({
-  selectedUrl,
-  kind,
-  isFullscreen,
-  onFullscreen,
-}: {
-  selectedUrl: string;
-  kind: "image" | "video";
-  isFullscreen: boolean;
-  onFullscreen: () => void;
-}) {
-  return (
-    <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => void saveResult(selectedUrl, kind)}
-      >
-        <Download className="mr-2 h-4 w-4" />
-        Download
-      </Button>
-
-      {!isFullscreen && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onFullscreen}
-        >
-          <Expand className="mr-2 h-4 w-4" />
-          Fullscreen
-        </Button>
-      )}
-    </div>
-  );
-}
-
-function NextActions({ actions }: { actions: NextAction[] }) {
-  if (actions.length === 0) return null;
-
-  return (
-    <section
-      className="mt-3 border-t pt-3"
-      aria-labelledby="next-actions-heading"
-    >
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <h3
-          id="next-actions-heading"
-          className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground"
-        >
-          What next?
-        </h3>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {actions.slice(0, 3).map((action) => (
-          <Button key={action.href} asChild variant="secondary" size="sm">
-            <Link href={action.href}>{action.label}</Link>
-          </Button>
-        ))}
-
-        {actions.length > 3 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="sm" className="gap-1">
-                More
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {actions.slice(3).map((action) => (
-                <DropdownMenuItem key={action.href} asChild>
-                  <Link href={action.href}>{action.label}</Link>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </section>
-  );
-}
-
-export function ResultPanel({
-  result,
-  error,
-  nextActions = [],
-}: ResultPanelProps) {
+export function ResultPanel({ result }: ResultPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
+  // Sortie actuellement affichée (variation sélectionnée pour les images) —
+  // c'est elle que le bouton Download enregistre.
   const selectedUrl =
-    result.status === "done" && result.outputUrls.length > 0
-      ? result.outputUrls[
-          Math.min(selectedIndex, result.outputUrls.length - 1)
-        ]
+    result.status === "done"
+      ? result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]
       : null;
 
-  const hasImageResult =
-    result.status === "done" &&
-    result.kind === "image" &&
-    Boolean(selectedUrl);
-
-  const hasVideoResult =
-    result.status === "done" &&
-    result.kind === "video" &&
-    Boolean(selectedUrl);
-
-  useEffect(() => {
-    if (!isFullscreen) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsFullscreen(false);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = "";
-    };
-  }, [isFullscreen]);
-
-  useEffect(() => {
-    if (result.status === "done") {
-      setSelectedIndex((current) =>
-        Math.min(current, Math.max(result.outputUrls.length - 1, 0)),
-      );
-    } else {
-      setSelectedIndex(0);
-      setIsFullscreen(false);
-    }
-  }, [result]);
-
-  const heading =
-    result.status === "busy"
-      ? "Preview"
-      : result.status === "done" && result.kind === "video"
-        ? "Video Preview"
-        : result.status === "done"
-          ? "Result"
-          : "Preview";
-
-  const helper =
-    result.status === "done" && result.kind === "image" && result.beforeUrl
-      ? "Compare with the original."
-      : result.status === "busy"
-        ? STAGE_LABELS[result.stage ?? ""] ?? "Working on it"
-        : null;
-
-  const content = (
-    <>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 px-4 py-3 sm:px-5">
-        <div className="min-w-0">
-          <CardTitle className="text-sm font-semibold">{heading}</CardTitle>
-          {helper && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{helper}</p>
-          )}
-        </div>
-
-        {isFullscreen && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            className="absolute right-4 top-4 z-20 h-9 w-9"
-            onClick={() => setIsFullscreen(false)}
-            aria-label="Close fullscreen preview"
-            title="Close fullscreen"
-          >
-            <Minimize2 className="h-4 w-4" />
-          </Button>
-        )}
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Result</CardTitle>
+        <CardDescription>Drag the handle to compare with your original.</CardDescription>
       </CardHeader>
-
-      <CardContent className="px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
-        {error ? (
-          <StageFrame fullscreen={isFullscreen}>
-            <div className="max-w-sm px-6 text-center">
-              <p className="text-sm font-semibold">
-                Unable to generate this result.
-              </p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                {error}
-              </p>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Use the generation controls in this workspace to try again.
-              </p>
-            </div>
-          </StageFrame>
-        ) : result.status === "idle" ? (
-          <StageFrame fullscreen={isFullscreen}>
-            <div className="px-6 text-center">
-              <p className="text-sm font-medium text-muted-foreground">
-                Your result will appear here.
-              </p>
-            </div>
-          </StageFrame>
-        ) : result.status === "busy" ? (
-          <StageFrame fullscreen={isFullscreen}>
-            <div className="flex w-full max-w-md flex-col items-center gap-4 px-6 text-center">
-              <Skeleton className="aspect-[4/3] w-full rounded-lg" />
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {STAGE_LABELS[result.stage ?? ""] ?? "Working on it"}
-              </p>
-            </div>
-          </StageFrame>
-        ) : result.kind === "video" ? (
+      <CardContent className="flex flex-col gap-3">
+        {result.status === "busy" && (
           <>
-            <StageFrame fullscreen={isFullscreen}>
-              {hasVideoResult ? (
-                <video
-                  key={selectedUrl ?? ""}
-                  src={selectedUrl ?? undefined}
-                  controls
-                  playsInline
-                  className="max-h-[70vh] w-full object-contain"
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Your video result will appear here.
-                </p>
-              )}
-            </StageFrame>
+            <Skeleton className=" aspect-[4/3] w-full" />
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {STAGE_LABELS[result.stage ?? ""] ?? "Working on it"} — this can take a moment.
+            </p>
+          </>
+        )}
 
-            {selectedUrl && (
-              <ActionRow
-                selectedUrl={selectedUrl}
-                kind={result.kind}
-                isFullscreen={isFullscreen}
-                onFullscreen={() => setIsFullscreen(true)}
+        {result.status === "idle" && (
+          <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-lg border bg-muted/40 p-6 text-center">
+            <ExampleBeforeAfter />
+            <p className="text-sm text-muted-foreground">Your result will appear here.</p>
+          </div>
+        )}
+
+        {result.status === "done" && result.kind === "video" && (
+          <video
+            key={result.outputUrls[0]}
+            src={result.outputUrls[0]}
+            controls
+            className="aspect-video w-full rounded-lg border bg-black"
+          />
+        )}
+
+        {result.status === "done" && result.kind === "image" && (
+          <>
+            {result.beforeUrl ? (
+              <CompareSlider
+                beforeSrc={result.beforeUrl}
+                afterSrc={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
+                afterLabel="Render"
+              />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
+                alt="Generated render"
+                className="aspect-[4/3] w-full rounded-lg border object-contain [background-color:#e5e7eb] [background-image:linear-gradient(45deg,#cbd5e1_25%,transparent_25%),linear-gradient(-45deg,#cbd5e1_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cbd5e1_75%),linear-gradient(-45deg,transparent_75%,#cbd5e1_75%)] [background-position:0_0,0_8px,8px_-8px,-8px_0] [background-size:16px_16px]"
               />
             )}
-          </>
-        ) : (
-          <>
-            <StageFrame fullscreen={isFullscreen}>
-              {hasImageResult ? (
-                result.beforeUrl ? (
-                  <div className="w-full">
-                    <CompareSlider
-                      beforeSrc={result.beforeUrl}
-                      afterSrc={selectedUrl as string}
-                      afterLabel="Render"
-                    />
-                  </div>
-                ) : (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={selectedUrl as string}
-                    alt="Generated render"
-                    className="max-h-[72vh] w-full object-contain"
-                  />
-                )
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Your image result will appear here.
-                </p>
-              )}
-            </StageFrame>
-
             {result.outputUrls.length > 1 && (
-              <div
-                className="mt-3 flex gap-2 overflow-x-auto pb-1"
-                aria-label="Variations"
-              >
+              <div className="flex flex-wrap gap-2">
                 {result.outputUrls.map((url, index) => (
                   <button
                     key={url}
@@ -354,54 +117,32 @@ export function ResultPanel({
                     aria-pressed={index === selectedIndex}
                     onClick={() => setSelectedIndex(index)}
                     className={cn(
-                      "h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      index === selectedIndex
-                        ? "border-primary ring-1 ring-primary"
-                        : "border-transparent hover:border-muted-foreground/40",
+                      "h-14 w-14 overflow-hidden rounded-md border-2 transition-colors",
+                      index === selectedIndex ? "border-primary" : "border-transparent hover:border-muted-foreground/40"
                     )}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={url}
-                      alt={`Variation ${index + 1}`}
-                      className="h-full w-full object-cover"
-                    />
+                    <img src={url} alt={`Variation ${index + 1}`} className="h-full w-full object-cover" />
                   </button>
                 ))}
               </div>
             )}
-
-            {selectedUrl && (
-              <ActionRow
-                selectedUrl={selectedUrl}
-                kind={result.kind}
-                isFullscreen={isFullscreen}
-                onFullscreen={() => setIsFullscreen(true)}
-              />
-            )}
-
-            {selectedUrl && <NextActions actions={nextActions} />}
           </>
         )}
-      </CardContent>
-    </>
-  );
 
-  return (
-    <Card
-      className={cn(
-        "overflow-hidden",
-        isFullscreen &&
-          "fixed inset-0 z-[100] h-screen w-screen rounded-none border-0 bg-black",
-      )}
-    >
-      {isFullscreen ? (
-        <div className="flex h-full flex-col">
-          <div className="flex-1 overflow-auto">{content}</div>
-        </div>
-      ) : (
-        content
-      )}
+        {result.status === "done" && selectedUrl && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-end"
+            onClick={() => void saveResult(selectedUrl, result.kind)}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Download
+          </Button>
+        )}
+      </CardContent>
     </Card>
   );
 }
