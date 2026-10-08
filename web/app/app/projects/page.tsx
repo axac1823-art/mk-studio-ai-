@@ -26,7 +26,6 @@ import {
 import type { ProjectSummary } from "@/components/projects/project-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 
 type ViewMode = "overview" | "projects" | "assets" | "favorites";
 
