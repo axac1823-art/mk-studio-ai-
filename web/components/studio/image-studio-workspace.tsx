@@ -26,6 +26,7 @@ import {
   type CostsConfig,
 } from "@/lib/config/action-costs";
 import { STUDIO_TABS, type StudioTab } from "@/lib/features";
+import { generateUuid } from "@/lib/generate-uuid";
 import {
   ANGLE_PRESETS,
   EXTENDER_DIRECTION_PRESETS,
@@ -426,7 +427,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     setReferences((current) => [
       ...current,
       ...files.map((file) => ({
-        id: crypto.randomUUID(),
+        id: generateUuid(),
         file,
         previewUrl: URL.createObjectURL(file),
       })),

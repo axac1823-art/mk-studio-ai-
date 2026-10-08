@@ -75,10 +75,35 @@ export async function getCurrentUser(): Promise<DbUser | null> {
     return null;
   }
 
-  const rows = await sql<DbUser[]>`
-    SELECT id, email, display_name, full_name, avatar_url FROM users WHERE id = ${user.id} LIMIT 1
+  return getDbUserForAuthUser(user);
+}
+
+/**
+ * Auth can be moved to a new Supabase project while the app's PostgreSQL
+ * database is retained. In that case Supabase issues a new auth UUID, while
+ * the existing app profile and its projects/jobs keep the old UUID. Resolve
+ * that legacy profile by verified email so its data remains attached to the
+ * account without rewriting foreign keys throughout the database.
+ */
+async function getDbUserForAuthUser(user: {
+  id: string;
+  email?: string;
+  email_confirmed_at?: string | null;
+}): Promise<DbUser | null> {
+  const byId = await sql<DbUser[]>`
+    SELECT id, email, display_name, full_name, avatar_url
+    FROM users WHERE id = ${user.id} LIMIT 1
   `;
-  return rows[0] ?? null;
+  if (byId[0]) return byId[0];
+
+  const email = user.email?.trim().toLowerCase();
+  if (!email || !user.email_confirmed_at) return null;
+
+  const byVerifiedEmail = await sql<DbUser[]>`
+    SELECT id, email, display_name, full_name, avatar_url
+    FROM users WHERE lower(email) = ${email} ORDER BY created_at ASC LIMIT 2
+  `;
+  return byVerifiedEmail.length === 1 ? byVerifiedEmail[0] : null;
 }
 
 export async function requireAuth(): Promise<{ supabaseUser: { id: string; email?: string }; dbUser: DbUser }> {
@@ -104,10 +129,7 @@ export async function requireAuth(): Promise<{ supabaseUser: { id: string; email
     redirect("/login");
   }
 
-  const rows = await sql<DbUser[]>`
-    SELECT id, email, display_name, full_name, avatar_url FROM users WHERE id = ${user.id} LIMIT 1
-  `;
-  const dbUser = rows[0];
+  const dbUser = await getDbUserForAuthUser(user);
   if (!dbUser) {
     redirect("/login");
   }

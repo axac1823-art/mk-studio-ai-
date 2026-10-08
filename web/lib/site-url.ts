@@ -1,34 +1,15 @@
 /**
- * Canonical public site URL.
- *
- * In production this must be an HTTPS public URL. Local development can use
- * localhost, but internal/invalid hosts such as 0.0.0.0 must never become a
- * public redirect target.
+ * URL publique unique du site, utilisée pour les canonicals et les fichiers
+ * destinés aux robots. La variable doit être définie sur le domaine de
+ * production ; Vercel sert de repli quand elle n'est pas renseignée.
  */
 export function getSiteUrl(): URL {
-  const candidates = [
-    process.env.NEXT_PUBLIC_APP_URL?.trim(),
-    process.env.NEXT_PUBLIC_SITE_URL?.trim(),
-    process.env.VERCEL_PROJECT_PRODUCTION_URL
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : null,
-    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-  ].filter(Boolean) as string[];
+      : null);
 
-  for (const configuredUrl of candidates) {
-    try {
-      const url = new URL(configuredUrl);
-      const invalidHost = ["0.0.0.0", "::", "localhost", "127.0.0.1", "::1"].includes(
-        url.hostname
-      );
-
-      if (!invalidHost && (url.protocol === "http:" || url.protocol === "https:")) {
-        return url;
-      }
-    } catch {
-      // Try the next configured URL.
-    }
-  }
-
-  return new URL("http://localhost:3000/");
+  return new URL(configuredUrl ?? "http://192.168.1.4:3000/");
 }

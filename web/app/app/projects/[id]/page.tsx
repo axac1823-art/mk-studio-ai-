@@ -1,100 +1,296 @@
 "use client";
 
-// Détail d'un projet : header (nom + compteur + actions), filtre par type via
-// onglets (refetch avec ?type= — le filtre reste côté API, pas côté
-// client) et grille d'assets. onChanged = refetch : une carte Trashée ou
-// supprimée disparaît d'elle-même au rechargement de la liste.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 
-import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
-import { AssetLayoutControls, assetLayoutClass } from "@/components/projects/asset-layout-controls";
-import { AssetServiceFilter } from "@/components/projects/asset-service-filter";
+import {
+  AssetCard,
+  type AssetSummary,
+} from "@/components/projects/asset-card";
+import {
+  AssetLayoutControls,
+  assetLayoutClass,
+} from "@/components/projects/asset-layout-controls";
+import {
+  AssetServiceFilter,
+} from "@/components/projects/asset-service-filter";
 import { useAssetLayout } from "@/components/projects/use-asset-layout";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
 type TypeFilter = "all" | "image" | "video" | "audio";
 
-export default function ProjectDetailPage({ params }: { params: { id: string } }) {
+function normalizeType(value: string | null): TypeFilter {
+  if (
+    value === "image" ||
+    value === "video" ||
+    value === "audio"
+  ) {
+    return value;
+  }
+
+  return "all";
+}
+
+export default function ProjectDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const filter = normalizeType(searchParams.get("type"));
+  const serviceFilter = searchParams.get("feature") ?? "all";
+
   const [projectName, setProjectName] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
-  const [filter, setFilter] = useState<TypeFilter>("all");
-  const [serviceFilter, setServiceFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const { layout, columns, setLayout, setColumns } = useAssetLayout(`project:${params.id}`);
+
+  const { layout, columns, setLayout, setColumns } =
+    useAssetLayout(`project:${params.id}`);
 
   const fetchProject = useCallback(
     async (type: TypeFilter, service: string) => {
       try {
-        const queryParams = new URLSearchParams();
-        if (type !== "all") queryParams.set("type", type);
-        if (service !== "all") queryParams.set("feature", service);
-        const serializedParams = queryParams.toString();
-        const query = serializedParams ? `?${serializedParams}` : "";
-        const res = await fetch(`/api/projects/${params.id}${query}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as {
-          project: { id: string; name: string };
+        setError(null);
+
+        const query = new URLSearchParams();
+
+        if (type !== "all") {
+          query.set("type", type);
+        }
+
+        if (service !== "all") {
+          query.set("feature", service);
+        }
+
+        const suffix = query.toString()
+          ? `?${query.toString()}`
+          : "";
+
+        const response = await fetch(
+          `/api/projects/${params.id}${suffix}`,
+          {
+            cache: "no-store",
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = (await response.json()) as {
+          project: {
+            id: string;
+            name: string;
+          };
           assets: AssetSummary[];
         };
+
         setProjectName(data.project.name);
         setAssets(data.assets);
-        setError(null);
       } catch {
         setError("Could not load this project.");
+        setAssets(null);
       }
     },
-    [params.id]
+    [params.id],
   );
 
   useEffect(() => {
     void fetchProject(filter, serviceFilter);
   }, [fetchProject, filter, serviceFilter]);
 
+  const updateFilter = (nextType: TypeFilter) => {
+    const params = new URLSearchParams(
+      searchParams.toString(),
+    );
+
+    if (nextType === "all") {
+      params.set("type", "all");
+    } else {
+      params.set("type", nextType);
+    }
+
+    params.delete("feature");
+
+    const query = params.toString();
+
+    router.replace(
+      query ? `${pathname}?${query}` : pathname,
+      { scroll: false },
+    );
+  };
+
+  const updateServiceFilter = (nextService: string) => {
+    const params = new URLSearchParams(
+      searchParams.toString(),
+    );
+
+    if (nextService === "all") {
+      params.delete("feature");
+    } else {
+      params.set("feature", nextService);
+    }
+
+    const query = params.toString();
+
+    router.replace(
+      query ? `${pathname}?${query}` : pathname,
+      { scroll: false },
+    );
+  };
+
   const deleteProject = async () => {
-    if (!window.confirm(`Delete project "${projectName ?? "this project"}" and all its assets? This cannot be undone.`)) {
+    if (!projectName) {
       return;
     }
+
+    const confirmed = window.confirm(
+      `Delete project "${projectName}" and all its assets? This cannot be undone.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setDeleting(true);
+
     try {
-      const res = await fetch(`/api/projects/${params.id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const response = await fetch(
+        `/api/projects/${params.id}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      window.dispatchEvent(new Event("projects:updated"));
       router.push("/app/projects");
     } catch {
-      setError("Could not delete this project.");
+      setError("Could not delete the project.");
       setDeleting(false);
     }
   };
 
+  const activeFilterLabel = useMemo(() => {
+    switch (filter) {
+      case "image":
+        return "Images";
+      case "video":
+        return "Videos";
+      case "audio":
+        return "Audio";
+      default:
+        return "All assets";
+    }
+  }, [filter]);
+
   return (
-    <main className="flex min-h-screen w-full flex-col gap-5 p-4 sm:p-6">
-      <header className="flex flex-col gap-3">
-        <Button asChild variant="ghost" size="sm" className="w-fit gap-2 px-0 text-muted-foreground">
-          <Link href="/app/projects">
-            <ArrowLeft className="h-4 w-4" />
-            All projects 
-          </Link>
-        </Button>
+    <main className="flex min-h-full w-full flex-col gap-5 p-4 sm:p-6 lg:p-7">
+      {/* Header */}
+      <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">{projectName ?? "…"}</h1>
-            <p className="text-sm text-muted-foreground">
-              {assets === null ? "…" : `${assets.length} assets`}
-            </p>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-semibold">
+              {projectName
+                ?.trim()
+                .charAt(0)
+                .toUpperCase() || "P"}
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/app/projects"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Projects
+                </Link>
+
+                <span className="text-xs text-muted-foreground/40">
+                  /
+                </span>
+
+                <span className="truncate text-xs text-muted-foreground">
+                  {projectName ?? "Project"}
+                </span>
+              </div>
+
+              <h1 className="mt-1 truncate text-xl font-semibold tracking-tight">
+                {projectName ?? "Loading project…"}
+              </h1>
+
+              <p className="mt-1 text-sm text-muted-foreground">
+                {assets === null
+                  ? "Loading assets…"
+                  : `${assets.length} ${activeFilterLabel.toLowerCase()}`}
+              </p>
+            </div>
           </div>
+
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            title="Project actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+          <Tabs
+            value={filter}
+            onValueChange={(value) =>
+              updateFilter(value as TypeFilter)
+            }
+          >
+            <TabsList>
+              <TabsTrigger value="all">
+                All
+              </TabsTrigger>
+
+              <TabsTrigger value="image">
+                Images
+              </TabsTrigger>
+
+              <TabsTrigger value="video">
+                Videos
+              </TabsTrigger>
+
+              <TabsTrigger value="audio">
+                Audio
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Button
+            type="button"
+            variant="ghost"
             size="sm"
-            className="gap-2 text-destructive hover:text-destructive"
             disabled={deleting}
             onClick={() => void deleteProject()}
+            className="gap-2 text-muted-foreground hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />
             Delete
@@ -102,50 +298,123 @@ export default function ProjectDetailPage({ params }: { params: { id: string } }
         </div>
       </header>
 
-      <Tabs value={filter} onValueChange={(value) => { setFilter(value as TypeFilter); setServiceFilter("all"); }}>
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="image">Images</TabsTrigger>
-          <TabsTrigger value="video">Videos</TabsTrigger>
-          <TabsTrigger value="audio">Audio</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
       {(filter === "image" || filter === "video") && (
-        <AssetServiceFilter type={filter} value={serviceFilter} onChange={setServiceFilter} />
+        <AssetServiceFilter
+          type={filter}
+          value={serviceFilter}
+          onChange={updateServiceFilter}
+        />
       )}
 
-      <AssetLayoutControls layout={layout} columns={columns} onLayoutChange={setLayout} onColumnsChange={setColumns} />
+      <AssetLayoutControls
+        layout={layout}
+        columns={columns}
+        onLayoutChange={setLayout}
+        onColumnsChange={setColumns}
+      />
 
       {error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p
+          role="alert"
+          className="text-sm text-destructive"
+        >
           {error}
         </p>
       )}
 
       {assets === null ? (
-        <div className={assetLayoutClass(layout)} style={layout === "grid" ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="aspect-[4/3] w-full" />
+        <div
+          className={assetLayoutClass(layout)}
+          style={
+            layout === "grid"
+              ? {
+                  gridTemplateColumns:
+                    `repeat(${columns}, minmax(0, 1fr))`,
+                }
+              : undefined
+          }
+        >
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              className={
+                layout === "grid"
+                  ? "aspect-[4/3] w-full rounded-xl"
+                  : "h-32 w-full rounded-xl"
+              }
+            />
           ))}
         </div>
       ) : assets.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
-          <p className="text-sm font-medium">No assets match these filters</p>
-          <p className="text-sm text-muted-foreground">
-            Try another asset type or service, or generate a new result for this project.
+        <div className="flex flex-1 flex-col items-center justify-center py-20 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent">
+            <FolderEmptyIcon />
+          </div>
+
+          <p className="mt-4 text-sm font-medium">
+            No assets found
           </p>
-          <Button asChild variant="outline" size="sm" className="mt-2">
-            <Link href="/app/ai-image-generator">Open the studio</Link>
+
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            There are no assets matching this filter in this project yet.
+          </p>
+
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="mt-4"
+          >
+            <Link href="/app/ai-image-generator">
+              Create something
+            </Link>
           </Button>
         </div>
       ) : (
-        <div className={assetLayoutClass(layout)} style={layout === "grid" ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}>
+        <div
+          className={assetLayoutClass(layout)}
+          style={
+            layout === "grid"
+              ? {
+                  gridTemplateColumns:
+                    `repeat(${columns}, minmax(0, 1fr))`,
+                }
+              : undefined
+          }
+        >
           {assets.map((asset) => (
-            <AssetCard key={asset.id} asset={asset} layout={layout} onChanged={() => void fetchProject(filter, serviceFilter)} />
+            <AssetCard
+              key={asset.id}
+              asset={asset}
+              layout={layout}
+              onChanged={() =>
+                void fetchProject(
+                  filter,
+                  serviceFilter,
+                )
+              }
+            />
           ))}
         </div>
       )}
     </main>
+  );
+}
+
+function FolderEmptyIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5 text-muted-foreground"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+    >
+      <path
+        d="M3.5 6.5h6l1.6 2h9.4v8.8a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7V6.5Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

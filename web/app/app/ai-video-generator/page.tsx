@@ -23,6 +23,7 @@ import {
   type CostsConfig,
 } from "@/lib/config/action-costs";
 import { findMediaTags, type VideoMode } from "@/lib/video-utils";
+import { generateUuid } from "@/lib/generate-uuid";
 import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 2500;
@@ -123,7 +124,9 @@ export default function VideoGeneratorPage() {
     endImage: null,
     endImagePreview: null,
     attachedMedia: [],
-    shots: [{ id: crypto.randomUUID(), prompt: "", taggedMediaIds: [] }],
+    // Keep server rendering and hydration deterministic; the client effect
+    // assigns a UUID after mount.
+    shots: [{ id: "", prompt: "", taggedMediaIds: [] }],
     duration: 4,
     aspectRatio: "16:9",
     audioEnabled: false,
@@ -148,6 +151,19 @@ export default function VideoGeneratorPage() {
   }, []);
 
   useEffect(() => stopPolling, [stopPolling]);
+
+  useEffect(() => {
+    const initialShotId = generateUuid();
+    setState((current) => {
+      if (!current.shots[0] || current.shots[0].id) return current;
+      return {
+        ...current,
+        shots: current.shots.map((shot, index) =>
+          index === 0 ? { ...shot, id: initialShotId } : shot,
+        ),
+      };
+    });
+  }, []);
 
   useEffect(() => {
     fetchCostsConfig().then(setCostsConfig).catch(() => setCostsConfig(null));
@@ -214,7 +230,7 @@ export default function VideoGeneratorPage() {
   const addShot = useCallback(() => {
     setState((current) => ({
       ...current,
-      shots: [...current.shots, { id: crypto.randomUUID(), prompt: "", taggedMediaIds: [] }],
+      shots: [...current.shots, { id: generateUuid(), prompt: "", taggedMediaIds: [] }],
     }));
   }, []);
 

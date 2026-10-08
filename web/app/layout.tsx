@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { getSiteUrl } from "@/lib/site-url";
+import { CanonicalHostRedirect } from "@/components/auth/canonical-host-redirect";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -84,6 +85,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <CanonicalHostRedirect siteOrigin={getSiteUrl().origin} />
         <ThemeProvider>
           {children}
         </ThemeProvider>

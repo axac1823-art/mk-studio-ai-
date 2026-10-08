@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
+import { getSiteUrl } from "@/lib/site-url";
 import { createProject } from "@/lib/db/queries";
 import sql from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -15,65 +16,17 @@ function getIpFromHeaders() {
   return forwarded ? forwarded.split(",")[0]?.trim() : "unknown";
 }
 
-/**
- * Resolve the public origin used by OAuth.
- *
- * Production must use the configured Vercel/site URL so OAuth never falls
- * back to an internal/local address such as 0.0.0.0:3000.
- * Local development still follows the actual browser origin.
- */
-function getOAuthOrigin(): string | null {
-  const h = headers();
-
-  const configured =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    (process.env.VERCEL_ENV === "production" && process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : null);
-
-  if (configured) {
-    try {
-      const url = new URL(configured);
-      const invalidProductionHost =
-        process.env.VERCEL_ENV === "production" &&
-        ["0.0.0.0", "localhost", "127.0.0.1", "::1"].includes(url.hostname);
-
-      if (
-        !invalidProductionHost &&
-        (url.protocol === "http:" || url.protocol === "https:")
-      ) {
-        return url.origin;
-      }
-    } catch {
-      // Ignore an invalid/stale configured URL and fall back to the request origin.
-    }
-  }
-
-  const forwardedHost = h.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || h.get("host");
-  const forwardedProto = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const proto = forwardedProto || (host?.includes(":3000") ? "http" : "https");
-
-  if (!host || !["http", "https"].includes(proto)) {
-    return null;
-  }
-
-  try {
-    const url = new URL(`${proto}://${host}`);
-    if (url.username || url.password) return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
 export async function signInWithPassword(
   prevState: unknown,
   formData: FormData
 ): Promise<{ error?: string; field?: string } | void> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const redirectTo = String(formData.get("redirectTo") ?? "/");
+  const requestedRedirect = String(formData.get("redirectTo") ?? "/");
+  const redirectPath =
+    requestedRedirect.startsWith("/") && !requestedRedirect.startsWith("//")
+      ? requestedRedirect
+      : "/";
 
   if (!email || !password) {
     return { error: "Email and password are required." };
@@ -108,27 +61,29 @@ export async function signInWithPassword(
   }
 
   revalidatePath("/", "layout");
-  redirect(redirectTo);
+  redirect(new URL(redirectPath, getSiteUrl()).toString());
 }
 
-export async function signInWithGoogle(): Promise<{ error?: string; url?: string }> {
+export async function signInWithGoogle(): Promise<{
+  error?: string;
+  url?: string;
+}> {
   const supabase = createClient();
-  const origin = getOAuthOrigin();
-
-  if (!origin) {
-    return { error: "Could not determine the sign-in address." };
-  }
+  const redirectTo = new URL("/auth/callback", getSiteUrl()).toString();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin}/auth/callback`,
+      redirectTo,
     },
   });
 
   if (error || !data.url) {
-    console.error("Google OAuth start failed:", error);
-    return { error: "Could not start Google sign-in." };
+    console.error("Google OAuth error:", error);
+
+    return {
+      error: "Could not start Google sign-in.",
+    };
   }
 
   return { url: data.url };
@@ -155,11 +110,13 @@ export async function signUp(
   }
 
   const supabase = createClient();
+  const origin = getSiteUrl().origin;
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { full_name: fullName },
+      emailRedirectTo: `${origin}/auth/callback`,
     },
   });
 
@@ -173,6 +130,7 @@ export async function signUp(
   }
 
   try {
+    // Synchronise la ligne utilisateur dans notre schÃ©ma public.
     await sql`
       INSERT INTO users (id, email, display_name)
       VALUES (${user.id}, ${email}, ${fullName})
@@ -180,8 +138,10 @@ export async function signUp(
                                      display_name = EXCLUDED.display_name
     `;
 
+    // Projet par dÃ©faut.
     const project = await createProject(user.id, "General");
 
+    // CrÃ©dits de bienvenue (configurable dans app_config).
     const configRows = await sql<Array<{ value_int: number | null }>>`
       SELECT value_int FROM app_config WHERE key = 'signup_bonus_credits'
     `;
@@ -193,6 +153,7 @@ export async function signUp(
       `;
     }
 
+    // Marque le projet par dÃ©faut comme cover initial (optionnel).
     await sql`
       UPDATE users SET preferences = jsonb_set(
         COALESCE(preferences, '{}'::jsonb),
@@ -201,6 +162,8 @@ export async function signUp(
       ) WHERE id = ${user.id}
     `;
   } catch (err) {
+    // On ne bloque pas l'inscription si la synchro DB Ã©choue ; elle sera
+    // rattrapÃ©e au callback / prochain login.
     console.error("signup sync failed", err);
   }
 

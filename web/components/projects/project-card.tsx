@@ -23,17 +23,15 @@ interface ProjectCardProps {
   /** Appelé après confirmation — la page refetch sa liste. */
   onDelete?: (projectId: string) => void;
   layout?: "grid" | "list";
-  /** Home variant: compact visual card with a 16:9 cover. */
-  home?: boolean;
 }
 
-export function ProjectCard({ project, onDelete, layout = "grid", home = false }: ProjectCardProps) {
+export function ProjectCard({ project, onDelete, layout = "grid" }: ProjectCardProps) {
   const hasCover = Boolean(project.coverUrl);
 
   return (
-    <Card className={cn("group relative overflow-hidden transition-all hover:ring-1 hover:ring-foreground/20", layout === "list" && "flex min-h-32 flex-row", home && "rounded-xl")}>
+    <Card className={cn("group relative overflow-hidden transition-all hover:ring-1 hover:ring-foreground/20", layout === "list" && "flex min-h-32 flex-row")}>
       <Link href={`/app/projects/${project.id}`} className={cn("block", layout === "list" && "flex flex-1")}>
-        <div className={cn("relative overflow-hidden bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : home ? "aspect-[16/9]" : "aspect-[4/3]")}>
+        <div className={cn("relative overflow-hidden bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]")}>
           {hasCover ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
