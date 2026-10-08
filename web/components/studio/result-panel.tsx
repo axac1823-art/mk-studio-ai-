@@ -149,7 +149,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
               <p className="text-sm font-semibold">Unable to generate this result.</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>
               <p className="mt-3 text-xs text-muted-foreground">
-                Use the Generate button below to try again.
+                Use the generation controls in this workspace to try again.
               </p>
             </div>
           </StageFrame>
@@ -172,15 +172,30 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
             </div>
           </StageFrame>
         ) : result.kind === "video" ? (
-          <StageFrame>
-            <video
-              key={selectedUrl ?? result.outputUrls[0]}
-              src={selectedUrl ?? result.outputUrls[0]}
-              controls
-              playsInline
-              className="max-h-[70vh] w-full object-contain"
-            />
-          </StageFrame>
+          <>
+            <StageFrame>
+              <video
+                key={selectedUrl ?? result.outputUrls[0]}
+                src={selectedUrl ?? result.outputUrls[0]}
+                controls
+                playsInline
+                className="max-h-[70vh] w-full object-contain"
+              />
+            </StageFrame>
+            {selectedUrl && (
+              <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void saveResult(selectedUrl, result.kind)}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <StageFrame>
