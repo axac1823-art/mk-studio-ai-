@@ -124,9 +124,9 @@ export function DashboardContent() {
               </Button>
             </div>
           ) : projects === null ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible xl:grid-cols-3">
               {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="overflow-hidden rounded-xl border bg-card">
+                <div key={index} className="min-w-[280px] shrink-0 overflow-hidden rounded-xl border bg-card sm:min-w-0">
                   <Skeleton className="aspect-[16/9] w-full rounded-none" />
                   <div className="space-y-2 p-3.5">
                     <Skeleton className="h-4 w-2/3" />
@@ -148,9 +148,10 @@ export function DashboardContent() {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible xl:grid-cols-3">
               {recentProjects.map((project) => (
-                <ProjectCard key={project.id} project={project} layout="grid" home />
+                <div key={project.id} className="min-w-[280px] shrink-0 sm:min-w-0">
+                  <ProjectCard key={project.id} project={project} layout="grid" home />
               ))}
             </div>
           )}
@@ -158,9 +159,11 @@ export function DashboardContent() {
 
         <section aria-labelledby="start-workflow" className="mt-8 space-y-3">
           <WorkflowSectionHeader />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible xl:grid-cols-3">
             {WORKFLOWS.map((workflow) => (
-              <WorkflowCard key={workflow.href} {...workflow} />
+              <div key={workflow.href} className="min-w-[280px] shrink-0 sm:min-w-0">
+                <WorkflowCard {...workflow} />
+              </div>
             ))}
           </div>
         </section>
