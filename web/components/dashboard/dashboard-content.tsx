@@ -9,6 +9,7 @@ import { ProjectCard, type ProjectSummary } from "@/components/projects/project-
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WorkflowCard } from "@/components/dashboard/workflow-card";
+import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -156,7 +157,7 @@ export function DashboardContent() {
         </section>
 
         <section aria-labelledby="start-workflow" className="mt-8 space-y-3">
-          <SectionHeader title="Start a Workflow" href="/app/dashboard" />
+          <WorkflowSectionHeader />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {WORKFLOWS.map((workflow) => (
               <WorkflowCard key={workflow.href} {...workflow} />
@@ -214,6 +215,23 @@ export function DashboardContent() {
         </section>
       </div>
     </main>
+  );
+}
+
+function WorkflowSectionHeader() {
+  return (
+    <div className="flex items-center justify-between">
+      <h2 className="text-sm font-semibold tracking-wide">Start a Workflow</h2>
+      <ToolPickerPopover defaultTab="image" placement="bottom">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          View all
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </ToolPickerPopover>
+    </div>
   );
 }
 
