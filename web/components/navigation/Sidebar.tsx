@@ -1,8 +1,7 @@
 "use client";
 
-// Sidebar persistente de la section /app.
-// Réutilise le même ToolPickerPopover que le dashboard pour les déclencheurs
-// "+" rapides et les catégories Image/Video.
+// Persistent /app sidebar. The structure stays the same; visual grouping
+// clarifies navigation versus creation, generation tools, library and system.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,7 +12,6 @@ import {
   Menu,
   Mic,
   Plus,
-  Search,
   Settings,
   Star,
   Trash2,
@@ -35,15 +33,6 @@ const IMAGE_ROUTES = TOOLS.filter((tool) => tool.category === "image").map((tool
 const VIDEO_ROUTE = TOOLS.find((tool) => tool.category === "video")?.route ?? "/app/ai-video-generator";
 const AUDIO_ROUTE = TOOLS.find((tool) => tool.category === "audio")?.route ?? "/app/voice-generator";
 const THREED_ROUTE = TOOLS.find((tool) => tool.category === "3d")?.route ?? "/app/3d-generator";
-
-const TOP_LINK_ITEMS = [
-  { href: "/app/dashboard", label: "Home", icon: Home },
-  { href: "/app/search", label: "Search", icon: Search },
-  { href: "/app/projects", label: "Projects", icon: FolderOpen },
-  { href: "/app/favorites", label: "Favorites", icon: Star },
-  { href: "/app/uploads", label: "Uploads", icon: Upload },
-  { href: "/app/trash", label: "Trash", icon: Trash2 },
-] as const;
 
 interface NavLinkProps {
   href: string;
@@ -73,6 +62,19 @@ function NavLink({ href, icon: Icon, label, active, collapsed }: NavLinkProps) {
         {!collapsed && <span className="hidden md:inline">{label}</span>}
       </Link>
     </Button>
+  );
+}
+
+function NavSectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed: boolean }) {
+  return (
+    <div
+      className={cn(
+        "px-3 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground",
+        collapsed && "px-0 text-center md:hidden"
+      )}
+    >
+      {!collapsed && <span className="hidden md:inline">{children}</span>}
+    </div>
   );
 }
 
@@ -108,10 +110,7 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
           )}
         >
           {!collapsed && (
-            <Link
-              href="/app/dashboard"
-              className="flex items-center gap-2 text-foreground"
-            >
+            <Link href="/app/dashboard" className="flex items-center gap-2 text-foreground">
               <RenderuimLogo className="h-6 w-6 shrink-0" />
               <span className="hidden font-semibold md:inline">Renderuim</span>
             </Link>
@@ -145,17 +144,23 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
-        {TOP_LINK_ITEMS.map(({ href, label, icon }) => (
-          <NavLink
-            key={href}
-            href={href}
-            icon={icon}
-            label={label}
-            active={pathname.startsWith(href)}
-            collapsed={collapsed}
-          />
-        ))}
+        <NavSectionLabel collapsed={collapsed}>Workspace</NavSectionLabel>
+        <NavLink
+          href="/app/dashboard"
+          icon={Home}
+          label="Home"
+          active={pathname.startsWith("/app/dashboard")}
+          collapsed={collapsed}
+        />
+        <NavLink
+          href="/app/projects"
+          icon={FolderOpen}
+          label="Projects"
+          active={pathname.startsWith("/app/projects")}
+          collapsed={collapsed}
+        />
 
+        <NavSectionLabel collapsed={collapsed}>Generate</NavSectionLabel>
         <ToolPickerPopover category="image" placement="right">
           <Button
             type="button"
@@ -196,6 +201,26 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
           </Button>
         </ToolPickerPopover>
 
+        <ToolPickerPopover category="3d" placement="right">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-9 w-full items-center justify-center gap-3 px-3 transition-colors",
+              collapsed ? "px-0" : "md:justify-start",
+              is3dActive
+                ? "bg-accent text-foreground hover:bg-accent"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+            )}
+            aria-label="3D tools"
+            title="3D"
+          >
+            <Box className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="hidden md:inline">3D</span>}
+          </Button>
+        </ToolPickerPopover>
+
         <ToolPickerPopover category="audio" placement="right">
           <Button
             type="button"
@@ -216,28 +241,14 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
           </Button>
         </ToolPickerPopover>
 
-        <ToolPickerPopover category="3d" placement="right">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-9 w-full items-center justify-center gap-3 px-3 transition-colors",
-              collapsed ? "px-0" : "md:justify-start",
-              is3dActive
-                ? "bg-accent text-foreground hover:bg-accent"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-            )}
-            aria-label="3D tools"
-            title="3D"
-          >
-            <Box className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="hidden md:inline">3D</span>}
-          </Button>
-        </ToolPickerPopover>
+        <NavSectionLabel collapsed={collapsed}>Library</NavSectionLabel>
+        <NavLink href="/app/favorites" icon={Star} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
+        <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
+        <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 overflow-hidden p-3">
+        <NavSectionLabel collapsed={collapsed}>System</NavSectionLabel>
         <CreditAlert balance={balance} threshold={lowThreshold} />
 
         <Button
@@ -266,18 +277,12 @@ export function AppSidebar({ user, balance, lowThreshold, open, onToggle }: AppS
 
         <div className={cn("hidden flex-col gap-1 border-t pt-3", !collapsed && "md:flex")}>
           <p className="truncate px-3 text-xs text-muted-foreground">{user.email}</p>
-          <LogoutButton
-            collapsed={collapsed}
-            className="h-9 w-full items-center justify-start px-3"
-          />
+          <LogoutButton collapsed={collapsed} className="h-9 w-full items-center justify-start px-3" />
         </div>
 
         <LogoutButton
           collapsed={collapsed}
-          className={cn(
-            "h-9 w-full items-center justify-center px-3 md:hidden",
-            collapsed && "px-0"
-          )}
+          className={cn("h-9 w-full items-center justify-center px-3 md:hidden", collapsed && "px-0")}
           aria-label="Sign out"
         />
       </div>
