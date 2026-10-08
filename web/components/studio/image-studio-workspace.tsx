@@ -6,8 +6,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationControls } from "@/components/studio/generation-controls";
 import { ImageFeaturePanel } from "@/components/studio/image-feature-panel";
@@ -19,6 +17,7 @@ import { SceneTypePicker } from "@/components/studio/scene-type-picker";
 import { SettingsAccordion } from "@/components/studio/settings-accordion";
 import { UpscalePanel } from "@/components/studio/upscale-panel";
 import { UploadDropzone } from "@/components/upload-dropzone";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   computeDisplayCost,
   fetchCostsConfig,
@@ -194,6 +193,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
   const [selectedSourceAsset, setSelectedSourceAsset] = useState<AssetItem | null>(null);
 
   // --- Print Render ---
@@ -277,12 +277,15 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const refreshAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
     if (!projectId) {
       setAssets([]);
+      setAssetsLoading(false);
       return;
     }
+    setAssetsLoading(true);
     fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
       .then((res) => res.json())
       .then((data) => setAssets(Array.isArray(data.assets) ? data.assets : []))
-      .catch(() => setAssets([]));
+      .catch(() => setAssets([]))
+      .finally(() => setAssetsLoading(false));
   }, []);
 
   // Chargement initial : solde, coûts, projets, modèles upscale.
@@ -697,67 +700,58 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         <section className="min-w-0 flex flex-col gap-4 pb-3">
           <ResultPanel result={result} error={error} />
 
-          <Card>
-            <CardHeader className="px-4 py-3 sm:px-5">
-              <CardTitle className="text-sm">
-                {result.status === "idle" ? `Previous ${title} results` : `More ${title} results`}
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Select a previous result to use as the source image.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 px-4 pb-4 sm:px-5">
-              {selectedSourceAsset && (
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-xs">
-                  <span>Project image selected as the source.</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setSelectedSourceAsset(null)}
-                  >
-                    Remove selection
-                  </Button>
-                </div>
+          <section className="min-w-0 border-t pt-3" aria-labelledby="history-heading">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 id="history-heading" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                History
+              </h2>
+              {assets.length > 0 && (
+                <span className="text-[11px] text-muted-foreground">
+                  {assets.length} {assets.length === 1 ? "result" : "results"}
+                </span>
               )}
+            </div>
 
-              {assets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No previous results for this feature in the selected project yet.
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {assets.map((asset) => (
-                    <div
-                      key={asset.id}
-                      className={cn(
-                        "rounded-lg border p-1.5",
-                        selectedSourceAsset?.id === asset.id && "border-primary",
-                      )}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={asset.url}
-                        alt="Previous feature result"
-                        className="aspect-[4/3] w-full rounded-md object-cover"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={selectedSourceAsset?.id === asset.id ? "default" : "outline"}
-                        className="mt-2 w-full"
-                        onClick={() => selectSourceAsset(asset)}
-                      >
-                        {selectedSourceAsset?.id === asset.id
-                          ? "Selected as source"
-                          : "Use as source"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            {assetsLoading ? (
+              <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Loading history">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <Skeleton key={index} className="h-16 w-20 shrink-0 rounded-lg" />
+                ))}
+              </div>
+            ) : assets.length === 0 ? (
+              <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-center">
+                <p className="text-xs font-medium text-muted-foreground">No previous results yet.</p>
+              </div>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Previous results">
+                {assets.slice(0, 6).map((asset, index) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    aria-label={`Use history result ${index + 1} as source`}
+                    aria-pressed={selectedSourceAsset?.id === asset.id}
+                    onClick={() => selectSourceAsset(asset)}
+                    className={`group relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      selectedSourceAsset?.id === asset.id
+                        ? "border-primary ring-1 ring-primary"
+                        : "border-transparent hover:border-muted-foreground/40"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={asset.url}
+                      alt=""
+                      className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.03]"
+                      loading="lazy"
+                    />
+                    <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                      {selectedSourceAsset?.id === asset.id ? "Selected" : "Use as source"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
         </section>
       </div>
 
