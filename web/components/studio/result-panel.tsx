@@ -1,16 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Download, Expand, Loader2, Minimize2, MoreHorizontal } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Download,
+  Expand,
+  Loader2,
+  Minimize2,
+  MoreHorizontal,
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
 import { CompareSlider } from "@/components/compare-slider";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { saveResult } from "@/lib/download";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 
 export type ResultState =
   | { status: "idle" }
@@ -45,13 +61,14 @@ function StageFrame({
   children,
   fullscreen = false,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   fullscreen?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "relative flex min-h-[320px] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/30",
+        "relative flex min-h-[300px] w-full items-center justify-center overflow-hidden rounded-xl border bg-muted/30 sm:min-h-[340px]",
+        !fullscreen && "aspect-[4/3]",
         fullscreen && "h-full min-h-0 rounded-none border-0 bg-black",
       )}
     >
@@ -60,14 +77,114 @@ function StageFrame({
   );
 }
 
-export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProps) {
+function ActionRow({
+  selectedUrl,
+  kind,
+  isFullscreen,
+  onFullscreen,
+}: {
+  selectedUrl: string;
+  kind: "image" | "video";
+  isFullscreen: boolean;
+  onFullscreen: () => void;
+}) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => void saveResult(selectedUrl, kind)}
+      >
+        <Download className="mr-2 h-4 w-4" />
+        Download
+      </Button>
+
+      {!isFullscreen && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onFullscreen}
+        >
+          <Expand className="mr-2 h-4 w-4" />
+          Fullscreen
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function NextActions({ actions }: { actions: NextAction[] }) {
+  if (actions.length === 0) return null;
+
+  return (
+    <section
+      className="mt-3 border-t pt-3"
+      aria-labelledby="next-actions-heading"
+    >
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3
+          id="next-actions-heading"
+          className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+        >
+          What next?
+        </h3>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {actions.slice(0, 3).map((action) => (
+          <Button key={action.href} asChild variant="secondary" size="sm">
+            <Link href={action.href}>{action.label}</Link>
+          </Button>
+        ))}
+
+        {actions.length > 3 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="gap-1">
+                More
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {actions.slice(3).map((action) => (
+                <DropdownMenuItem key={action.href} asChild>
+                  <Link href={action.href}>{action.label}</Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function ResultPanel({
+  result,
+  error,
+  nextActions = [],
+}: ResultPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const selectedUrl =
     result.status === "done" && result.outputUrls.length > 0
-      ? result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]
+      ? result.outputUrls[
+          Math.min(selectedIndex, result.outputUrls.length - 1)
+        ]
       : null;
+
+  const hasImageResult =
+    result.status === "done" &&
+    result.kind === "image" &&
+    Boolean(selectedUrl);
+
+  const hasVideoResult =
+    result.status === "done" &&
+    result.kind === "video" &&
+    Boolean(selectedUrl);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -92,6 +209,7 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
       );
     } else {
       setSelectedIndex(0);
+      setIsFullscreen(false);
     }
   }, [result]);
 
@@ -140,8 +258,12 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
         {error ? (
           <StageFrame fullscreen={isFullscreen}>
             <div className="max-w-sm px-6 text-center">
-              <p className="text-sm font-semibold">Unable to generate this result.</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>
+              <p className="text-sm font-semibold">
+                Unable to generate this result.
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {error}
+              </p>
               <p className="mt-3 text-xs text-muted-foreground">
                 Use the generation controls in this workspace to try again.
               </p>
@@ -168,119 +290,62 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
         ) : result.kind === "video" ? (
           <>
             <StageFrame fullscreen={isFullscreen}>
-              <video
-                key={selectedUrl ?? result.outputUrls[0]}
-                src={selectedUrl ?? result.outputUrls[0]}
-                controls
-                playsInline
-                className="max-h-[70vh] w-full object-contain"
-              />
+              {hasVideoResult ? (
+                <video
+                  key={selectedUrl ?? ""}
+                  src={selectedUrl ?? undefined}
+                  controls
+                  playsInline
+                  className="max-h-[70vh] w-full object-contain"
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Your video result will appear here.
+                </p>
+              )}
             </StageFrame>
-            {selectedUrl && (
-              <>
-                <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void saveResult(selectedUrl, result.kind)}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download
-                  </Button>
-                  {!isFullscreen && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsFullscreen(true)}
-                    >
-                      <Expand className="mr-2 h-4 w-4" />
-                      Fullscreen
-                    </Button>
-                  )}
-                </div>
 
-                {result.kind === "image" && nextActions.length > 0 && (
-                  <section className="mt-3 border-t pt-3" aria-labelledby="next-actions-heading">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <h3 id="next-actions-heading" className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                        What next?
-                      </h3>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {nextActions.slice(0, 3).map((action) => (
-                        <Button key={action.href} asChild variant="secondary" size="sm">
-                          <Link href={action.href}>{action.label}</Link>
-                        </Button>
-                      ))}
-                      {nextActions.length > 3 && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="sm" className="gap-1">
-                              More
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {nextActions.slice(3).map((action) => (
-                              <DropdownMenuItem key={action.href} asChild>
-                                <Link href={action.href}>{action.label}</Link>
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                  </section>
-                )}
-              </>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void saveResult(selectedUrl, result.kind)}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
-                </Button>
-                {!isFullscreen && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsFullscreen(true)}
-                  >
-                    <Expand className="mr-2 h-4 w-4" />
-                    Fullscreen
-                  </Button>
-                )}
-              </div>
+            {selectedUrl && (
+              <ActionRow
+                selectedUrl={selectedUrl}
+                kind={result.kind}
+                isFullscreen={isFullscreen}
+                onFullscreen={() => setIsFullscreen(true)}
+              />
             )}
           </>
         ) : (
           <>
             <StageFrame fullscreen={isFullscreen}>
-              {result.beforeUrl ? (
-                <div className="w-full">
-                  <CompareSlider
-                    beforeSrc={result.beforeUrl}
-                    afterSrc={selectedUrl ?? result.outputUrls[0]}
-                    afterLabel="Render"
+              {hasImageResult ? (
+                result.beforeUrl ? (
+                  <div className="w-full">
+                    <CompareSlider
+                      beforeSrc={result.beforeUrl}
+                      afterSrc={selectedUrl as string}
+                      afterLabel="Render"
+                    />
+                  </div>
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={selectedUrl as string}
+                    alt="Generated render"
+                    className="max-h-[72vh] w-full object-contain"
                   />
-                </div>
+                )
               ) : (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={selectedUrl ?? result.outputUrls[0]}
-                  alt="Generated render"
-                  className="max-h-[72vh] w-full object-contain"
-                />
+                <p className="text-sm text-muted-foreground">
+                  Your image result will appear here.
+                </p>
               )}
             </StageFrame>
 
             {result.outputUrls.length > 1 && (
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Variations">
+              <div
+                className="mt-3 flex gap-2 overflow-x-auto pb-1"
+                aria-label="Variations"
+              >
                 {result.outputUrls.map((url, index) => (
                   <button
                     key={url}
@@ -307,9 +372,15 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
             )}
 
             {selectedUrl && (
-              <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
-              </>
+              <ActionRow
+                selectedUrl={selectedUrl}
+                kind={result.kind}
+                isFullscreen={isFullscreen}
+                onFullscreen={() => setIsFullscreen(true)}
+              />
             )}
+
+            {selectedUrl && <NextActions actions={nextActions} />}
           </>
         )}
       </CardContent>
@@ -317,7 +388,13 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
   );
 
   return (
-    <Card className={cn("overflow-hidden", isFullscreen && "fixed inset-0 z-[100] h-screen w-screen rounded-none border-0 bg-black")}>
+    <Card
+      className={cn(
+        "overflow-hidden",
+        isFullscreen &&
+          "fixed inset-0 z-[100] h-screen w-screen rounded-none border-0 bg-black",
+      )}
+    >
       {isFullscreen ? (
         <div className="flex h-full flex-col">
           <div className="flex-1 overflow-auto">{content}</div>
