@@ -564,7 +564,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
 
   const resultAssetId =
     result.status === "done" && result.outputUrls.length > 0
-      ? assets.find((asset) => asset.url === result.outputUrls[Math.min(result.outputUrls.length - 1, 0)])?.id ?? null
+      ? assets.find((asset) => result.outputUrls.includes(asset.url))?.id ?? null
       : null;
 
   const nextActionDefinitions = [
