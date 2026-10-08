@@ -58,7 +58,6 @@ export function UpscalePanel({
   const hasEnoughCredits = balance === null || balance >= cost;
   const hasSource = uploadFile !== null || uploadPreviewUrl !== null;
   const canGenerate = hasSource && hasEnoughCredits && !isBusy;
-  const modelName = selectedModel ? models.find((m) => m.key === selectedModel)?.name : null;
 
   return (
     <div className="flex flex-col gap-4">
