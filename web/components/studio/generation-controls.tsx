@@ -77,7 +77,6 @@ export function GenerationControls({
 }: GenerationControlsProps) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const hasEnoughCredits = balance === null || balance >= cost;
-  const modelName = model ? models.find((m) => m.key === model)?.name : null;
 
   return (
     <div className="sticky bottom-0 z-20 -mx-4 border-t bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:-mx-6 sm:px-6">
