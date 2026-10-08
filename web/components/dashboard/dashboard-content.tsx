@@ -1,107 +1,3 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, Image as ImageIcon, Wand2 } from "lucide-react";
-
-import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
-import { ProjectCard, type ProjectSummary } from "@/components/projects/project-card";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { WorkflowCard } from "@/components/dashboard/workflow-card";
-import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
-
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 6) return "Good night";
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-const WORKFLOWS = [
-  {
-    title: "Render",
-    description: "Create a visual render from your source.",
-    href: "/app/ai-image-generator",
-    image: "/image-960.webp",
-  },
-  {
-    title: "Plan → Render",
-    description: "Turn a floor plan into a visualization.",
-    href: "/app/plan-to-render",
-    image: "/appartment.webp",
-  },
-  {
-    title: "Change Atmosphere",
-    description: "Explore different lighting and mood.",
-    href: "/app/ambiance-change",
-    image: "/hero.webp",
-  },
-  {
-    title: "Multi-Angle",
-    description: "Generate additional design views.",
-    href: "/app/multi-angle",
-    image: "/image.webp",
-  },
-  {
-    title: "Image → Video",
-    description: "Animate an architectural image.",
-    href: "/app/ai-video-generator",
-    image: "/hero_white.webp",
-  },
-  {
-    title: "Image → 3D",
-    description: "Create a 3D asset from an image.",
-    href: "/app/3d-generator",
-    image: "/mobile_hero.webp",
-  },
-] as const;
-
-export function DashboardContent() {
-  const [greeting, setGreeting] = useState("Good morning");
-  const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  const [assets, setAssets] = useState<AssetSummary[] | null>(null);
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [assetError, setAssetError] = useState<string | null>(null);
-
-  const fetchProjects = useCallback(async () => {
-    try {
-      const res = await fetch("/api/projects");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        projects: Array<ProjectSummary & { updatedAt?: string }>;
-      };
-      setProjects(data.projects);
-      setProjectError(null);
-    } catch {
-      setProjectError("Unable to load projects");
-    }
-  }, []);
-
-  const fetchAssets = useCallback(async () => {
-    try {
-      const res = await fetch("/api/assets");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { assets: AssetSummary[] };
-      setAssets(data.assets.slice().reverse().slice(0, 6));
-      setAssetError(null);
-    } catch {
-      setAssetError("Unable to load recent work");
-    }
-  }, []);
-
-  useEffect(() => {
-    setGreeting(getGreeting());
-    void fetchProjects();
-    void fetchAssets();
-  }, [fetchProjects, fetchAssets]);
-
-  const recentProjects = projects?.slice(0, 3) ?? [];
-
-  return (
-    <main className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col">
         <section aria-labelledby="home-greeting" className="pb-6">
           <h1
             id="home-greeting"
@@ -151,7 +47,8 @@ export function DashboardContent() {
             <div className="flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible xl:grid-cols-3">
               {recentProjects.map((project) => (
                 <div key={project.id} className="min-w-[280px] shrink-0 sm:min-w-0">
-                  <ProjectCard key={project.id} project={project} layout="grid" home />
+                  <ProjectCard project={project} layout="grid" home />
+                </div>
               ))}
             </div>
           )}
@@ -201,11 +98,14 @@ export function DashboardContent() {
                     Start a Render
                   </Link>
                 </Button>
-                <Button asChild variant="outline" size="sm">
-                  <Link href="/app/projects">
+                <ToolPickerPopover defaultTab="image" placement="bottom">
+                  <button
+                    type="button"
+                    className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
                     Explore tools
-                  </Link>
-                </Button>
+                  </button>
+                </ToolPickerPopover>
               </div>
             </div>
           ) : (
@@ -248,7 +148,3 @@ function SectionHeader({ title, href }: { title: string; href: string }) {
       >
         View all
         <ArrowRight className="h-3.5 w-3.5" />
-      </Link>
-    </div>
-  );
-}
