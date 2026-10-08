@@ -9,6 +9,8 @@ interface SourceAsset {
   id: string;
   url: string;
   type: "image" | "video";
+  isFavorite: boolean;
+  projectId?: string;
 }
 
 interface ImageFeaturePanelProps {
