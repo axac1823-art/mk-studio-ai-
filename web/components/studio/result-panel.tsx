@@ -113,20 +113,6 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
           )}
         </div>
 
-        {result.status === "done" && selectedUrl && !isFullscreen && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={() => setIsFullscreen(true)}
-            aria-label="Open preview fullscreen"
-            title="Fullscreen"
-          >
-            <Expand className="h-4 w-4" />
-          </Button>
-        )}
-
         {isFullscreen && (
           <Button
             type="button"
@@ -144,7 +130,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
 
       <CardContent className="px-4 pb-4 pt-0 sm:px-5 sm:pb-5">
         {error ? (
-          <StageFrame>
+          <StageFrame fullscreen={isFullscreen}>
             <div className="max-w-sm px-6 text-center">
               <p className="text-sm font-semibold">Unable to generate this result.</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{error}</p>
@@ -154,7 +140,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
             </div>
           </StageFrame>
         ) : result.status === "idle" ? (
-          <StageFrame>
+          <StageFrame fullscreen={isFullscreen}>
             <div className="px-6 text-center">
               <p className="text-sm font-medium text-muted-foreground">
                 Your result will appear here.
@@ -162,7 +148,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
             </div>
           </StageFrame>
         ) : result.status === "busy" ? (
-          <StageFrame>
+          <StageFrame fullscreen={isFullscreen}>
             <div className="flex w-full max-w-md flex-col items-center gap-4 px-6 text-center">
               <Skeleton className="aspect-[4/3] w-full rounded-lg" />
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -173,7 +159,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
           </StageFrame>
         ) : result.kind === "video" ? (
           <>
-            <StageFrame>
+            <StageFrame fullscreen={isFullscreen}>
               <video
                 key={selectedUrl ?? result.outputUrls[0]}
                 src={selectedUrl ?? result.outputUrls[0]}
@@ -193,12 +179,23 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
                   <Download className="mr-2 h-4 w-4" />
                   Download
                 </Button>
+                {!isFullscreen && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsFullscreen(true)}
+                  >
+                    <Expand className="mr-2 h-4 w-4" />
+                    Fullscreen
+                  </Button>
+                )}
               </div>
             )}
           </>
         ) : (
           <>
-            <StageFrame>
+            <StageFrame fullscreen={isFullscreen}>
               {result.beforeUrl ? (
                 <div className="w-full">
                   <CompareSlider
@@ -245,7 +242,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
             )}
 
             {selectedUrl && (
-              <div className="mt-3 flex items-center justify-end gap-2">
+              <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -255,6 +252,17 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
                   <Download className="mr-2 h-4 w-4" />
                   Download
                 </Button>
+                {!isFullscreen && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsFullscreen(true)}
+                  >
+                    <Expand className="mr-2 h-4 w-4" />
+                    Fullscreen
+                  </Button>
+                )}
               </div>
             )}
           </>
