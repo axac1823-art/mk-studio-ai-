@@ -1,7 +1,5 @@
 "use client";
 
-// Grille générique de presets visuels (style, matériau, éclairage,
-// mouvement...) : vignettes cliquables, aucune zone de prompt technique.
 import { Check } from "lucide-react";
 
 import type { PresetMeta } from "@/lib/presets";
@@ -25,23 +23,27 @@ export function PresetGrid({ items, value, onChange }: PresetGridProps) {
             onClick={() => onChange(preset.id)}
             aria-pressed={isActive}
             className={cn(
-              "group rounded-lg border p-1.5 text-left transition-colors",
-              isActive ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/40"
+              "group rounded-lg border p-1.5 text-left transition-[border-color,box-shadow,background-color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isActive
+                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                : "hover:border-muted-foreground/40 hover:bg-accent/30",
             )}
           >
             <div
               className={cn(
-                "relative flex h-12 w-full items-center justify-center rounded-md bg-gradient-to-br",
-                preset.swatch
+                "relative flex h-10 w-full items-center justify-center rounded-md bg-gradient-to-br",
+                preset.swatch,
               )}
             >
               {isActive && (
                 <span className="rounded-full bg-white p-0.5 text-zinc-900 shadow">
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="h-3 w-3" />
                 </span>
               )}
             </div>
-            <span className="mt-1 block px-0.5 text-xs font-medium">{preset.label}</span>
+            <span className="mt-1 block truncate px-0.5 text-[11px] font-medium">
+              {preset.label}
+            </span>
           </button>
         );
       })}
