@@ -75,7 +75,7 @@ export function ProjectPicker({
   return (
     <div className={compact ? "flex items-center gap-1.5" : "flex items-center gap-2"}>
       <Select value={value ?? undefined} onValueChange={onChange}>
-        <SelectTrigger className={compact ? "h-8 w-[220px] text-xs" : "flex-1"}>
+        <SelectTrigger className={compact ? "h-8 w-[min(240px,calc(100vw-9rem))] text-xs" : "flex-1"}>
           <SelectValue placeholder="Select a project" />
         </SelectTrigger>
         <SelectContent>
