@@ -69,7 +69,7 @@ export function DashboardContent() {
 
   return (
     <main className="w-full px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col">
+      <div className="flex w-full flex-col">
         <section aria-labelledby="home-greeting" className="pb-6">
           <h1 id="home-greeting" className="text-2xl font-semibold tracking-tight sm:text-[26px]">
             {greeting}
