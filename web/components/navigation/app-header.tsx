@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Zap } from "lucide-react";
+import { Bell, Search, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DashboardSearch } from "@/components/navigation/DashboardSearch";
@@ -99,6 +100,18 @@ export function AppHeader({ user, balance }: AppHeaderProps) {
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 sm:hidden"
+          aria-label="Search tools"
+        >
+          <Link href="/app/search">
+            <Search className="h-[1.05rem] w-[1.05rem]" />
+          </Link>
+        </Button>
+
         <Button
           asChild
           variant="ghost"
