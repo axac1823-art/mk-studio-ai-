@@ -18,6 +18,7 @@ import { SettingsAccordion } from "@/components/studio/settings-accordion";
 import { UpscalePanel } from "@/components/studio/upscale-panel";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TOOLS } from "@/config/tools";
 import {
   computeDisplayCost,
   fetchCostsConfig,
@@ -194,6 +195,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
   const [selectedSourceAsset, setSelectedSourceAsset] = useState<AssetItem | null>(null);
 
   // --- Print Render ---
@@ -277,14 +279,19 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const refreshAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
     if (!projectId) {
       setAssets([]);
+      setAssetsError(null);
       setAssetsLoading(false);
       return;
     }
     setAssetsLoading(true);
+    setAssetsError(null);
     fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
       .then((res) => res.json())
       .then((data) => setAssets(Array.isArray(data.assets) ? data.assets : []))
-      .catch(() => setAssets([]))
+      .catch(() => {
+        setAssets([]);
+        setAssetsError("Unable to load history.");
+      })
       .finally(() => setAssetsLoading(false));
   }, []);
 
@@ -555,6 +562,40 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       })
     : 0;
 
+  const resultAssetId =
+    result.status === "done" && result.outputUrls.length > 0
+      ? assets.find((asset) => asset.url === result.outputUrls[Math.min(result.outputUrls.length - 1, 0)])?.id ?? null
+      : null;
+
+  const nextActionDefinitions = [
+    { id: "variations", label: "Variations" },
+    { id: "multi-angle", label: "Multi-Angle" },
+    { id: "ambiance-change", label: "Change Atmosphere" },
+    { id: "upscale", label: "Upscale" },
+    { id: "video-generator", label: "Image → Video" },
+    { id: "image-to-3d", label: "Image → 3D" },
+  ].filter((action) => {
+    if (tab === "variations" && action.id === "variations") return false;
+    if (tab === "multi_angle" && action.id === "multi-angle") return false;
+    if (tab === "mood_swap" && action.id === "ambiance-change") return false;
+    if (tab === "upscale" && action.id === "upscale") return false;
+    return true;
+  });
+
+  const nextActions = resultAssetId
+    ? nextActionDefinitions
+        .map((action) => {
+          const tool = TOOLS.find((candidate) => candidate.id === action.id);
+          if (!tool) return null;
+          const separator = tool.route.includes("?") ? "&" : "?";
+          return {
+            label: action.label,
+            href: `${tool.route}${separator}assetId=${encodeURIComponent(resultAssetId)}`,
+          };
+        })
+        .filter((action): action is { label: string; href: string } => action !== null)
+    : [];
+
   const title = STUDIO_TABS.find((t) => t.id === tab)?.label ?? "Image Studio";
 
   return (
@@ -698,7 +739,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         </section>
 
         <section className="min-w-0 flex flex-col gap-4 pb-3">
-          <ResultPanel result={result} error={error} />
+          <ResultPanel result={result} error={error} nextActions={nextActions} />
 
           <section className="min-w-0 border-t pt-3" aria-labelledby="history-heading">
             <div className="mb-2 flex items-center justify-between gap-3">
@@ -717,6 +758,17 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                 {Array.from({ length: 6 }).map((_, index) => (
                   <Skeleton key={index} className="h-16 w-20 shrink-0 rounded-lg" />
                 ))}
+              </div>
+            ) : assetsError ? (
+              <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-center">
+                <p className="text-xs font-medium text-foreground">{assetsError}</p>
+                <button
+                  type="button"
+                  className="mt-2 text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => refreshAssets(selectedProjectId, tab)}
+                >
+                  Retry
+                </button>
               </div>
             ) : assets.length === 0 ? (
               <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-center">
