@@ -54,7 +54,7 @@ function pushRecent(id: string) {
   saveRecents([id, ...current]);
 }
 
-export function DashboardSearch() {
+export function DashboardSearch({ compact = false, placeholder = "Search tools..." }: { compact?: boolean; placeholder?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -142,11 +142,12 @@ export function DashboardSearch() {
         />
       )}
 
-      <div ref={wrapperRef} className="relative z-50 w-full max-w-xl">
+      <div ref={wrapperRef} className={cn("relative z-50 w-full", compact ? "max-w-[520px]" : "max-w-xl")}>
         <div
           className={cn(
-            "flex h-12 w-full items-center gap-3 rounded-xl border bg-card px-4 text-sm transition-colors",
+            "flex w-full items-center gap-3 rounded-xl border bg-card text-sm transition-colors",
             open && "border-primary/40 ring-2 ring-ring",
+            compact ? "h-9 px-3" : "h-12 px-4",
             "hover:border-primary/40 hover:bg-accent"
           )}
         >
@@ -157,7 +158,7 @@ export function DashboardSearch() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onFocus={() => setOpen(true)}
-            placeholder="Ask RenderStudio or find tutorials..."
+            placeholder={placeholder}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <div className="hidden items-center gap-2 sm:flex">
@@ -251,7 +252,7 @@ export function DashboardSearch() {
                     </div>
                     <p className="mt-2 flex items-center gap-2 px-1 text-xs text-muted-foreground">
                       <Wand2 className="h-3 w-3" />
-                      Tools. RenderStudio, ChatGPT, Figma, Photoshop, After Effects, and more.
+                      Search the available tools and open one directly.
                     </p>
                   </div>
                 </>
