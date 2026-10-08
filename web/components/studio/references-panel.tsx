@@ -1,8 +1,5 @@
 "use client";
 
-// Panneau des images de référence : jusqu'à 14 images de conditionnement
-// (style/cohérence) envoyées au modèle EN PLUS de l'entrée principale —
-// jamais comme entrée principale. Compteur X/14 + bandeau de vignettes.
 import { useRef } from "react";
 import { Plus, X } from "lucide-react";
 
@@ -29,48 +26,50 @@ export function ReferencesPanel({ references, onAdd, onRemove }: ReferencesPanel
     if (!files) return;
     const remaining = MAX_REFERENCES - references.length;
     onAdd(Array.from(files).slice(0, remaining));
-    // Permet de re-sélectionner le même fichier.
     if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">References</span>
-        <span className="text-xs text-muted-foreground">
+    <section className="flex min-w-0 flex-col gap-2" aria-labelledby="references-heading">
+      <div className="flex items-center justify-between gap-3">
+        <span id="references-heading" className="text-sm font-semibold tracking-wide">
+          References
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">
           {references.length}/{MAX_REFERENCES}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 gap-2 overflow-x-auto pb-1" aria-label="Reference images">
         <button
           type="button"
           disabled={isFull}
           onClick={() => inputRef.current?.click()}
           className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed transition-colors",
+            "flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border-2 border-dashed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             isFull
               ? "cursor-not-allowed opacity-40"
-              : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50"
+              : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50",
           )}
           title={isFull ? `Maximum ${MAX_REFERENCES} references` : "Add reference images"}
+          aria-label={isFull ? `Maximum ${MAX_REFERENCES} references` : "Add reference images"}
         >
-          <Plus className="h-5 w-5 text-muted-foreground" />
+          <Plus className="h-4 w-4 text-muted-foreground" />
         </button>
 
         {references.map((reference) => (
-          <div key={reference.id} className="group relative h-16 w-16">
+          <div key={reference.id} className="group relative h-14 w-14 shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={reference.previewUrl}
-              alt="Reference"
+              alt="Reference image"
               className="h-full w-full rounded-lg border object-cover"
             />
             <button
               type="button"
               onClick={() => onRemove(reference.id)}
-              aria-label="Remove reference"
-              className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive p-0.5 text-destructive-foreground opacity-0 shadow transition-opacity group-hover:opacity-100"
+              aria-label="Remove reference image"
+              className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
             >
               <X className="h-3 w-3" />
             </button>
@@ -78,8 +77,8 @@ export function ReferencesPanel({ references, onAdd, onRemove }: ReferencesPanel
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Style or consistency references — the model conditions on them, your upload stays the main input.
+      <p className="text-[11px] leading-4 text-muted-foreground">
+        Optional reference images for style or consistency.
       </p>
 
       <input
@@ -90,6 +89,6 @@ export function ReferencesPanel({ references, onAdd, onRemove }: ReferencesPanel
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
       />
-    </div>
+    </section>
   );
 }
