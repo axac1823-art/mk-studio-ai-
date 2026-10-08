@@ -198,7 +198,6 @@ export function GenerationControls({
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Auto (recommended)</SelectItem>
                   {models.map((m) => (
                     <SelectItem key={m.key} value={m.key}>
                       <div className="flex flex-col items-start">
