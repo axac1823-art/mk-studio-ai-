@@ -37,6 +37,8 @@ interface AssetCardProps {
   /** Callback pour suppression définitive (optionnel ; si absent, pas de bouton Delete). */
   onDelete?: (assetId: string) => void;
   layout?: "grid" | "list";
+  /** Home variant: thumbnail-first recent work card. */
+  compact?: boolean;
 }
 
 const IMAGE_SERVICES = [
@@ -60,7 +62,7 @@ const VIDEO_SERVICES = [
   ["Video Project Editor", "/app/video-project-editor"],
 ] as const;
 
-export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid" }: AssetCardProps) {
+export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid", compact = false }: AssetCardProps) {
   const [busy, setBusy] = useState(false);
 
   // Pas de logique métier ici : simple bascule de flag côté API, puis
@@ -92,6 +94,85 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
       setBusy(false);
     }
   };
+
+  if (compact) {
+    return (
+      <Card className="group relative overflow-hidden rounded-xl border bg-card transition-[border-color,box-shadow] hover:border-foreground/20 hover:shadow-md">
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+          {asset.type === "video" ? (
+            <>
+              <video src={asset.url} preload="metadata" muted className="h-full w-full object-cover" />
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span className="rounded-full bg-background/70 p-2">
+                  <Play className="h-4 w-4 fill-current" />
+                </span>
+              </div>
+            </>
+          ) : asset.type === "audio" ? (
+            <div className="flex h-full w-full items-center justify-center">
+              <Music className="h-7 w-7 text-muted-foreground" />
+            </div>
+          ) : asset.type === "3d_model" ? (
+            <div className="flex h-full w-full items-center justify-center">
+              <Box className="h-7 w-7 text-muted-foreground" />
+            </div>
+          ) : (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={asset.url} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" loading="lazy" />
+          )}
+
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
+          <Badge variant="secondary" className="absolute left-2 top-2 capitalize">
+            {asset.type === "3d_model" ? "3D" : asset.type}
+          </Badge>
+
+          <div className="absolute inset-x-2 bottom-2 flex items-center justify-end gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8 bg-background/85 backdrop-blur-sm"
+              disabled={busy}
+              onClick={() => void saveResult(asset.url, asset.type)}
+              aria-label="Download"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8 bg-background/85 backdrop-blur-sm"
+              disabled={busy}
+              onClick={() => void patch({ isFavorite: !asset.isFavorite })}
+              aria-label={asset.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Star className={cn("h-4 w-4", asset.isFavorite && "fill-current text-yellow-500")} />
+            </Button>
+            {(asset.type === "image" || asset.type === "video") && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="secondary" size="sm" disabled={busy} className="h-8 bg-background/85 px-2.5 text-xs backdrop-blur-sm">
+                    Create with
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {(asset.type === "image" ? IMAGE_SERVICES : VIDEO_SERVICES).map(([label, route]) => {
+                    const separator = route.includes("?") ? "&" : "?";
+                    return (
+                      <DropdownMenuItem key={route} asChild>
+                        <Link href={route + separator + "assetId=" + encodeURIComponent(asset.id)}>{label}</Link>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className={cn("overflow-hidden", layout === "list" && "flex min-h-32 flex-row")}>
