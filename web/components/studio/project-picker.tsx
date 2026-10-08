@@ -1,9 +1,5 @@
 "use client";
 
-// Sélecteur de projet du studio : chaque génération est rattachée à un
-// projet à la création (modèle Projects/Assets). Création inline sans
-// quitter le studio. Aucune logique de fetch ici — le dashboard fournit
-// la liste et gère la création (il la refetch pour garder la liste à jour).
 import { useState } from "react";
 import { Check, Plus } from "lucide-react";
 
@@ -26,9 +22,16 @@ interface ProjectPickerProps {
   value: string | null;
   onChange: (id: string) => void;
   onCreateProject: (name: string) => Promise<void>;
+  compact?: boolean;
 }
 
-export function ProjectPicker({ projects, value, onChange, onCreateProject }: ProjectPickerProps) {
+export function ProjectPicker({
+  projects,
+  value,
+  onChange,
+  onCreateProject,
+  compact = false,
+}: ProjectPickerProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,7 +51,7 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
 
   if (creating) {
     return (
-      <div className="flex items-center gap-2">
+      <div className={compact ? "flex items-center gap-1.5" : "flex items-center gap-2"}>
         <input
           autoFocus
           value={name}
@@ -58,9 +61,11 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
             if (event.key === "Escape") setCreating(false);
           }}
           placeholder="Project name"
-          className="h-9 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+          className={compact
+            ? "h-8 min-w-0 flex-1 rounded-md border bg-background px-2.5 text-xs outline-none focus:border-primary"
+            : "h-9 flex-1 rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"}
         />
-        <Button type="button" size="sm" onClick={() => void submit()} disabled={!name.trim() || busy}>
+        <Button type="button" size="sm" onClick={() => void submit()} disabled={!name.trim() || busy} aria-label="Create project">
           <Check className="h-4 w-4" />
         </Button>
       </div>
@@ -68,9 +73,9 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className={compact ? "flex items-center gap-1.5" : "flex items-center gap-2"}>
       <Select value={value ?? undefined} onValueChange={onChange}>
-        <SelectTrigger className="flex-1">
+        <SelectTrigger className={compact ? "h-8 w-[220px] text-xs" : "flex-1"}>
           <SelectValue placeholder="Select a project" />
         </SelectTrigger>
         <SelectContent>
@@ -87,6 +92,7 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
         size="sm"
         onClick={() => setCreating(true)}
         aria-label="New project"
+        className={compact ? "h-8 w-8 p-0" : undefined}
       >
         <Plus className="h-4 w-4" />
       </Button>
