@@ -1,7 +1,5 @@
 "use client";
 
-// Zone de dépôt : glisser-déposer ou clic pour choisir un screenshot 3D
-// (SketchUp, Revit, 3ds Max...). Affiche l'aperçu de l'image choisie.
 import { useCallback, useRef, useState } from "react";
 import { ImagePlus, Info, RefreshCw } from "lucide-react";
 
@@ -13,10 +11,10 @@ interface UploadDropzoneProps {
   title?: string;
   description?: string;
   icon?: React.ComponentType<{ className?: string }>;
-  /** Affiche une bulle d'aide "3D screenshot" sous la zone (Image tools). */
   showHint?: boolean;
-  /** Types MIME acceptés (défaut : images). */
   accept?: string;
+  ariaLabel?: string;
+  previewAlt?: string;
 }
 
 export function UploadDropzone({
@@ -27,6 +25,8 @@ export function UploadDropzone({
   icon: Icon = ImagePlus,
   showHint = false,
   accept = "image/png,image/jpeg,image/webp",
+  ariaLabel = "Upload an image",
+  previewAlt = "Uploaded image",
 }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -36,14 +36,14 @@ export function UploadDropzone({
       const file = files?.[0];
       if (file) onFileSelected(file);
     },
-    [onFileSelected]
+    [onFileSelected],
   );
 
   return (
     <div
       role="button"
       tabIndex={0}
-      aria-label="Upload a 3D viewport screenshot"
+      aria-label={ariaLabel}
       onClick={() => inputRef.current?.click()}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -63,15 +63,17 @@ export function UploadDropzone({
       }}
       className={cn(
         "flex aspect-[4/3] w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed transition-colors",
-        isDragging ? "border-primary bg-accent" : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50"
+        isDragging
+          ? "border-primary bg-accent"
+          : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50",
       )}
     >
       {previewUrl ? (
         <div className="relative h-full w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previewUrl} alt="Uploaded viewport screenshot" className="h-full w-full object-contain" />
+          <img src={previewUrl} alt={previewAlt} className="h-full w-full object-contain" />
           <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-xs text-white">
-            <RefreshCw className="h-3 w-3" /> Click to replace
+            <RefreshCw className="h-3 w-3" /> Replace
           </span>
         </div>
       ) : (
@@ -81,6 +83,7 @@ export function UploadDropzone({
           {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         </div>
       )}
+
       <input
         ref={inputRef}
         type="file"
@@ -88,15 +91,13 @@ export function UploadDropzone({
         className="hidden"
         onChange={(e) => handleFiles(e.target.files)}
       />
+
       {showHint && !previewUrl && (
-        <div className="flex items-start gap-2 rounded-md border bg-muted/50 p-2 text-xs text-muted-foreground">
+        <div className="absolute bottom-2 left-2 right-2 flex items-start gap-2 rounded-md border bg-background/90 p-2 text-xs text-muted-foreground backdrop-blur">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div className="flex flex-col gap-0.5">
-            <span className="font-medium text-foreground">What is a 3D screenshot?</span>
-            <span>
-              A raw viewport capture from SketchUp, Revit, 3ds Max or Blender. We keep the geometry
-              and turn it into a photorealistic render.
-            </span>
+            <span className="font-medium text-foreground">More about this input</span>
+            <span>Use a clear source image with the geometry visible.</span>
           </div>
         </div>
       )}
