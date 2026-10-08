@@ -160,7 +160,7 @@ export function GenerationControls({
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
         </Button>
 
-        <div className="ml-auto flex min-w-[210px] flex-col items-end gap-1">
+        <div className="ml-auto flex w-full flex-col items-end gap-1 sm:w-auto sm:min-w-[210px]">
           {!hasEnoughCredits && balance !== null && (
             <p role="alert" className="max-w-[360px] text-right text-xs text-destructive">
               You don&apos;t have enough credits. {cost} required, {balance} available.{" "}
@@ -172,7 +172,7 @@ export function GenerationControls({
           <Button
             onClick={onGenerate}
             disabled={!canGenerate || isBusy || !hasEnoughCredits}
-            className="h-9 min-w-[150px]"
+            className="h-9 w-full min-w-[150px] sm:w-auto"
           >
             {isBusy ? (
               <>
@@ -191,13 +191,12 @@ export function GenerationControls({
         {advancedOpen && (
           <div className="basis-full border-t pt-2">
             <Control label="Model">
-              <Select value={model} onValueChange={onModelChange} disabled={models.length === 0}>
+              <Select value={model || "__auto__"} onValueChange={(value) => onModelChange(value === "__auto__" ? "" : value)} disabled={models.length === 0}>
                 <SelectTrigger className="h-8 w-[220px] text-xs">
-                  <SelectValue placeholder="Auto (recommended)">
-                    {modelName ?? "Auto (recommended)"}
-                  </SelectValue>
+                  <SelectValue placeholder="Auto (recommended)" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__auto__">Auto (recommended)</SelectItem>
                   {models.map((m) => (
                     <SelectItem key={m.key} value={m.key}>
                       <div className="flex flex-col items-start">
