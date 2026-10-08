@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -28,64 +29,3 @@ export function UserMenu({ user }: UserMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="relative h-9 w-9 rounded-full"
-          aria-label="User menu"
-        >
-          <Avatar className="h-8 w-8 border border-border">
-            <AvatarFallback className="bg-surface text-xs font-medium text-foreground">
-              {getInitials(user.email)}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
-          <span className="text-sm font-medium text-foreground">Account</span>
-          <span className="text-xs text-muted-foreground">{user.email}</span>
-        </DropdownMenuLabel>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem asChild>
-          <Link href="/app/settings" className="cursor-pointer">
-            <Settings className="h-4 w-4" />
-            Settings
-          </Link>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem asChild>
-          <Link href="/app/account" className="cursor-pointer">
-            <User className="h-4 w-4" />
-            Account
-          </Link>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem asChild>
-          <Link href="/pricing" className="cursor-pointer">
-            <CreditCard className="h-4 w-4" />
-            Pricing
-          </Link>
-        </DropdownMenuItem>
-
-        <div className="flex items-center justify-between border-t px-2 py-2">
-          <span className="text-sm text-muted-foreground">Theme</span>
-          <ThemeToggle variant="ghost" size="icon" />
-        </div>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem asChild>
-          <Link href="/logout" className="cursor-pointer text-destructive focus:text-destructive">
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Link>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
