@@ -7,11 +7,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
+import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function UploadsPage() {
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchUploads = useCallback(async () => {
@@ -20,6 +22,9 @@ export default function UploadsPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { assets: AssetSummary[] };
       setAssets(data.assets);
+      setSelectedAssetId((current) =>
+        current && data.assets.some((asset) => asset.id === current) ? current : null,
+      );
       setError(null);
     } catch {
       setError("Could not load uploads.");
@@ -43,6 +48,13 @@ export default function UploadsPage() {
         </p>
       )}
 
+      {selectedAssetId && assets && (
+        <AssetSelectionToolbar
+          asset={assets.find((asset) => asset.id === selectedAssetId) ?? null}
+          onClear={() => setSelectedAssetId(null)}
+        />
+      )}
+
       {assets === null ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 sm:gap-4">
           {Array.from({ length: 4 }).map((_, index) => (
@@ -62,7 +74,15 @@ export default function UploadsPage() {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 sm:gap-4">
           {assets.map((asset) => (
-            <AssetCard key={asset.id} asset={asset} onChanged={fetchUploads} />
+            <AssetCard
+              key={asset.id}
+              asset={asset}
+              onChanged={fetchUploads}
+              selected={selectedAssetId === asset.id}
+              onSelect={() =>
+                setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+              }
+            />
           ))}
         </div>
       )}
