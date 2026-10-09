@@ -145,7 +145,7 @@ export default function TextTo3DPage() {
   return (
     <StudioShell
       header={
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Text-to-3D</h1>
         <div className="flex items-center gap-3">
           <nav className="flex rounded-md border p-1" aria-label="3D generation mode">

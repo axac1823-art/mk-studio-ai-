@@ -698,7 +698,7 @@ export default function VoiceGeneratorPage() {
   return (
     <StudioShell
       header={<>
-      <div className="border-b pb-4">
+      <div>
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Voice Generator</h1>
       </div>
       </>}
