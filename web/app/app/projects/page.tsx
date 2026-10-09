@@ -238,6 +238,23 @@ function EmptyState({
   );
 }
 
+function LoadError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div role="alert" className="flex min-h-[160px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/20 p-5 text-center">
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 export default function ProjectsPage() {
   const searchParams = useSearchParams();
 
@@ -254,6 +271,8 @@ export default function ProjectsPage() {
   const [assets, setAssets] = useState<RecentAsset[] | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
+  const [projectsLoadError, setProjectsLoadError] = useState<string | null>(null);
+  const [assetsLoadError, setAssetsLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [creating, setCreating] = useState(false);
@@ -262,6 +281,7 @@ export default function ProjectsPage() {
 
 
   const fetchProjects = useCallback(async () => {
+    setProjectsLoadError(null);
     try {
       const response = await fetch("/api/projects", {
         cache: "no-store",
@@ -276,13 +296,15 @@ export default function ProjectsPage() {
       };
 
       setProjects(data.projects);
-      setError(null);
+      setProjectsLoadError(null);
     } catch {
-      setError("Could not load projects.");
+      setProjects([]);
+      setProjectsLoadError("Could not load projects.");
     }
   }, []);
 
   const fetchAssets = useCallback(async () => {
+    setAssetsLoadError(null);
     try {
       const endpoint =
         view === "favorites"
@@ -307,14 +329,17 @@ export default function ProjectsPage() {
           ? current
           : null,
       );
-      setError(null);
+      setAssetsLoadError(null);
     } catch {
-      setError("Could not load assets.");
+      setAssets([]);
+      setAssetsLoadError("Could not load assets.");
     }
   }, [view]);
 
   useEffect(() => {
     setError(null);
+    setProjectsLoadError(null);
+    setAssetsLoadError(null);
     setCreating(false);
     setSelectedAssetId(null);
 
@@ -479,6 +504,8 @@ export default function ProjectsPage() {
                     <Skeleton key={index} className="aspect-[16/9] w-full rounded-xl" />
                   ))}
                 </div>
+              ) : projectsLoadError ? (
+                <LoadError message={projectsLoadError} onRetry={() => void fetchProjects()} />
               ) : recentProjects.length === 0 ? (
                 <div className="max-w-md">
                   <NewProjectCard
@@ -530,6 +557,8 @@ export default function ProjectsPage() {
                     />
                   ))}
                 </div>
+              ) : assetsLoadError ? (
+                <LoadError message={assetsLoadError} onRetry={() => void fetchAssets()} />
               ) : recentAssets.length === 0 ? (
                 <EmptyState
                   icon={
@@ -568,6 +597,8 @@ export default function ProjectsPage() {
                   />
                 ))}
               </div>
+            ) : projectsLoadError ? (
+              <LoadError message={projectsLoadError} onRetry={() => void fetchProjects()} />
             ) : (
               <>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
@@ -622,6 +653,8 @@ export default function ProjectsPage() {
                   />
                 ))}
               </div>
+            ) : assetsLoadError ? (
+              <LoadError message={assetsLoadError} onRetry={() => void fetchAssets()} />
             ) : assets.length === 0 ? (
               <EmptyState
                 icon={
@@ -659,6 +692,8 @@ export default function ProjectsPage() {
                   />
                 ))}
               </div>
+            ) : assetsLoadError ? (
+              <LoadError message={assetsLoadError} onRetry={() => void fetchAssets()} />
             ) : assets.length === 0 ? (
               <EmptyState
                 icon={
