@@ -564,7 +564,7 @@ export default function ProjectsPage() {
                 {Array.from({ length: 8 }).map((_, index) => (
                   <Skeleton
                     key={index}
-                    className="aspect-square w-full rounded-xl"
+                    className="aspect-[16/9] w-full rounded-xl"
                   />
                 ))}
               </div>
@@ -618,7 +618,7 @@ export default function ProjectsPage() {
                 {Array.from({ length: 12 }).map((_, index) => (
                   <Skeleton
                     key={index}
-                    className="aspect-square w-full rounded-xl"
+                    className="aspect-[4/3] w-full rounded-xl"
                   />
                 ))}
               </div>
