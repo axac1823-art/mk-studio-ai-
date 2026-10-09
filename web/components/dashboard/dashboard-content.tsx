@@ -37,30 +37,38 @@ export function DashboardContent() {
   const [greeting, setGreeting] = useState("Good morning");
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
+    setProjectsError(null);
     try {
       const res = await fetch("/api/projects");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { projects: ProjectSummary[] };
       setProjects(data.projects);
+      setProjectsError(null);
     } catch {
-      setError("Could not load projects.");
+      setProjects([]);
+      setProjectsError("Could not load projects.");
     }
   }, []);
 
   const fetchAssets = useCallback(async () => {
+    setAssetsError(null);
     try {
       const res = await fetch("/api/assets");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { assets: AssetSummary[] };
       setAssets(data.assets.slice().reverse().slice(0, 6));
+      setAssetsError(null);
     } catch {
-      setError("Could not load recent work.");
+      setAssets([]);
+      setAssetsError("Could not load recent work.");
     }
   }, []);
 
@@ -146,9 +154,19 @@ export function DashboardContent() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-[92px] w-full rounded-lg" />)}
           </div>
+        ) : projectsError ? (
+          <div role="alert" className="flex min-h-[92px] flex-col items-start justify-center gap-2 rounded-lg border border-dashed px-5 py-4">
+            <p className="text-sm text-muted-foreground">{projectsError}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void fetchProjects()}>
+              Retry
+            </Button>
+          </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-lg border border-dashed px-5 py-6 text-sm text-muted-foreground">
-            No projects yet. Create a project to keep your work together.
+          <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-5 py-6">
+            <p className="text-sm text-muted-foreground">No projects yet. Create a project to keep your work together.</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setCreating(true)}>
+              <Plus className="mr-1.5 h-4 w-4" /> Create project
+            </Button>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -208,13 +226,25 @@ export function DashboardContent() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
             {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
           </div>
+        ) : assetsError ? (
+          <div role="alert" className="flex min-h-[120px] flex-col items-start justify-center gap-2 rounded-lg border border-dashed px-5 py-5">
+            <p className="text-sm text-muted-foreground">{assetsError}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void fetchAssets()}>
+              Retry
+            </Button>
+          </div>
         ) : assets.length === 0 ? (
           <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-5 py-6">
-            <p className="text-sm font-medium">Your recent work will appear here.</p>
-            <p className="text-sm text-muted-foreground">Start with a render and find your outputs here.</p>
-            <Button asChild variant="outline" size="sm" className="mt-1">
-              <Link href="/app/ai-image-generator"><ImageIcon className="mr-1.5 h-4 w-4" />Create a render</Link>
-            </Button>
+            <p className="text-sm font-medium">No work yet</p>
+            <p className="text-sm text-muted-foreground">Your generated images and videos will appear here.</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/app/ai-image-generator"><ImageIcon className="mr-1.5 h-4 w-4" />Start a Render</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/app/search">Explore tools</Link>
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
