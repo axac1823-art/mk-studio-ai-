@@ -628,15 +628,6 @@ export default function ProjectsPage() {
                   ))}
                 </div>
 
-                {projects.length === 0 && (
-                  <EmptyState
-                    icon={
-                      <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                    }
-                    title="No projects yet"
-                    description="Create your first project to get started."
-                  />
-                )}
               </>
             )}
           </section>
