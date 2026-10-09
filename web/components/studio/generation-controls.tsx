@@ -1,8 +1,7 @@
 "use client";
 
-// Barre d'outils de génération (bas de studio) — Model, Quantity, Quality,
-// Aspect ratio, Resolution, Generate.
-import { Loader2, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -30,8 +29,10 @@ function Control({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
       {children}
     </div>
   );
@@ -61,6 +62,9 @@ export function GenerationControls({
   quality,
   aspectRatio,
   resolution,
+  model,
+  models,
+  onModelChange,
   cost,
   balance,
   isBusy,
@@ -71,14 +75,21 @@ export function GenerationControls({
   onResolutionChange,
   onGenerate,
 }: GenerationControlsProps) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const hasEnoughCredits = balance === null || balance >= cost;
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-4 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-      <div className="flex flex-wrap items-end gap-3 sm:gap-4">
+    <div className="sticky bottom-0 z-20 -mx-4 border-t bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/85 sm:-mx-6 sm:px-6">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+        <div className="mr-1 flex shrink-0 flex-col justify-end">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            Output
+          </span>
+        </div>
+
         <Control label="Quality">
           <Select value={quality} onValueChange={(value) => onQualityChange(value as QualityTier)}>
-            <SelectTrigger className="h-9 w-[120px] text-xs">
+            <SelectTrigger className="h-8 w-[104px] text-xs">
               <SelectValue placeholder="Standard" />
             </SelectTrigger>
             <SelectContent>
@@ -93,7 +104,7 @@ export function GenerationControls({
 
         <Control label="Aspect ratio">
           <Select value={aspectRatio} onValueChange={(value) => onAspectRatioChange(value as AspectRatio)}>
-            <SelectTrigger className="h-9 w-[100px] text-xs">
+            <SelectTrigger className="h-8 w-[88px] text-xs">
               <SelectValue placeholder="4:3" />
             </SelectTrigger>
             <SelectContent>
@@ -108,7 +119,7 @@ export function GenerationControls({
 
         <Control label="Resolution">
           <Select value={resolution} onValueChange={(value) => onResolutionChange(value as Resolution)}>
-            <SelectTrigger className="h-9 w-[90px] text-xs">
+            <SelectTrigger className="h-8 w-[82px] text-xs">
               <SelectValue placeholder="1K" />
             </SelectTrigger>
             <SelectContent>
@@ -123,7 +134,7 @@ export function GenerationControls({
 
         <Control label="Quantity">
           <Select value={String(quantity)} onValueChange={(value) => onQuantityChange(Number(value))}>
-            <SelectTrigger className="h-9 w-[72px] text-xs">
+            <SelectTrigger className="h-8 w-[70px] text-xs">
               <SelectValue placeholder="1" />
             </SelectTrigger>
             <SelectContent>
@@ -136,9 +147,21 @@ export function GenerationControls({
           </Select>
         </Control>
 
-        <div className="ml-auto flex w-full flex-col items-stretch gap-1 sm:w-auto sm:items-end">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1 px-2 text-xs text-muted-foreground"
+          aria-expanded={advancedOpen}
+          onClick={() => setAdvancedOpen((open) => !open)}
+        >
+          Advanced
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+        </Button>
+
+        <div className="ml-auto flex w-full flex-col items-end gap-1 sm:w-auto sm:min-w-[210px]">
           {!hasEnoughCredits && balance !== null && (
-            <p role="alert" className="text-xs text-destructive">
+            <p role="alert" className="max-w-[360px] text-right text-xs text-destructive">
               You don&apos;t have enough credits. {cost} required, {balance} available.{" "}
               <a href="/app/billing" className="font-medium underline">
                 Buy more
@@ -148,22 +171,49 @@ export function GenerationControls({
           <Button
             onClick={onGenerate}
             disabled={!canGenerate || isBusy || !hasEnoughCredits}
-            size="default"
-            className="h-10 w-full sm:w-auto"
+            className="h-9 w-full min-w-[150px] sm:w-auto"
           >
             {isBusy ? (
               <>
-                <Loader2 className="animate-spin" />
+                <Loader2 className="mr-2 animate-spin" />
                 Generating…
               </>
             ) : (
               <>
-                <Sparkles />
-                Generate — {cost} credits
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate · {cost} credits
               </>
             )}
           </Button>
         </div>
+
+        {advancedOpen && (
+          <div className="basis-full border-t pt-2">
+            <Control label="Model">
+              <Select value={model || "__auto__"} onValueChange={(value) => onModelChange(value === "__auto__" ? "" : value)} disabled={models.length === 0}>
+                <SelectTrigger className="h-8 w-[220px] text-xs">
+                  <SelectValue placeholder="Auto (recommended)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__auto__">Auto (recommended)</SelectItem>
+                  {models.map((m) => (
+                    <SelectItem key={m.key} value={m.key}>
+                      <div className="flex flex-col items-start">
+                        <span className="text-sm font-medium">
+                          {m.name}
+                          {!m.configured && (
+                            <span className="ml-2 text-[10px] text-amber-500">(not configured)</span>
+                          )}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{m.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Control>
+          </div>
+        )}
       </div>
     </div>
   );
