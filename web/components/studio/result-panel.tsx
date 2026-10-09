@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Expand, Loader2, Minimize2 } from "lucide-react";
+import Link from "next/link";
+import { Download, Expand, Loader2, Minimize2, MoreHorizontal } from "lucide-react";
 
 import { CompareSlider } from "@/components/compare-slider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { saveResult } from "@/lib/download";
 import { cn } from "@/lib/utils";
@@ -23,12 +30,55 @@ const STAGE_LABELS: Record<string, string> = {
   merging: "Assembling the final video",
 };
 
+interface NextAction {
+  label: string;
+  href: string;
+}
+
 interface ResultPanelProps {
   result: ResultState;
   error?: string | null;
+  nextActions?: NextAction[];
 }
 
-export function ResultPanel({ result, error }: ResultPanelProps) {
+function NextActions({ actions }: { actions: NextAction[] }) {
+  if (actions.length === 0) return null;
+
+  return (
+    <section className="mt-1 border-t pt-3" aria-labelledby="next-actions-heading">
+      <div className="mb-2">
+        <h3 id="next-actions-heading" className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          What next?
+        </h3>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {actions.slice(0, 3).map((action) => (
+          <Button key={action.href} asChild variant="secondary" size="sm" className="h-8">
+            <Link href={action.href}>{action.label}</Link>
+          </Button>
+        ))}
+        {actions.length > 3 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="h-8 gap-1">
+                More <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {actions.slice(3).map((action) => (
+                <DropdownMenuItem key={action.href} asChild>
+                  <Link href={action.href}>{action.label}</Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -128,13 +178,13 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
         </CardHeader>
 
         <CardContent className="flex min-w-0 flex-col gap-3">
-          {error && (
-            <div role="alert" className="rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {error}
+          {error ? (
+            <div role="alert" className="flex aspect-[4/3] min-h-[260px] w-full flex-col items-center justify-center gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-6 text-center sm:min-h-[320px]">
+              <p className="text-sm font-semibold">Unable to generate this result.</p>
+              <p className="max-w-md text-sm text-muted-foreground">{error}</p>
+              <p className="text-xs text-muted-foreground">Use the generation controls in this workspace to try again.</p>
             </div>
-          )}
-
-          {result.status === "busy" ? (
+          ) : result.status === "busy" ? (
             <div className="flex aspect-[4/3] min-h-[260px] w-full flex-col items-center justify-center gap-4 rounded-lg border bg-muted/20 p-4 sm:min-h-[320px]">
               <Skeleton className="aspect-[4/3] w-full max-w-2xl rounded-lg" />
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -195,6 +245,7 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
                   Fullscreen
                 </Button>
               </div>
+              {result.kind === "image" && <NextActions actions={nextActions} />}
             </>
           ) : (
             <div className="flex aspect-[4/3] min-h-[260px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center sm:min-h-[320px]">
