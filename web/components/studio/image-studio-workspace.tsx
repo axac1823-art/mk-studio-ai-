@@ -198,7 +198,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     }
   }, []);
 
-  const refreshAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
+  const refreshAssets = useCallback((projectId: string | null) => {
     if (!projectId) {
       setAssets([]);
       return;
@@ -248,7 +248,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
 
   // La galerie suit le projet sélectionné.
   useEffect(() => {
-    refreshAssets(selectedProjectId, tab);
+    refreshAssets(selectedProjectId);
     if (!preselectedAssetId) setSelectedSourceAsset(null);
   }, [selectedProjectId, tab, preselectedAssetId, refreshAssets]);
 
@@ -291,7 +291,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
             // Débit réel au succès + nouvel asset : on rafraîchit les deux.
             refreshBalance();
             setSelectedProjectId((current) => {
-              refreshAssets(current, tab);
+              refreshAssets(current);
               return current;
             });
           } else if (data.status === "error") {
@@ -308,7 +308,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         }
       }, POLL_INTERVAL_MS);
     },
-    [stopPolling, refreshAssets, refreshBalance, tab]
+    [stopPolling, refreshAssets, refreshBalance]
   );
 
   const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
