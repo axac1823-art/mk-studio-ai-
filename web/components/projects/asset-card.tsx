@@ -131,7 +131,34 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
           {asset.type === "3d_model" ? "3D" : asset.type}
         </Badge>
 
-        {onSelect && !trashed && (
+        {onSelect && !trashed && asset.type !== "audio" && (
+          <button
+            type="button"
+            aria-label={selected ? "Deselect asset" : "Select asset"}
+            aria-pressed={selected}
+            onClick={onSelect}
+            className={cn(
+              "absolute inset-0 z-10 flex items-start justify-end p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              selected ? "bg-primary/10" : "bg-transparent hover:bg-black/5",
+            )}
+            title={selected ? "Deselect asset" : "Select asset"}
+          >
+            <span className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm backdrop-blur-sm",
+              selected ? "border-primary text-primary" : "border-border",
+            )}>
+              {selected ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+            </span>
+            {selected && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 rounded-sm border-2 border-primary/90 ring-2 ring-inset ring-primary/15"
+              />
+            )}
+          </button>
+        )}
+
+        {onSelect && !trashed && asset.type === "audio" && (
           <button
             type="button"
             aria-label={selected ? "Deselect asset" : "Select asset"}
