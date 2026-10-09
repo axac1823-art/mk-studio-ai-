@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
-import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
+import { type AssetSummary } from "@/components/projects/asset-card";
+import { AssetLibraryGrid } from "@/components/projects/asset-library-grid";
 import { ProjectLibraryTabs } from "@/components/projects/project-library-sidebar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,17 +63,7 @@ export default function TrashPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 sm:gap-4">
-          {assets.map((asset) => (
-            <AssetCard
-              key={asset.id}
-              asset={asset}
-              trashed
-              onChanged={fetchTrash}
-              onDelete={fetchTrash}
-            />
-          ))}
-        </div>
+        <AssetLibraryGrid assets={assets} onChanged={fetchTrash} trashed />
       )}
     </main>
   );

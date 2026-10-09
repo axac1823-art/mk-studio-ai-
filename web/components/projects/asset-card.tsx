@@ -7,7 +7,7 @@
 // (trashed=true), l'action principale est Restore + Delete permanent.
 import { useState } from "react";
 import Link from "next/link";
-import { ArchiveRestore, Box, Download, Music, Play, Star, Trash2 } from "lucide-react";
+import { ArchiveRestore, Box, Check, Download, Music, Play, Star, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,9 +37,13 @@ interface AssetCardProps {
   /** Callback pour suppression définitive (optionnel ; si absent, pas de bouton Delete). */
   onDelete?: (assetId: string) => void;
   layout?: "grid" | "list";
+  selected?: boolean;
+  selectionActive?: boolean;
+  onToggleSelected?: (assetId: string, shiftKey: boolean) => void;
+  onPreview?: () => void;
 }
 
-const IMAGE_SERVICES = [
+export const IMAGE_SERVICES = [
   ["Image Generator", "/app/image-generator"],
   ["Render", "/app/ai-image-generator"],
   ["Mood", "/app/ambiance-change"],
@@ -52,15 +56,15 @@ const IMAGE_SERVICES = [
   ["Background Remover", "/app/background-remover"],
 ] as const;
 
-const VIDEO_SERVICES = [
+export const VIDEO_SERVICES = [
   ["Video Generator", "/app/ai-video-generator"],
   ["Video Relight", "/app/ai-video-generator?mode=relight"],
-  ["Video Speed", "/app/video-upscaler"],
+  ["Upscale video", "/app/video-upscaler"],
   ["Clip Editor", "/app/clip-editor"],
   ["Video Project Editor", "/app/video-project-editor"],
 ] as const;
 
-export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid" }: AssetCardProps) {
+export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid", selected = false, selectionActive = false, onToggleSelected, onPreview }: AssetCardProps) {
   const [busy, setBusy] = useState(false);
 
   // Pas de logique métier ici : simple bascule de flag côté API, puis
@@ -94,8 +98,24 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
   };
 
   return (
-    <Card className={cn("overflow-hidden", layout === "list" && "flex min-h-32 flex-row")}>
-      <div className={cn("relative bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]")}>
+    <Card className={cn("group overflow-hidden border-border transition-colors hover:border-primary/30", selected && "ring-2 ring-primary", layout === "list" && "flex min-h-32 flex-row")}>
+      <div
+        role={onPreview ? "button" : undefined}
+        tabIndex={onPreview ? 0 : undefined}
+        aria-label={onPreview ? `Preview ${asset.type === "3d_model" ? "3D model" : asset.type}` : undefined}
+        onClick={(event) => {
+          const target = event.target as HTMLElement;
+          if (!target.closest("button, a, input, audio")) onPreview?.();
+        }}
+        onKeyDown={(event) => {
+          const target = event.target as HTMLElement;
+          if ((event.key === "Enter" || event.key === " ") && !target.closest("button, a, input, audio")) {
+            event.preventDefault();
+            onPreview?.();
+          }
+        }}
+        className={cn("relative bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]", onPreview && "cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}
+      >
         {asset.type === "video" ? (
           <>
             {/* Pas d'autoplay : simple aperçu muet, overlay Play indicatif. */}
@@ -118,11 +138,30 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
           </div>
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={asset.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <img src={asset.url} alt="" className="h-full w-full object-contain p-1" loading="lazy" />
         )}
-        <Badge variant="secondary" className="absolute left-2 top-2 capitalize">
+        <Badge variant="secondary" className="pointer-events-none absolute left-2 top-2 capitalize">
           {asset.type === "3d_model" ? "3D" : asset.type}
         </Badge>
+        {onToggleSelected && (
+          <label
+            className={cn(
+              "absolute right-2 top-2 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border bg-background/90 shadow-sm transition-opacity",
+              selected || selectionActive ? "opacity-100" : "opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
+            )}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(event) => onToggleSelected(asset.id, (event.nativeEvent as MouseEvent).shiftKey)}
+              aria-label={`Select ${asset.type === "3d_model" ? "3D model" : asset.type}`}
+              aria-checked={selected}
+              className="h-4 w-4 accent-primary"
+            />
+            {selected && <Check aria-hidden="true" className="pointer-events-none absolute h-3 w-3 text-primary-foreground" />}
+          </label>
+        )}
       </div>
       {layout === "list" && (
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4">
@@ -182,7 +221,7 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
               onClick={() => void patch({ isFavorite: !asset.isFavorite })}
               aria-label={asset.isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
-              <Star className={cn("h-4 w-4", asset.isFavorite && "fill-current text-yellow-500")} />
+              <Star className={cn("h-4 w-4", asset.isFavorite && "fill-current text-primary")} />
             </Button>
             <Button
               type="button"

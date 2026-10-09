@@ -9,31 +9,24 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  Boxes,
   FolderOpen,
   Image as ImageIcon,
-  Star,
-  Music2,
-  Play,
   Plus,
   Search,
   Trash2,
-  Video,
 } from "lucide-react";
 
 import type { ProjectSummary } from "@/components/projects/project-card";
+import { AssetLibraryGrid } from "@/components/projects/asset-library-grid";
+import type { AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
 import { ProjectLibraryTabs } from "@/components/projects/project-library-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ViewMode = "overview" | "projects" | "assets" | "favorites";
 
-type RecentAsset = {
-  id: string;
+type RecentAsset = AssetSummary & {
   projectId?: string | null;
-  type: "image" | "video" | "audio" | "3d_model";
-  url: string;
-  isFavorite: boolean;
   generationId?: string | null;
   createdAt?: string;
 };
@@ -200,89 +193,6 @@ function NewProjectCard({
   );
 }
 
-function AssetIcon({
-  type,
-  className,
-}: {
-  type: RecentAsset["type"];
-  className?: string;
-}) {
-  if (type === "video") {
-    return <Video className={className} />;
-  }
-
-  if (type === "audio") {
-    return <Music2 className={className} />;
-  }
-
-  if (type === "3d_model") {
-    return <Boxes className={className} />;
-  }
-
-  return <ImageIcon className={className} />;
-}
-
-function AssetTile({
-  asset,
-}: {
-  asset: RecentAsset;
-}) {
-  const isImage = asset.type === "image";
-  const isVideo = asset.type === "video";
-
-  return (
-    <div className="group relative aspect-[4/3] overflow-hidden rounded-lg bg-muted">
-      {isImage && (
-        <img
-          src={asset.url}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
-        />
-      )}
-
-      {isVideo && (
-        <video
-          src={asset.url}
-          preload="metadata"
-          muted
-          playsInline
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
-
-      {!isImage && !isVideo && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted">
-          <AssetIcon
-            type={asset.type}
-            className="h-8 w-8 text-muted-foreground/60"
-          />
-        </div>
-      )}
-
-      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10 opacity-0 transition-opacity group-hover:opacity-100" />
-
-      <div className="absolute left-2 top-2 flex h-7 min-w-7 items-center justify-center rounded-full bg-black/45 px-2 text-white backdrop-blur-sm">
-        <AssetIcon type={asset.type} className="h-3.5 w-3.5" />
-      </div>
-
-      {isVideo && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
-            <Play className="ml-0.5 h-4 w-4 fill-current" />
-          </span>
-        </div>
-      )}
-
-      {asset.isFavorite && (
-        <div className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white" aria-label="Favorite asset">
-          <Star className="h-4 w-4 fill-current" />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SectionHeader({
   title,
   count,
@@ -358,6 +268,9 @@ export default function ProjectsPage() {
   const [projectSearch, setProjectSearch] = useState("");
   const [projectSort, setProjectSort] = useState<"recent" | "name" | "assets">("recent");
   const [visibleProjectCount, setVisibleProjectCount] = useState(12);
+  const [assetTypeFilter, setAssetTypeFilter] = useState<"all" | "image" | "video" | "audio" | "3d_model">("all");
+  const [assetSort, setAssetSort] = useState<"recent" | "oldest" | "type">("recent");
+  const [assetProjectFilter, setAssetProjectFilter] = useState("all");
 
 
   const fetchProjects = useCallback(async () => {
@@ -411,7 +324,7 @@ export default function ProjectsPage() {
     setError(null);
     setCreating(false);
 
-    if (view === "overview" || view === "projects") {
+    if (view === "overview" || view === "projects" || view === "assets" || view === "favorites") {
       void fetchProjects();
     } else {
       setProjects(null);
@@ -488,6 +401,19 @@ export default function ProjectsPage() {
     () => assets?.slice(0, 12) ?? [],
     [assets]
   );
+
+  const filteredAssets = useMemo(() => {
+    const result = (assets ?? []).filter((asset) =>
+      (assetTypeFilter === "all" || asset.type === assetTypeFilter) &&
+      (assetProjectFilter === "all" || asset.projectId === assetProjectFilter),
+    );
+    return result.sort((first, second) => {
+      if (assetSort === "type") return first.type.localeCompare(second.type);
+      const firstCreated = first.createdAt ? Date.parse(first.createdAt) : 0;
+      const secondCreated = second.createdAt ? Date.parse(second.createdAt) : 0;
+      return assetSort === "recent" ? secondCreated - firstCreated : firstCreated - secondCreated;
+    });
+  }, [assets, assetProjectFilter, assetSort, assetTypeFilter]);
 
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLocaleLowerCase();
@@ -607,14 +533,7 @@ export default function ProjectsPage() {
                   description="Generated and uploaded assets will appear here."
                 />
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 sm:gap-4">
-                  {recentAssets.map((asset) => (
-                    <AssetTile
-                      key={asset.id}
-                      asset={asset}
-                    />
-                  ))}
-                </div>
+                <AssetLibraryGrid assets={recentAssets} onChanged={fetchAssets} />
               )}
             </section>
           </>
@@ -698,68 +617,59 @@ export default function ProjectsPage() {
           </section>
         )}
 
-        {view === "assets" && (
+        {(view === "assets" || view === "favorites") && (
           <section className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                Type
+                <select
+                  value={assetTypeFilter}
+                  onChange={(event) => setAssetTypeFilter(event.target.value as typeof assetTypeFilter)}
+                  className="h-10 min-w-36 rounded-lg border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="all">All types</option>
+                  <option value="image">Image</option>
+                  <option value="video">Video</option>
+                  <option value="audio">Audio</option>
+                  <option value="3d_model">3D</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                Project
+                <select
+                  value={assetProjectFilter}
+                  onChange={(event) => setAssetProjectFilter(event.target.value)}
+                  className="h-10 min-w-44 max-w-full rounded-lg border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="all">All projects</option>
+                  {(projects ?? []).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                Sort
+                <select
+                  value={assetSort}
+                  onChange={(event) => setAssetSort(event.target.value as typeof assetSort)}
+                  className="h-10 min-w-36 rounded-lg border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="recent">Recent</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="type">Type</option>
+                </select>
+              </label>
+            </div>
             {assets === null ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 sm:gap-4">
-                {Array.from({ length: 12 }).map((_, index) => (
-                  <Skeleton
-                    key={index}
-                    className="aspect-[4/3] w-full rounded-lg"
-                  />
-                ))}
+                {Array.from({ length: 12 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
               </div>
-            ) : assets.length === 0 ? (
+            ) : filteredAssets.length === 0 ? (
               <EmptyState
-                icon={
-                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
-                }
-                title="No assets"
-                description="Your images, videos, audio, and 3D assets will appear here."
+                icon={<ImageIcon className="h-5 w-5 text-muted-foreground" />}
+                title={view === "favorites" ? "No matching favorites" : "No matching assets"}
+                description="Try changing the type or project filters."
               />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 sm:gap-4">
-                {assets.map((asset) => (
-                  <AssetTile
-                    key={asset.id}
-                    asset={asset}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {view === "favorites" && (
-          <section className="flex flex-col gap-4">
-            {assets === null ? (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 sm:gap-4">
-                {Array.from({ length: 12 }).map((_, index) => (
-                  <Skeleton
-                    key={index}
-                    className="aspect-[4/3] w-full rounded-lg"
-                  />
-                ))}
-              </div>
-            ) : assets.length === 0 ? (
-              <EmptyState
-                icon={
-                  <span className="text-lg text-muted-foreground">
-                    ★
-                  </span>
-                }
-                title="No favorites yet"
-                description="Favorite assets will appear here."
-              />
-            ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 sm:gap-4">
-                {assets.map((asset) => (
-                  <AssetTile
-                    key={asset.id}
-                    asset={asset}
-                  />
-                ))}
-              </div>
+              <AssetLibraryGrid assets={filteredAssets} onChanged={fetchAssets} />
             )}
           </section>
         )}
