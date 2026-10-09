@@ -700,7 +700,7 @@ export default function VoiceGeneratorPage() {
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Voice Generator</h1>
       </header>
 
-      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] xl:gap-6">
+      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(320px,390px)_minmax(0,1fr)] xl:gap-6">
         <section aria-label="Voice generation controls" className="flex min-w-0 flex-col gap-4">
 
           {/* Mode */}
