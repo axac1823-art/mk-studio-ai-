@@ -207,8 +207,10 @@ export default function VideoGeneratorPage() {
     const compatible = models.filter((m) => Boolean(m[flag]));
     const current = models.find((m) => m.key === state.selectedModel);
     const currentCompatible = current && Boolean(current[flag]);
-    if (!currentCompatible && compatible.length > 0) {
-      updateState({ selectedModel: compatible[0].key });
+    // An empty selection means Auto (recommended). Only replace a model
+    // when the user-selected model becomes incompatible with the current mode.
+    if (state.selectedModel && !currentCompatible) {
+      updateState({ selectedModel: compatible[0]?.key ?? "" });
     }
   }, [previewMode, models, state.selectedModel, updateState]);
 
