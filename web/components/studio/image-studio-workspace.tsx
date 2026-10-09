@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationControls } from "@/components/studio/generation-controls";
-import { ImageFeaturePanel } from "@/components/studio/image-feature-panel";
+import { ImageFeaturePanel, ProjectSourceStrip } from "@/components/studio/image-feature-panel";
 import { ProjectPicker, type ProjectOption } from "@/components/studio/project-picker";
 import { ReferencesPanel, type ReferenceImage } from "@/components/studio/references-panel";
 import { ResultPanel, type ResultState } from "@/components/studio/result-panel";
@@ -88,16 +88,16 @@ const SIMPLE_TAB_CONFIG: Record<SimpleImageTab, { options?: PresetMeta[]; option
 };
 
 const IMAGE_UPLOAD_COPY: Partial<Record<StudioTab, { title: string; description: string; ariaLabel: string }>> = {
-  print_render: { title: "Drop your 3D screenshot", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your 3D screenshot" },
-  plan_to_render: { title: "Drop your floor plan", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your floor plan" },
-  mood_swap: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your render" },
-  multi_angle: { title: "Drop your source image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your source image" },
-  variations: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image for variations" },
-  image_extender: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to extend" },
-  exterior_to_interior: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your exterior render" },
-  text_to_image: { title: "Add a reference image", description: "Optional ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an optional reference image" },
-  background_remover: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image" },
-  upscale: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to upscale" },
+  print_render: { title: "Drop your 3D screenshot", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your 3D screenshot" },
+  plan_to_render: { title: "Drop your floor plan", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your floor plan" },
+  mood_swap: { title: "Drop your render", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your render" },
+  multi_angle: { title: "Drop your source image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your source image" },
+  variations: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image for variations" },
+  image_extender: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to extend" },
+  exterior_to_interior: { title: "Drop your render", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your exterior render" },
+  text_to_image: { title: "Add a reference image", description: "Optional — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an optional reference image" },
+  background_remover: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image" },
+  upscale: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to upscale" },
 };
 
 function initialSimpleState(optionId: string): SimpleImageState {
@@ -203,7 +203,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       setAssets([]);
       return;
     }
-    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
+    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&type=image`)
       .then((res) => res.json())
       .then((data) => setAssets(Array.isArray(data.assets) ? data.assets : []))
       .catch(() => setAssets([]));
@@ -533,6 +533,11 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                       description={uploadCopy.description}
                       ariaLabel={uploadCopy.ariaLabel}
                     />
+                    <ProjectSourceStrip
+                      sourceAssets={assets}
+                      selectedSourceAssetId={selectedSourceAsset?.id ?? null}
+                      onSelectSourceAsset={selectSourceAsset}
+                    />
                   </div>
                   <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
                   <ReferencesPanel
@@ -561,6 +566,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   balance={balance}
                   isBusy={isBusy}
                   onModelChange={setSelectedUpscaleModel}
+                  sourceAssets={assets}
+                  selectedSourceAssetId={selectedSourceAsset?.id ?? null}
+                  onSelectSourceAsset={selectSourceAsset}
                   onUploadFileSelected={(file, previewUrl) => {
                     setSelectedSourceAsset(null);
                     setUpscaleFile(file);
@@ -592,6 +600,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   uploadTitle={uploadCopy.title}
                   uploadDescription={uploadCopy.description}
                   uploadAriaLabel={uploadCopy.ariaLabel}
+                  sourceAssets={assets}
+                  selectedSourceAssetId={selectedSourceAsset?.id ?? null}
+                  onSelectSourceAsset={selectSourceAsset}
                   options={SIMPLE_TAB_CONFIG[tab].options}
                   optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
                   optionId={simpleTabs[tab].optionId}
