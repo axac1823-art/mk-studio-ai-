@@ -20,7 +20,6 @@ interface ProjectSourceStripProps {
   sourceAssets?: ImageSourceAsset[];
   selectedSourceAssetId?: string | null;
   onSelectSourceAsset?: (asset: ImageSourceAsset) => void;
-  descriptionRequired?: boolean;
 }
 
 export function ProjectSourceStrip({
@@ -88,6 +87,7 @@ interface ImageFeaturePanelProps {
   sourceAssets?: ImageSourceAsset[];
   selectedSourceAssetId?: string | null;
   onSelectSourceAsset?: (asset: ImageSourceAsset) => void;
+  descriptionRequired?: boolean;
 }
 
 export function ImageFeaturePanel({
