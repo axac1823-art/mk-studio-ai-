@@ -210,6 +210,29 @@ export default function ImageTo3DPage() {
                 <p className="text-xs text-muted-foreground">Upload at least one view. More views improve quality.</p>
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="3d-model" className="text-sm font-medium">
+                  Model
+                </label>
+                <select
+                  id="3d-model"
+                  value={selectedModel}
+                  onChange={(event) => setSelectedModel(event.target.value)}
+                  disabled={isBusy || models.length === 0}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+                >
+                  {models.length === 0 && <option value="">Auto</option>}
+                  {models.map((model) => (
+                    <option key={model.key} value={model.key}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {models.find((model) => model.key === selectedModel)?.description ?? "Choose a 3D generation model."}
+                </p>
+              </div>
+
               <div className="sticky bottom-0 z-10 -mx-4 mt-1 flex flex-col gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5">
                 <Button
                   type="button"
