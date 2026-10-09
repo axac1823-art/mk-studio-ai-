@@ -6,6 +6,7 @@ import { Box, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ModelPicker } from "@/components/studio/model-picker";
+import { StudioShell } from "@/components/studio/studio-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { UploadDropzone } from "@/components/upload-dropzone";
 import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/config/action-costs";
@@ -174,8 +175,9 @@ export default function ImageTo3DPage() {
   const iframeSrcDoc = modelViewerIframe(resultUrl);
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+    <StudioShell
+      header={
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
         <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Image-to-3D</h1>
         <div className="flex items-center gap-3">
           <nav className="flex rounded-md border p-1" aria-label="3D generation mode">
@@ -183,9 +185,9 @@ export default function ImageTo3DPage() {
             <Link href="/app/text-to-3d" className="rounded px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Text-to-3D</Link>
           </nav>
         </div>
-      </header>
-
-      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] xl:gap-6">
+      </div>
+      }
+      panel={
         <section aria-label="Image views" className="min-w-0">
           <Card>
             <CardContent className="flex flex-col gap-5 p-4 sm:p-5">
@@ -218,17 +220,7 @@ export default function ImageTo3DPage() {
                 disabled={isBusy}
               />
 
-              <div className="sticky bottom-0 z-10 -mx-4 mt-1 flex flex-col gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5">
-                <Button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={isBusy || !hasEnoughCredits || !hasAnyView}
-                  className="w-full gap-2"
-                >
-                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Box className="h-4 w-4" />}
-                  Generate &middot; {cost} credits
-                </Button>
-              </div>
+
 
               {error && (
                 <p role="alert" className="text-sm text-destructive">
@@ -238,7 +230,8 @@ export default function ImageTo3DPage() {
             </CardContent>
           </Card>
         </section>
-
+      }
+      stage={
         <section aria-label="3D Viewer" className="min-w-0">
           <Card>
             <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
@@ -264,7 +257,20 @@ export default function ImageTo3DPage() {
             </CardContent>
           </Card>
         </section>
-      </div>
-    </main>
+      }
+      bar={
+              <div className="flex w-full flex-col gap-2">
+                <Button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isBusy || !hasEnoughCredits || !hasAnyView}
+                  className="w-full gap-2"
+                >
+                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Box className="h-4 w-4" />}
+                  Generate &middot; {cost} credits
+                </Button>
+              </div>
+      }
+    />
   );
 }
