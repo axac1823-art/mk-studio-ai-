@@ -303,11 +303,8 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
             setResult({ status: "done", kind: data.kind ?? kind, beforeUrl, outputUrls });
             // Débit réel au succès + nouvel asset : on rafraîchit les deux.
             refreshBalance();
-            setSelectedProjectId((current) => {
-              refreshAssets(current);
-              refreshHistoryAssets(current, tab);
-              return current;
-            });
+            refreshAssets(selectedProjectId);
+            refreshHistoryAssets(selectedProjectId, tab);
           } else if (data.status === "error") {
             stopPolling();
             setResult({ status: "idle" });
@@ -322,7 +319,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         }
       }, POLL_INTERVAL_MS);
     },
-    [stopPolling, refreshAssets, refreshHistoryAssets, refreshBalance, tab]
+    [stopPolling, refreshAssets, refreshHistoryAssets, refreshBalance, selectedProjectId, tab]
   );
 
   const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
