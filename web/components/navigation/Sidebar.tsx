@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentType, useEffect, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -119,6 +119,7 @@ export function AppSidebar({
   const isAllAssets = pathname === "/app/projects" && projectView === "assets";
   const isFavorites = pathname === "/app/projects" && projectView === "favorites";
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
   const collapsed = !open;
 
   useEffect(() => {
@@ -128,8 +129,17 @@ export function AppSidebar({
     media.addEventListener("change", updateViewport);
     return () => media.removeEventListener("change", updateViewport);
   }, []);
+
+  useEffect(() => {
+    if (sidebarRef.current) {
+      sidebarRef.current.inert = isMobileViewport && !mobileOpen;
+    }
+  }, [isMobileViewport, mobileOpen]);
+
   return (
     <aside
+      ref={sidebarRef}
+      aria-hidden={isMobileViewport && !mobileOpen}
       className={cn(
         "fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r bg-background shadow-xl transition-transform duration-200 ease-in-out md:sticky md:top-0 md:z-auto md:w-auto md:shrink-0 md:shadow-none md:transition-[width]",
         mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
@@ -137,7 +147,6 @@ export function AppSidebar({
       )}
       style={{ height: "100dvh", maxHeight: "100dvh" }}
       aria-label="Primary navigation"
-      inert={isMobileViewport && !mobileOpen}
     >
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-3">
         {!collapsed && (
