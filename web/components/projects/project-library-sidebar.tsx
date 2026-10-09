@@ -53,7 +53,7 @@ function ProjectLibraryLinks({ mobile = false }: { mobile?: boolean }) {
 
     return (
       <nav aria-label="Project library" className="flex gap-1 overflow-x-auto border-b bg-background px-2 py-2 md:hidden">
-        <Link href="/app/projects" className={mobileClass(pathname === "/app/projects" && (!view || view === "projects"))}>
+        <Link href="/app/projects?view=projects" className={mobileClass(pathname === "/app/projects" && (view === "projects" || !view))}>
           <FolderOpen className="h-3.5 w-3.5" /> All projects
         </Link>
         <Link href="/app/projects?view=assets" className={mobileClass(pathname === "/app/projects" && view === "assets")}>
@@ -75,7 +75,7 @@ function ProjectLibraryLinks({ mobile = false }: { mobile?: boolean }) {
   return (
     <nav aria-label="Project library" className="flex flex-col gap-0.5">
       <SidebarLink
-        href="/app/projects"
+        href="/app/projects?view=projects"
         label="All projects"
         icon={FolderOpen}
         active={pathname === "/app/projects" && (!view || view === "projects")}
