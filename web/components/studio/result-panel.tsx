@@ -179,26 +179,26 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
 
         <CardContent className="flex min-w-0 flex-col gap-3">
           {error ? (
-            <div role="alert" className="flex aspect-[4/3] min-h-[260px] w-full flex-col items-center justify-center gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-6 text-center sm:min-h-[320px]">
+            <div role="alert" className="flex aspect-[4/3] min-h-[320px] w-full flex-col items-center justify-center gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-6 text-center sm:min-h-[400px] lg:min-h-[480px]">
               <p className="text-sm font-semibold">Unable to generate this result.</p>
               <p className="max-w-md text-sm text-muted-foreground">{error}</p>
               <p className="text-xs text-muted-foreground">Use the generation controls in this workspace to try again.</p>
             </div>
           ) : result.status === "busy" ? (
-            <div className="flex aspect-[4/3] min-h-[260px] w-full flex-col items-center justify-center gap-4 rounded-lg border bg-muted/20 p-4 sm:min-h-[320px]">
-              <Skeleton className="aspect-[4/3] w-full max-w-2xl rounded-lg" />
+            <div className="flex aspect-[4/3] min-h-[320px] w-full flex-col items-center justify-center gap-4 rounded-lg border bg-muted/20 p-4 sm:min-h-[400px] lg:min-h-[480px]">
+              <Skeleton className="aspect-[4/3] w-full max-w-3xl rounded-lg" />
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {STAGE_LABELS[result.stage ?? ""] ?? "Working on it"}
               </p>
             </div>
           ) : result.status === "idle" ? (
-            <div className="flex aspect-[4/3] min-h-[260px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center sm:min-h-[320px]">
+            <div className="flex aspect-[4/3] min-h-[320px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center sm:min-h-[400px] lg:min-h-[480px]">
               <p className="text-sm text-muted-foreground">Your result will appear here.</p>
             </div>
           ) : selectedUrl ? (
             <>
-              <div className="flex aspect-[4/3] min-h-[260px] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-1 sm:min-h-[320px]">
+              <div className="flex aspect-[4/3] min-h-[320px] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-1 sm:min-h-[400px] lg:min-h-[480px]">
                 {renderMedia()}
               </div>
 
@@ -248,7 +248,7 @@ export function ResultPanel({ result, error, nextActions = [] }: ResultPanelProp
               {result.kind === "image" && <NextActions actions={nextActions} />}
             </>
           ) : (
-            <div className="flex aspect-[4/3] min-h-[260px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center sm:min-h-[320px]">
+            <div className="flex aspect-[4/3] min-h-[320px] w-full items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center sm:min-h-[400px] lg:min-h-[480px]">
               <p className="text-sm text-muted-foreground">
                 {result.kind === "video" ? "Your video result will appear here." : "Your image result will appear here."}
               </p>
