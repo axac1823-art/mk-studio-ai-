@@ -34,8 +34,8 @@ Scope MVP : **10 fonctions métier** —
 
 Exclusions V1 (ne pas implémenter, retirer le cas échéant) :
 édition conversationnelle par chat, swap d'objets/mobilier, presets non liés
-au bâti, et **tout sélecteur de modèle IA visible** — le routage entre
-modèles est 100% serveur, le fallback automatique et invisible. La narration
+au bâti. A `ModelPicker` with `Auto` is shown in each AI tool; server
+routing still handles `Auto` and fallback. La narration
 /voix off a été temporairement réintégrée à la demande explicite pour le
 Voice Generator.
 
@@ -237,8 +237,8 @@ Voice Generator est utilisé, `ELEVENLABS_API_KEY`.
 - Changement de fournisseur ou de version de modèle IA : toucher
   **uniquement** `MODEL_CATALOG` dans `lib/ai/catalog.ts` (et l'adaptateur
   `lib/ai/providers/<provider>.ts` si le fournisseur est nouveau), rien
-  d'autre. (Le sélecteur de modèle a été retiré en V1 : le routage est
-  100% serveur, aucune liste de modèles côté client.)
+  d'autre. (A `ModelPicker` with `Auto` is shown in each AI tool; server
+  routing still handles `Auto` and fallback.)
 - shadcn/ui a été installé **à la main** (le CLI npm était défaillant) :
   `components.json` + `components/ui/` + thème dans `tailwind.config.ts` et
   `globals.css`. Pour ajouter un composant, reprendre le source officiel
@@ -299,8 +299,8 @@ Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
   relancer les tests end-to-end quand une clé ou un provider change.
 - **Recadrage MVP** : agrégateur vertical archviz/immobilier — les outils
   ajoutés (Voice Generator, Video Editor, Video Upscaler) restent orientés
-  production multimédia de présentation. Le sélecteur de modèle reste
-  invisible côté client (routage 100% serveur).
+  production multimédia de présentation. A `ModelPicker` with `Auto`
+  is shown in each AI tool; server routing still handles `Auto` and fallback.
 - **Auth** : toutes les routes `/app/*` sont protégées par `middleware.ts`
   (Supabase SSR). Les routes API filtrent par `user_id` et le worker
   exige `WORKER_API_KEY`. En local, `AUTH_DEBUG=true` fournit un fallback
