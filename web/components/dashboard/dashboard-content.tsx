@@ -29,6 +29,7 @@ interface ProjectSummary {
   id: string;
   name: string;
   assetCount: number;
+  coverUrl?: string | null;
 }
 
 export function DashboardContent() {
@@ -57,7 +58,7 @@ export function DashboardContent() {
       const res = await fetch("/api/assets");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { assets: AssetSummary[] };
-      setAssets(data.assets.slice().reverse().slice(0, 4));
+      setAssets(data.assets.slice().reverse().slice(0, 6));
     } catch {
       setError("Could not load recent work.");
     }
@@ -100,15 +101,22 @@ export function DashboardContent() {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       <section aria-labelledby="continue-working-title" className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 id="continue-working-title" className="text-lg font-semibold tracking-tight">Continue Working</h2>
             <p className="mt-1 text-sm text-muted-foreground">Pick up a project where you left off.</p>
           </div>
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setCreating((open) => !open)}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            New project
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild type="button" variant="ghost" size="sm" className="gap-1">
+              <Link href="/app/projects?view=projects">
+                All projects <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setCreating((open) => !open)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              New project
+            </Button>
+          </div>
         </div>
 
         {creating && (
@@ -150,7 +158,16 @@ export function DashboardContent() {
                 href={`/app/projects/${project.id}`}
                 className="group flex min-h-[92px] items-center gap-3 rounded-lg border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><FolderOpen className="h-5 w-5" /></div>
+                <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-md bg-muted">
+                  {project.coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={project.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      <FolderOpen className="h-5 w-5" />
+                    </div>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium group-hover:text-foreground">{project.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{project.assetCount} assets</p>
@@ -184,12 +201,12 @@ export function DashboardContent() {
             <p className="mt-1 text-sm text-muted-foreground">Your latest generated assets.</p>
           </div>
           <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1 text-muted-foreground">
-            <Link href="/app/projects">Browse all<ArrowRight className="h-3.5 w-3.5" /></Link>
+            <Link href="/app/projects?view=assets">View all assets<ArrowRight className="h-3.5 w-3.5" /></Link>
           </Button>
         </div>
         {assets === null ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
           </div>
         ) : assets.length === 0 ? (
           <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-5 py-6">
