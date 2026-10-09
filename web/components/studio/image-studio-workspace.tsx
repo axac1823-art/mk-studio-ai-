@@ -514,13 +514,17 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       </header>
 
       {showTabs && (
-        <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
-          <TabsList>
-            {STUDIO_TABS.map((studioTab) => (
-              <TabsTrigger key={studioTab.id} value={studioTab.id}>{studioTab.label}</TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="-mx-1 min-w-0 overflow-x-auto px-1 pb-1">
+          <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
+            <TabsList className="inline-flex h-10 min-w-max justify-start">
+              {STUDIO_TABS.map((studioTab) => (
+                <TabsTrigger key={studioTab.id} value={studioTab.id} className="whitespace-nowrap">
+                  {studioTab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
       )}
 
       <div className="grid flex-1 items-start gap-5 lg:grid-cols-[minmax(300px,350px)_minmax(0,1fr)] xl:gap-6">
