@@ -14,6 +14,7 @@ import { FrameDropzone } from "@/components/video-generator/frame-dropzone";
 import { GenerateBar } from "@/components/video-generator/generate-bar";
 import { MediaAttachments, type AttachedMediaItem } from "@/components/video-generator/media-attachments";
 import { ModelPicker } from "@/components/studio/model-picker";
+import { StudioShell } from "@/components/studio/studio-shell";
 import type { VideoModelOption } from "@/components/video-generator/model-select";
 import { ShotEditor } from "@/components/video-generator/shot-editor";
 import { BottomToolbar } from "@/components/video-generator/bottom-toolbar";
@@ -429,15 +430,16 @@ export default function VideoGeneratorPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+    <StudioShell
+      header={
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Video Generator</h1>
           <Badge variant="outline">{modeLabels[previewMode]}</Badge>
         </div>
-      </header>
-
-      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(360px,440px)_minmax(0,1fr)] xl:gap-6">
+      </div>
+      }
+      panel={
         <section aria-label="Video sources and controls" className="min-w-0">
           <Card>
             <CardContent className="flex flex-col gap-5 p-4 sm:p-5">
@@ -527,7 +529,8 @@ export default function VideoGeneratorPage() {
             </CardContent>
           </Card>
         </section>
-
+      }
+      stage={
         <section aria-label="Video preview and history" className="flex min-w-0 flex-col gap-5">
           <Card>
             <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
@@ -557,7 +560,9 @@ export default function VideoGeneratorPage() {
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
             </CardContent>
           </Card>
-
+        </section>
+      }
+      history={
           <Card>
             <CardContent className="flex flex-col gap-3 p-4 sm:p-5">
               <div>
@@ -587,9 +592,8 @@ export default function VideoGeneratorPage() {
               )}
             </CardContent>
           </Card>
-        </section>
-      </div>
-
+      }
+      bar={
       <GenerateBar
         cost={cost}
         hasEnoughCredits={hasEnoughCredits}
@@ -598,6 +602,7 @@ export default function VideoGeneratorPage() {
         canGenerate={canGenerate}
         onGenerate={handleGenerate}
       />
-    </main>
+      }
+    />
   );
 }
