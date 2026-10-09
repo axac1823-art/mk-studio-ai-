@@ -119,11 +119,6 @@ export function AppSidebar({
     media.addEventListener("change", updateViewport);
     return () => media.removeEventListener("change", updateViewport);
   }, []);
-  const isLibraryContext =
-    pathname.startsWith("/app/projects") ||
-    pathname.startsWith("/app/uploads") ||
-    pathname.startsWith("/app/trash");
-
   return (
     <aside
       className={cn(
@@ -182,7 +177,7 @@ export function AppSidebar({
           <nav aria-label="Workspace" className="flex flex-col gap-0.5">
             <NavLink href="/app/dashboard" icon={Home} label="Home" active={pathname === "/app/dashboard"} collapsed={collapsed} />
             <NavLink
-              href="/app/projects"
+              href="/app/projects?view=projects"
               icon={FolderOpen}
               label="Projects"
               active={pathname.startsWith("/app/projects")}
@@ -203,20 +198,18 @@ export function AppSidebar({
           </section>
         )}
 
-        {!isLibraryContext && (
-          <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
-            {!collapsed && (
-              <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
-                LIBRARY
-              </p>
-            )}
-            <nav aria-label="Library" className="flex flex-col gap-0.5">
-              <NavLink href="/app/favorites" icon={Heart} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
-              <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
-              <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
-            </nav>
-          </section>
-        )}
+        <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
+          {!collapsed && (
+            <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
+              LIBRARY
+            </p>
+          )}
+          <nav aria-label="Library" className="flex flex-col gap-0.5">
+            <NavLink href="/app/favorites" icon={Heart} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
+            <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
+            <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
+          </nav>
+        </section>
       </div>
       <div className="flex shrink-0 flex-col gap-1.5 border-t p-2.5">
         <NavLink href="/app/settings" icon={Settings} label="Settings" active={pathname.startsWith("/app/settings")} collapsed={collapsed} />
