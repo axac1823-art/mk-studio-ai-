@@ -4,10 +4,10 @@ import Link from "next/link";
 import { Check, X } from "lucide-react";
 
 import {
-  AssetSummary,
   IMAGE_SERVICES,
   VIDEO_SERVICES,
 } from "@/components/projects/asset-card";
+import type { AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
