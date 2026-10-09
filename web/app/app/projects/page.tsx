@@ -4,37 +4,30 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  Boxes,
-  ChevronLeft,
-  ChevronRight,
   FolderOpen,
   Image as ImageIcon,
-  MoreHorizontal,
-  Music2,
-  Play,
   Plus,
   Trash2,
-  Video,
 } from "lucide-react";
 
 import type { ProjectSummary } from "@/components/projects/project-card";
+import {
+  AssetCard,
+  type AssetSummary,
+} from "@/components/projects/asset-card";
+import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ViewMode = "overview" | "projects" | "assets" | "favorites";
 
-type RecentAsset = {
-  id: string;
+type RecentAsset = AssetSummary & {
   projectId?: string | null;
-  type: "image" | "video" | "audio" | "3d_model";
-  url: string;
-  isFavorite: boolean;
   generationId?: string | null;
   createdAt?: string;
 };
@@ -45,7 +38,7 @@ function ProjectCover({
   project: ProjectSummary;
 }) {
   return (
-    <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
+    <div className="relative aspect-[16/9] overflow-hidden rounded-xl bg-muted">
       {project.coverUrl ? (
         <>
           <img
@@ -59,15 +52,6 @@ function ProjectCover({
           <div className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm">
             <FolderOpen className="h-3.5 w-3.5" />
           </div>
-
-          <button
-            type="button"
-            aria-label={`More options for ${project.name}`}
-            onClick={(event) => event.preventDefault()}
-            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/50 group-hover:opacity-100"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
 
           <div className="absolute inset-x-0 bottom-0 p-3">
             <p className="truncate text-sm font-semibold text-white">
@@ -87,15 +71,6 @@ function ProjectCover({
           <div className="absolute inset-0 flex items-center justify-center">
             <FolderOpen className="h-10 w-10 text-muted-foreground/50" />
           </div>
-
-          <button
-            type="button"
-            aria-label={`More options for ${project.name}`}
-            onClick={(event) => event.preventDefault()}
-            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-background/70 text-foreground opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </button>
 
           <div className="absolute inset-x-0 bottom-0 p-3">
             <p className="truncate text-sm font-semibold">
@@ -121,7 +96,7 @@ function ProjectCardItem({
   onDelete?: (id: string) => void;
 }) {
   return (
-    <div className="group relative w-[200px] shrink-0">
+    <div className="group relative w-full min-w-0">
       <Link href={`/app/projects/${project.id}`} className="block">
         <ProjectCover project={project} />
       </Link>
@@ -159,8 +134,8 @@ function NewProjectCard({
 }) {
   if (creating) {
     return (
-      <div className="w-[200px] shrink-0">
-        <div className="flex aspect-square flex-col justify-center gap-3 rounded-xl border bg-muted/40 p-4">
+      <div className="w-full min-w-0">
+        <div className="flex aspect-[16/9] flex-col justify-center gap-3 rounded-xl border bg-muted/40 p-4">
           <input
             autoFocus
             value={name}
@@ -202,7 +177,7 @@ function NewProjectCard({
       <button
         type="button"
         onClick={onStart}
-        className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-dashed bg-muted/35 p-5 text-center transition-colors hover:bg-muted/70"
+        className="flex aspect-[16/9] w-full flex-col items-center justify-center rounded-xl border border-dashed bg-muted/35 p-5 text-center transition-colors hover:bg-muted/70"
       >
         <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-background shadow-sm">
           <Plus className="h-4 w-4" />
@@ -218,141 +193,21 @@ function NewProjectCard({
   );
 }
 
-function AssetIcon({
-  type,
-  className,
-}: {
-  type: RecentAsset["type"];
-  className?: string;
-}) {
-  if (type === "video") {
-    return <Video className={className} />;
-  }
-
-  if (type === "audio") {
-    return <Music2 className={className} />;
-  }
-
-  if (type === "3d_model") {
-    return <Boxes className={className} />;
-  }
-
-  return <ImageIcon className={className} />;
-}
-
-function AssetTile({
-  asset,
-}: {
-  asset: RecentAsset;
-}) {
-  const isImage = asset.type === "image";
-  const isVideo = asset.type === "video";
-
-  return (
-    <div className="group relative aspect-square overflow-hidden rounded-xl bg-muted">
-      {isImage && (
-        <img
-          src={asset.url}
-          alt=""
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.025]"
-        />
-      )}
-
-      {isVideo && (
-        <video
-          src={asset.url}
-          preload="metadata"
-          muted
-          playsInline
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
-
-      {!isImage && !isVideo && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted">
-          <AssetIcon
-            type={asset.type}
-            className="h-8 w-8 text-muted-foreground/60"
-          />
-        </div>
-      )}
-
-      <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10 opacity-0 transition-opacity group-hover:opacity-100" />
-
-      <div className="absolute left-2 top-2 flex h-7 min-w-7 items-center justify-center rounded-full bg-black/45 px-2 text-white backdrop-blur-sm">
-        <AssetIcon type={asset.type} className="h-3.5 w-3.5" />
-      </div>
-
-      {isVideo && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
-            <Play className="ml-0.5 h-4 w-4 fill-current" />
-          </span>
-        </div>
-      )}
-
-      {asset.isFavorite && (
-        <div className="absolute bottom-2 right-2 text-sm text-white">
-          ★
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SectionHeader({
   title,
   count,
-  onPrevious,
-  onNext,
 }: {
   title: string;
   count?: number;
-  onPrevious?: () => void;
-  onNext?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-muted-foreground">
-          {title}
-        </span>
-
+        <span className="text-sm font-medium text-muted-foreground">{title}</span>
         {typeof count === "number" && (
-          <span className="text-xs text-muted-foreground/60">
-            {count}
-          </span>
+          <span className="text-xs text-muted-foreground/60">{count}</span>
         )}
       </div>
-
-      {(onPrevious || onNext) && (
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onPrevious}
-            disabled={!onPrevious}
-            aria-label="Previous projects"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onNext}
-            disabled={!onNext}
-            aria-label="Next projects"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -389,14 +244,15 @@ export default function ProjectsPage() {
   const rawView = searchParams.get("view");
 
   const view: ViewMode =
-    rawView === "projects" ||
+    rawView === "overview" ||
     rawView === "assets" ||
     rawView === "favorites"
       ? rawView
-      : "overview";
+      : "projects";
 
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<RecentAsset[] | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -404,7 +260,6 @@ export default function ProjectsPage() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const projectsRailRef = useRef<HTMLDivElement | null>(null);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -447,6 +302,11 @@ export default function ProjectsPage() {
       };
 
       setAssets(data.assets);
+      setSelectedAssetId((current) =>
+        current && data.assets.some((asset) => asset.id === current)
+          ? current
+          : null,
+      );
       setError(null);
     } catch {
       setError("Could not load assets.");
@@ -456,6 +316,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     setError(null);
     setCreating(false);
+    setSelectedAssetId(null);
 
     if (view === "overview" || view === "projects") {
       void fetchProjects();
@@ -526,27 +387,16 @@ export default function ProjectsPage() {
   };
 
   const recentProjects = useMemo(
-    () => projects?.slice(0, 8) ?? [],
+    () => projects?.slice(0, 3) ?? [],
     [projects]
   );
 
   const recentAssets = useMemo(
-    () => assets?.slice(0, 12) ?? [],
+    () => assets?.slice(0, 6) ?? [],
     [assets]
   );
 
-  const scrollProjects = (direction: "left" | "right") => {
-    const container = projectsRailRef.current;
 
-    if (!container) {
-      return;
-    }
-
-    container.scrollBy({
-      left: direction === "left" ? -440 : 440,
-      behavior: "smooth",
-    });
-  };
 
   const pageTitle =
     view === "overview"
@@ -580,6 +430,27 @@ export default function ProjectsPage() {
           )}
         </header>
 
+        <nav aria-label="Project library views" className="flex flex-wrap items-center gap-2 border-b pb-3">
+          {([
+            { label: "All projects", href: "/app/projects?view=projects", active: view === "projects" },
+            { label: "All assets", href: "/app/projects?view=assets", active: view === "assets" },
+            { label: "Favorites", href: "/app/projects?view=favorites", active: view === "favorites" },
+          ] as const).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={item.active ? "page" : undefined}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                item.active
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
         {error && (
           <p
             role="alert"
@@ -589,27 +460,26 @@ export default function ProjectsPage() {
           </p>
         )}
 
+        {selectedAssetId && assets && (
+          <AssetSelectionToolbar
+            asset={assets.find((asset) => asset.id === selectedAssetId) ?? null}
+            onClear={() => setSelectedAssetId(null)}
+          />
+        )}
+
         {view === "overview" && (
           <>
             <section className="flex flex-col gap-3">
-              <SectionHeader
-                title="Recent projects"
-                count={projects?.length}
-                onPrevious={() => scrollProjects("left")}
-                onNext={() => scrollProjects("right")}
-              />
+              <SectionHeader title="Recent projects" count={projects?.length} />
 
               {projects === null ? (
-                <div className="flex gap-4 overflow-hidden">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <Skeleton
-                      key={index}
-                      className="aspect-square w-[200px] shrink-0 rounded-xl"
-                    />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <Skeleton key={index} className="aspect-[16/9] w-full rounded-xl" />
                   ))}
                 </div>
               ) : recentProjects.length === 0 ? (
-                <div className="flex gap-4 overflow-x-auto pb-1">
+                <div className="max-w-md">
                   <NewProjectCard
                     creating={creating}
                     name={name}
@@ -624,10 +494,7 @@ export default function ProjectsPage() {
                   />
                 </div>
               ) : (
-                <div
-                  ref={projectsRailRef}
-                  className="flex gap-4 overflow-x-auto pb-1 scrollbar-none"
-                >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <NewProjectCard
                     creating={creating}
                     name={name}
@@ -640,12 +507,8 @@ export default function ProjectsPage() {
                       setName("");
                     }}
                   />
-
                   {recentProjects.map((project) => (
-                    <ProjectCardItem
-                      key={project.id}
-                      project={project}
-                    />
+                    <ProjectCardItem key={project.id} project={project} />
                   ))}
                 </div>
               )}
@@ -677,9 +540,14 @@ export default function ProjectsPage() {
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                   {recentAssets.map((asset) => (
-                    <AssetTile
+                    <AssetCard
                       key={asset.id}
                       asset={asset}
+                      onChanged={() => void fetchAssets()}
+                      selected={selectedAssetId === asset.id}
+                      onSelect={() =>
+                        setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+                      }
                     />
                   ))}
                 </div>
@@ -764,9 +632,14 @@ export default function ProjectsPage() {
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                 {assets.map((asset) => (
-                  <AssetTile
+                  <AssetCard
                     key={asset.id}
                     asset={asset}
+                    onChanged={() => void fetchAssets()}
+                    selected={selectedAssetId === asset.id}
+                    onSelect={() =>
+                      setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+                    }
                   />
                 ))}
               </div>
@@ -798,9 +671,14 @@ export default function ProjectsPage() {
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                 {assets.map((asset) => (
-                  <AssetTile
+                  <AssetCard
                     key={asset.id}
                     asset={asset}
+                    onChanged={() => void fetchAssets()}
+                    selected={selectedAssetId === asset.id}
+                    onSelect={() =>
+                      setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+                    }
                   />
                 ))}
               </div>
