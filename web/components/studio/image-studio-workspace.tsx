@@ -118,6 +118,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [historyAssets, setHistoryAssets] = useState<AssetItem[]>([]);
   const [selectedSourceAsset, setSelectedSourceAsset] = useState<AssetItem | null>(null);
 
   // --- Print Render ---
@@ -209,6 +210,17 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       .catch(() => setAssets([]));
   }, []);
 
+  const refreshHistoryAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
+    if (!projectId) {
+      setHistoryAssets([]);
+      return;
+    }
+    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
+      .then((res) => res.json())
+      .then((data) => setHistoryAssets(Array.isArray(data.assets) ? data.assets : []))
+      .catch(() => setHistoryAssets([]));
+  }, []);
+
   // Chargement initial : solde, coûts, projets, modèles upscale.
   // Les modèles image sont chargés par feature (voir effet ci-dessous) car
   // chaque feature (text_to_image, print_render, mood_swap...) expose des
@@ -249,8 +261,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   // La galerie suit le projet sélectionné.
   useEffect(() => {
     refreshAssets(selectedProjectId);
+    refreshHistoryAssets(selectedProjectId, tab);
     if (!preselectedAssetId) setSelectedSourceAsset(null);
-  }, [selectedProjectId, tab, preselectedAssetId, refreshAssets]);
+  }, [selectedProjectId, tab, preselectedAssetId, refreshAssets, refreshHistoryAssets]);
 
   useEffect(() => {
     if (!preselectedAssetId) return;
@@ -292,6 +305,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
             refreshBalance();
             setSelectedProjectId((current) => {
               refreshAssets(current);
+              refreshHistoryAssets(current, tab);
               return current;
             });
           } else if (data.status === "error") {
@@ -308,7 +322,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         }
       }, POLL_INTERVAL_MS);
     },
-    [stopPolling, refreshAssets, refreshBalance]
+    [stopPolling, refreshAssets, refreshHistoryAssets, refreshBalance, tab]
   );
 
   const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
@@ -631,11 +645,11 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   </Button>
                 </div>
               )}
-              {assets.length === 0 ? (
+              {historyAssets.length === 0 ? (
                 <p className="py-2 text-sm text-muted-foreground">No previous results for this feature in the selected project yet.</p>
               ) : (
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {assets.map((asset) => (
+                  {historyAssets.map((asset) => (
                     <div key={asset.id} className={`w-32 shrink-0 rounded-md border p-1.5 sm:w-36 ${selectedSourceAsset?.id === asset.id ? "border-primary" : "border-border"}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={asset.url} alt="Previous feature result" className="aspect-[4/3] w-full rounded object-cover" />
