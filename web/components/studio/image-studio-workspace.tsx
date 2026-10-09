@@ -687,8 +687,17 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
           <ResultPanel result={result} error={error} nextActions={nextActions} />
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">History</CardTitle>
-              <CardDescription>Choose a previous result to use as the source image.</CardDescription>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <CardTitle className="text-base">History</CardTitle>
+                  <CardDescription>Choose a previous result to use as the source image.</CardDescription>
+                </div>
+                {historyAssets.length > 0 && (
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {historyAssets.length} {historyAssets.length === 1 ? "result" : "results"}
+                  </span>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {selectedSourceAsset && (
@@ -699,25 +708,56 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   </Button>
                 </div>
               )}
-              {historyAssets.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">No previous results for this feature in the selected project yet.</p>
+
+              {historyAssetsLoading ? (
+                <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Loading history">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <Skeleton key={index} className="h-16 w-20 shrink-0 rounded-lg" />
+                  ))}
+                </div>
+              ) : historyAssetsError ? (
+                <div role="alert" className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-center">
+                  <p className="text-sm text-muted-foreground">{historyAssetsError}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => refreshHistoryAssets(selectedProjectId, tab)}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : historyAssets.length === 0 ? (
+                <p className="py-2 text-sm text-muted-foreground">
+                  No previous results for this feature in the selected project yet.
+                </p>
               ) : (
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {historyAssets.map((asset) => (
-                    <div key={asset.id} className={`w-32 shrink-0 rounded-md border p-1.5 sm:w-36 ${selectedSourceAsset?.id === asset.id ? "border-primary" : "border-border"}`}>
+                <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Previous results">
+                  {historyAssets.slice(0, 6).map((asset, index) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      aria-label={`Use history result ${index + 1} as source`}
+                      aria-pressed={selectedSourceAsset?.id === asset.id}
+                      onClick={() => selectSourceAsset(asset)}
+                      className={`group relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                        selectedSourceAsset?.id === asset.id
+                          ? "border-primary ring-1 ring-primary"
+                          : "border-transparent hover:border-muted-foreground/40"
+                      }`}
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={asset.url} alt="Previous feature result" className="aspect-[4/3] w-full rounded object-cover" />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={selectedSourceAsset?.id === asset.id ? "default" : "outline"}
-                        aria-pressed={selectedSourceAsset?.id === asset.id}
-                        className="mt-2 h-9 w-full px-2 text-xs"
-                        onClick={() => selectSourceAsset(asset)}
-                      >
+                      <img
+                        src={asset.url}
+                        alt=""
+                        className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.03]"
+                        loading="lazy"
+                      />
+                      <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                         {selectedSourceAsset?.id === asset.id ? "Selected" : "Use as source"}
-                      </Button>
-                    </div>
+                      </span>
+                    </button>
                   ))}
                 </div>
               )}
