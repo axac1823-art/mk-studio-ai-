@@ -177,7 +177,7 @@ export function AppSidebar({
           <nav aria-label="Workspace" className="flex flex-col gap-0.5">
             <NavLink href="/app/dashboard" icon={Home} label="Home" active={pathname === "/app/dashboard"} collapsed={collapsed} />
             <NavLink
-              href="/app/projects?view=projects"
+              href="/app/projects"
               icon={FolderOpen}
               label="Projects"
               active={pathname.startsWith("/app/projects")}
