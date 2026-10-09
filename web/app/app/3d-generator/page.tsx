@@ -88,13 +88,6 @@ export default function ImageTo3DPage() {
       .catch(() => setBalance(null));
   }, []);
 
-  useEffect(() => {
-    if (models.length > 0 && !selectedModel) {
-      const first = models.find((m) => m.configured) ?? models[0];
-      if (first) setSelectedModel(first.key);
-    }
-  }, [models, selectedModel]);
-
   const cost = costsConfig
     ? computeDisplayCost(costsConfig, { feature: "3d_generator", quality: "standard", resolution: "1K", quantity: 1 })
     : 0;
@@ -221,7 +214,7 @@ export default function ImageTo3DPage() {
                   disabled={isBusy || models.length === 0}
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
                 >
-                  {models.length === 0 && <option value="">Auto</option>}
+                  <option value="">Auto (recommended)</option>
                   {models.map((model) => (
                     <option key={model.key} value={model.key}>
                       {model.name}
@@ -229,7 +222,7 @@ export default function ImageTo3DPage() {
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  {models.find((model) => model.key === selectedModel)?.description ?? "Choose a 3D generation model."}
+                  {selectedModel ? models.find((model) => model.key === selectedModel)?.description ?? "Selected 3D model." : "Uses the default model routing."}
                 </p>
               </div>
 
