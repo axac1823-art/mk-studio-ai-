@@ -125,19 +125,6 @@ export function ResultPanel({ result, error }: ResultPanelProps) {
             {helper && <p className="mt-1 text-xs text-muted-foreground">{helper}</p>}
           </div>
 
-          {result.status === "done" && selectedUrl && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={() => setIsFullscreen(true)}
-              aria-label="Open preview fullscreen"
-              title="Fullscreen"
-            >
-              <Expand className="h-4 w-4" />
-            </Button>
-          )}
         </CardHeader>
 
         <CardContent className="flex min-w-0 flex-col gap-3">
