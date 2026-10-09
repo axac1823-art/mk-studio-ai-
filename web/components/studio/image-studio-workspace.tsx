@@ -26,6 +26,7 @@ import {
   type CostsConfig,
 } from "@/lib/config/action-costs";
 import { STUDIO_TABS, type StudioTab } from "@/lib/features";
+import { TOOLS } from "@/config/tools";
 import { generateUuid } from "@/lib/generate-uuid";
 import {
   ANGLE_PRESETS,
@@ -119,6 +120,8 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [historyAssets, setHistoryAssets] = useState<AssetItem[]>([]);
+  const [historyAssetsLoading, setHistoryAssetsLoading] = useState(false);
+  const [historyAssetsError, setHistoryAssetsError] = useState<string | null>(null);
   const [selectedSourceAsset, setSelectedSourceAsset] = useState<AssetItem | null>(null);
 
   // --- Print Render ---
@@ -213,12 +216,26 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const refreshHistoryAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
     if (!projectId) {
       setHistoryAssets([]);
+      setHistoryAssetsError(null);
+      setHistoryAssetsLoading(false);
       return;
     }
-    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
-      .then((res) => res.json())
+
+    setHistoryAssetsLoading(true);
+    setHistoryAssetsError(null);
+    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`, {
+      cache: "no-store",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => setHistoryAssets(Array.isArray(data.assets) ? data.assets : []))
-      .catch(() => setHistoryAssets([]));
+      .catch(() => {
+        setHistoryAssets([]);
+        setHistoryAssetsError("Unable to load history.");
+      })
+      .finally(() => setHistoryAssetsLoading(false));
   }, []);
 
   // Chargement initial : solde, coûts, projets, modèles upscale.
@@ -487,6 +504,41 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       })
     : 0;
 
+  // A next action is only exposed when the current result maps to a real saved
+  // image asset that the destination route can consume through assetId.
+  const resultAssetId =
+    result.status === "done" && result.kind === "image" && result.outputUrls.length > 0
+      ? assets.find((asset) => result.outputUrls.includes(asset.url))?.id ?? null
+      : null;
+
+  const nextActionDefinitions = [
+    { id: "variations", label: "Variations" },
+    { id: "multi-angle", label: "Multi-Angle" },
+    { id: "ambiance-change", label: "Change Atmosphere" },
+    { id: "upscale", label: "Upscale" },
+    { id: "video-generator", label: "Image → Video" },
+  ].filter((action) => {
+    if (tab === "variations" && action.id === "variations") return false;
+    if (tab === "multi_angle" && action.id === "multi-angle") return false;
+    if (tab === "mood_swap" && action.id === "ambiance-change") return false;
+    if (tab === "upscale" && action.id === "upscale") return false;
+    return true;
+  });
+
+  const nextActions = resultAssetId
+    ? nextActionDefinitions
+        .map((action) => {
+          const tool = TOOLS.find((candidate) => candidate.id === action.id);
+          if (!tool) return null;
+          const separator = tool.route.includes("?") ? "&" : "?";
+          return {
+            label: action.label,
+            href: `${tool.route}${separator}assetId=${encodeURIComponent(resultAssetId)}`,
+          };
+        })
+        .filter((action): action is { label: string; href: string } => action !== null)
+    : [];
+
   const title = STUDIO_TABS.find((t) => t.id === tab)?.label ?? "Image Studio";
   const uploadCopy = IMAGE_UPLOAD_COPY[tab] ?? IMAGE_UPLOAD_COPY.variations!;
 
@@ -611,7 +663,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                     setError(null);
                   }}
                   uploadOptional={tab === "text_to_image"}
-                  uploadLabel="Source"
+                  uploadLabel={tab === "text_to_image" ? "Reference image" : undefined}
                   uploadTitle={uploadCopy.title}
                   uploadDescription={uploadCopy.description}
                   uploadAriaLabel={uploadCopy.ariaLabel}
@@ -624,6 +676,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
                   sceneDetails={simpleTabs[tab].sceneDetails}
                   onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
+                  descriptionRequired={tab === "text_to_image"}
                 />
               )}
             </CardContent>
@@ -631,7 +684,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         </section>
 
         <section aria-label="Preview and history" className="flex min-w-0 flex-col gap-5">
-          <ResultPanel result={result} error={error} />
+          <ResultPanel result={result} error={error} nextActions={nextActions} />
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">History</CardTitle>
