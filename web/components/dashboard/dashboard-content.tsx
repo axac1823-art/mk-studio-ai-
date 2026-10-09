@@ -137,7 +137,7 @@ export function DashboardContent() {
               className="h-9 flex-1"
             />
             <Button type="submit" size="sm" disabled={!newProjectName.trim() || createBusy}>
-              {createBusy ? "Creating�" : "Create"}
+              {createBusy ? "Creating…" : "Create"}
             </Button>
           </form>
         )}
@@ -217,7 +217,7 @@ export function DashboardContent() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
             {assets.map((asset) => <AssetCard key={asset.id} asset={asset} onChanged={fetchAssets} />)}
           </div>
         )}
