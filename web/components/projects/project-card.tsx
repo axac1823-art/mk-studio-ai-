@@ -16,6 +16,7 @@ export interface ProjectSummary {
   name: string;
   coverUrl: string | null;
   assetCount: number;
+  updatedAt?: string;
 }
 
 interface ProjectCardProps {
