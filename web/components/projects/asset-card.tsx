@@ -7,7 +7,7 @@
 // (trashed=true), l'action principale est Restore + Delete permanent.
 import { useState } from "react";
 import Link from "next/link";
-import { ArchiveRestore, Box, Download, Music, Play, Star, Trash2 } from "lucide-react";
+import { ArchiveRestore, Box, CheckCircle2, Circle, Download, Music, Play, Star, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,9 +37,12 @@ interface AssetCardProps {
   /** Callback pour suppression définitive (optionnel ; si absent, pas de bouton Delete). */
   onDelete?: (assetId: string) => void;
   layout?: "grid" | "list";
+  /** Optional UI selection mode for asset libraries. */
+  selected?: boolean;
+  onSelect?: () => void;
 }
 
-const IMAGE_SERVICES = [
+export const IMAGE_SERVICES = [
   ["Image Generator", "/app/image-generator"],
   ["Render", "/app/ai-image-generator"],
   ["Mood", "/app/ambiance-change"],
@@ -52,7 +55,7 @@ const IMAGE_SERVICES = [
   ["Background Remover", "/app/background-remover"],
 ] as const;
 
-const VIDEO_SERVICES = [
+export const VIDEO_SERVICES = [
   ["Video Generator", "/app/ai-video-generator"],
   ["Video Relight", "/app/ai-video-generator?mode=relight"],
   ["Upscale video", "/app/video-upscaler"],
@@ -60,7 +63,7 @@ const VIDEO_SERVICES = [
   ["Video Project Editor", "/app/video-project-editor"],
 ] as const;
 
-export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid" }: AssetCardProps) {
+export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid", selected = false, onSelect }: AssetCardProps) {
   const [busy, setBusy] = useState(false);
 
   // Pas de logique métier ici : simple bascule de flag côté API, puis
@@ -94,7 +97,11 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
   };
 
   return (
-    <Card className={cn("group overflow-hidden border-border transition-colors hover:border-primary/30", layout === "list" && "flex min-h-32 flex-row")}>
+    <Card className={cn(
+      "group overflow-hidden border-border transition-[border-color,box-shadow] hover:border-primary/40",
+      selected && "border-primary ring-2 ring-primary/20",
+      layout === "list" && "flex min-h-32 flex-row",
+    )}>
       <div className={cn("relative bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]")}>
         {asset.type === "video" ? (
           <>
@@ -123,6 +130,22 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
         <Badge variant="secondary" className="absolute left-2 top-2 capitalize">
           {asset.type === "3d_model" ? "3D" : asset.type}
         </Badge>
+
+        {onSelect && !trashed && (
+          <button
+            type="button"
+            aria-label={selected ? "Deselect asset" : "Select asset"}
+            aria-pressed={selected}
+            onClick={onSelect}
+            className={cn(
+              "absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border bg-background/90 text-foreground shadow-sm backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              selected ? "border-primary text-primary" : "border-border hover:border-primary/50",
+            )}
+            title={selected ? "Deselect asset" : "Select asset"}
+          >
+            {selected ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          </button>
+        )}
       </div>
       {layout === "list" && (
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4">
