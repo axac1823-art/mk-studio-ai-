@@ -20,6 +20,7 @@ interface ProjectSourceStripProps {
   sourceAssets?: ImageSourceAsset[];
   selectedSourceAssetId?: string | null;
   onSelectSourceAsset?: (asset: ImageSourceAsset) => void;
+  descriptionRequired?: boolean;
 }
 
 export function ProjectSourceStrip({
@@ -106,6 +107,7 @@ export function ImageFeaturePanel({
   sourceAssets,
   selectedSourceAssetId,
   onSelectSourceAsset,
+  descriptionRequired = false,
 }: ImageFeaturePanelProps) {
   return (
     <div className="flex flex-col gap-5">
@@ -135,7 +137,11 @@ export function ImageFeaturePanel({
           <PresetGrid items={options} value={optionId} onChange={onOptionChange} />
         </div>
       )}
-      <SceneDetails value={sceneDetails} onChange={onSceneDetailsChange} />
+      <SceneDetails
+        value={sceneDetails}
+        onChange={onSceneDetailsChange}
+        required={descriptionRequired}
+      />
     </div>
   );
 }
