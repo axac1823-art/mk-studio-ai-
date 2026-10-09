@@ -305,14 +305,14 @@ export default function VideoGeneratorPage() {
     });
   }, []);
 
-  const addExistingVideo = useCallback((asset: VideoProjectAsset) => {
+  const addExistingMedia = useCallback((asset: VideoProjectAsset) => {
     setState((current) => {
       if (current.attachedMedia.length >= MAX_ATTACHED_MEDIA) return current;
       if (current.attachedMedia.some((item) => item.assetId === asset.id)) return current;
-      const tag = nextTag(current.attachedMedia, "video");
+      const tag = nextTag(current.attachedMedia, asset.type);
       return {
         ...current,
-        attachedMedia: [...current.attachedMedia, { tag, url: asset.url, assetId: asset.id, type: "video" }],
+        attachedMedia: [...current.attachedMedia, { tag, url: asset.url, assetId: asset.id, type: asset.type }],
         shots: current.shots.map((shot, index) => index === 0 ? { ...shot, prompt: `${tag} ${shot.prompt}`.trim() } : shot),
       };
     });
@@ -324,10 +324,12 @@ export default function VideoGeneratorPage() {
     fetch(`/api/assets/${encodeURIComponent(preselectedAssetId)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { asset?: VideoProjectAsset } | null) => {
-        if (data?.asset?.type === "video") addExistingVideo(data.asset);
+        if (data?.asset && (data.asset.type === "image" || data.asset.type === "video")) {
+          addExistingMedia(data.asset);
+        }
       })
       .catch(() => undefined);
-  }, [addExistingVideo, preselectedAssetId]);
+  }, [addExistingMedia, preselectedAssetId]);
 
   const pollJob = useCallback(
     (jobId: string) => {
@@ -560,7 +562,7 @@ export default function VideoGeneratorPage() {
                         size="sm"
                         className="mt-2 h-9 w-full px-2 text-xs"
                         disabled={isBusy || state.attachedMedia.some((item) => item.assetId === asset.id)}
-                        onClick={() => addExistingVideo(asset)}
+                        onClick={() => addExistingMedia(asset)}
                       >
                         {state.attachedMedia.some((item) => item.assetId === asset.id) ? "Added as reference" : "Add as reference"}
                       </Button>
