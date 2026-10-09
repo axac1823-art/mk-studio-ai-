@@ -523,7 +523,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         </Tabs>
       )}
 
-      <div className="grid flex-1 items-start gap-5 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] xl:gap-6">
+      <div className="grid flex-1 items-start gap-5 lg:grid-cols-[minmax(300px,350px)_minmax(0,1fr)] xl:gap-6">
         <section aria-label="Working input" className="min-w-0">
           <Card>
             <CardHeader className="pb-3">
