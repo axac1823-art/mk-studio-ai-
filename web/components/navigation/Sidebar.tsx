@@ -114,7 +114,9 @@ export function AppSidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const projectView = searchParams.get("view");
-  const isProjectsOverview = pathname === "/app/projects" && (!projectView || projectView === "overview");
+  const isProjectsOverview =
+    (pathname === "/app/projects" && (!projectView || projectView === "overview")) ||
+    pathname.startsWith("/app/projects/");
   const isAllProjects = pathname === "/app/projects" && projectView === "projects";
   const isAllAssets = pathname === "/app/projects" && projectView === "assets";
   const isFavorites = pathname === "/app/projects" && projectView === "favorites";
