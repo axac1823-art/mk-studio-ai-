@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FrameDropzone } from "@/components/video-generator/frame-dropzone";
 import { GenerateBar } from "@/components/video-generator/generate-bar";
 import { MediaAttachments, type AttachedMediaItem } from "@/components/video-generator/media-attachments";
-import type { VideoModelOption } from "@/components/video-generator/model-select";
+import { ModelSelect, type VideoModelOption } from "@/components/video-generator/model-select";
 import { ShotEditor } from "@/components/video-generator/shot-editor";
 import { BottomToolbar } from "@/components/video-generator/bottom-toolbar";
 import { VideoDropzone } from "@/components/video-generator/video-dropzone";
@@ -494,6 +494,15 @@ export default function VideoGeneratorPage() {
                   audioEnabled={state.audioEnabled}
                   onAudioEnabledChange={(a) => updateState({ audioEnabled: a })}
                   disabled={isBusy}
+                />
+              </div>
+
+              <div className="border-t pt-4">
+                <ModelSelect
+                  models={models}
+                  selectedModel={state.selectedModel}
+                  mode={previewMode}
+                  onChange={(value) => updateState({ selectedModel: value })}
                 />
               </div>
             </CardContent>
