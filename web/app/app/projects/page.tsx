@@ -173,7 +173,7 @@ function NewProjectCard({
   }
 
   return (
-    <div className="w-[200px] shrink-0">
+    <div className="w-full min-w-0">
       <button
         type="button"
         onClick={onStart}
@@ -244,11 +244,11 @@ export default function ProjectsPage() {
   const rawView = searchParams.get("view");
 
   const view: ViewMode =
-    rawView === "overview" ||
+    rawView === "projects" ||
     rawView === "assets" ||
     rawView === "favorites"
       ? rawView
-      : "projects";
+      : "overview";
 
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<RecentAsset[] | null>(null);
@@ -432,6 +432,7 @@ export default function ProjectsPage() {
 
         <nav aria-label="Project library views" className="flex flex-wrap items-center gap-2 border-b pb-3">
           {([
+            { label: "Overview", href: "/app/projects?view=overview", active: view === "overview" },
             { label: "All projects", href: "/app/projects?view=projects", active: view === "projects" },
             { label: "All assets", href: "/app/projects?view=assets", active: view === "assets" },
             { label: "Favorites", href: "/app/projects?view=favorites", active: view === "favorites" },
