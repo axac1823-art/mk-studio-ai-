@@ -1,31 +1,21 @@
 "use client";
 
-// Contenu du dashboard, partagé entre /app/dashboard et la landing page.
-// Affiche un greeting, une barre de recherche, une ligne de catégories,
-// puis les panneaux Projects et Recent work.
+// Contenu du dashboard : accueil authentifie partage avec la page racine.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  Box,
   FolderOpen,
   Image as ImageIcon,
-  Mic,
   Plus,
-  Video,
-  Wand2,
 } from "lucide-react";
 
 import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DashboardSearch } from "@/components/navigation/DashboardSearch";
-import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
-// import HeroVisualAI from "@/components/ui/HeroVisualAI";
 
-import { cn } from "@/lib/utils";
+import { WorkflowCard } from "@/components/dashboard/workflow-card";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -41,33 +31,9 @@ interface ProjectSummary {
   assetCount: number;
 }
 
-function CategoryTrigger({
-  icon: Icon,
-  label,
-  colorClass,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  colorClass: string;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className={cn(
-          "flex h-14 w-14 items-center justify-center rounded-2xl transition-transform hover:scale-105",
-          colorClass
-        )}
-      >
-        <Icon className="h-7 w-7" />
-      </div>
-      <span className="text-sm font-medium text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
 export function DashboardContent() {
   // Keep server and first client render identical; resolve local time after hydration.
-  const [greeting, setGreeting] = useState("Good morning, start creating!");
+  const [greeting, setGreeting] = useState("Good morning");
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
   const [creating, setCreating] = useState(false);
@@ -98,7 +64,7 @@ export function DashboardContent() {
   }, []);
 
   useEffect(() => {
-    setGreeting(`${getGreeting()}, start creating!`);
+    setGreeting(getGreeting());
     void fetchProjects();
     void fetchAssets();
   }, [fetchProjects, fetchAssets]);
@@ -124,195 +90,121 @@ export function DashboardContent() {
     }
   };
 
-  const recentProjects = projects?.slice(0, 5) ?? [];
-
   return (
-    <main className="flex min-h-screen w-full flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex w-full flex-col items-center gap-8">
-        <h1 className="text-center text-3xl font-semibold tracking-tight sm:text-4xl">{greeting}</h1>
+    <main className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-[28px]">{greeting}</h1>
+        <p className="text-sm text-muted-foreground">Continue where you left off or start something new.</p>
+      </header>
 
-        <DashboardSearch />
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
-        <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-8">
-          <ToolPickerPopover category="image">
-            <CategoryTrigger icon={ImageIcon} label="Image" colorClass="bg-indigo-500/15 text-indigo-400" />
-          </ToolPickerPopover>
-
-          <ToolPickerPopover category="video">
-            <CategoryTrigger icon={Video} label="Video" colorClass="bg-emerald-500/15 text-emerald-400" />
-          </ToolPickerPopover>
-
-          <ToolPickerPopover category="audio">
-            <CategoryTrigger icon={Mic} label="Audio" colorClass="bg-violet-500/15 text-violet-400" />
-          </ToolPickerPopover>
-
-          <ToolPickerPopover category="3d">
-            <CategoryTrigger icon={Box} label="3D" colorClass="bg-amber-500/15 text-amber-400" />
-          </ToolPickerPopover>
-
-          <Link href="/app/projects" className="flex flex-col items-center gap-2">
-            <CategoryTrigger
-              icon={FolderOpen}
-              label="Projects"
-              colorClass="bg-amber-500/15 text-amber-400"
-            />
-          </Link>
+      <section aria-labelledby="continue-working-title" className="space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 id="continue-working-title" className="text-lg font-semibold tracking-tight">Continue Working</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Pick up a project where you left off.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setCreating((open) => !open)}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            New project
+          </Button>
         </div>
-      </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+        {creating && (
+          <form className="flex max-w-xl items-center gap-2" onSubmit={(event) => { event.preventDefault(); void createProject(); }}>
+            <Input
+              autoFocus
+              type="text"
+              value={newProjectName}
+              onChange={(event) => setNewProjectName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setCreating(false);
+                  setNewProjectName("");
+                }
+              }}
+              placeholder="Project name"
+              aria-label="Project name"
+              className="h-9 flex-1"
+            />
+            <Button type="submit" size="sm" disabled={!newProjectName.trim() || createBusy}>
+              {createBusy ? "Creating�" : "Create"}
+            </Button>
+          </form>
+        )}
 
-      <section className="mx-auto w-full max-w-7xl" aria-label="AI camera render workspace">
-        {/* <HeroVisualAI /> */}
+        {projects === null ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-[92px] w-full rounded-lg" />)}
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="rounded-lg border border-dashed px-5 py-6 text-sm text-muted-foreground">
+            No projects yet. Create a project to keep your work together.
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {projects.slice(0, 3).map((project) => (
+              <Link
+                key={project.id}
+                href={`/app/projects/${project.id}`}
+                className="group flex min-h-[92px] items-center gap-3 rounded-lg border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><FolderOpen className="h-5 w-5" /></div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium group-hover:text-foreground">{project.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{project.assetCount} assets</p>
+                </div>
+                <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
-      <div className="grid w-full max-w-5xl gap-6 self-center lg:grid-cols-2">
-        <Card className="flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Projects</CardTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setCreating(true)}
-              aria-label="Create new project"
-            >
-              <Plus className="h-4 w-4" />
+      <section aria-labelledby="start-workflow-title" className="space-y-4">
+        <div>
+          <h2 id="start-workflow-title" className="text-lg font-semibold tracking-tight">Start a Workflow</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Focused starting points for architectural work.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <WorkflowCard href="/app/ai-image-generator" title="Render" description="Turn a 3D screenshot into a photorealistic architectural render." image="/appartment.webp" />
+          <WorkflowCard href="/app/plan-to-render" title={"Plan \u2192 Render"} description="Bring a 2D floor plan to life as a furnished render." image="/hero_white.webp" />
+          <WorkflowCard href="/app/ambiance-change" title="Change Atmosphere" description="Explore a new time of day, season, or mood for your scene." image="/appartment.webp" />
+          <WorkflowCard href="/app/multi-angle" title="Multi-Angle" description="Create additional camera views from your source image." image="/mobile_lightmod.webp" />
+          <WorkflowCard href="/app/ai-video-generator" title={"Image \u2192 Video"} description="Create a short presentation video from an image." image="/hero.webp" />
+          <WorkflowCard href="/app/3d-generator" title={"Image \u2192 3D"} description="Turn an image into a 3D asset." image="/mobile_hero.webp" />
+        </div>
+      </section>
+
+      <section aria-labelledby="recent-work-title" className="space-y-4">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 id="recent-work-title" className="text-lg font-semibold tracking-tight">Recent Work</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Your latest generated assets.</p>
+          </div>
+          <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1 text-muted-foreground">
+            <Link href="/app/projects">Browse all<ArrowRight className="h-3.5 w-3.5" /></Link>
+          </Button>
+        </div>
+        {assets === null ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
+          </div>
+        ) : assets.length === 0 ? (
+          <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-5 py-6">
+            <p className="text-sm font-medium">Your recent work will appear here.</p>
+            <p className="text-sm text-muted-foreground">Start with a render and find your outputs here.</p>
+            <Button asChild variant="outline" size="sm" className="mt-1">
+              <Link href="/app/ai-image-generator"><ImageIcon className="mr-1.5 h-4 w-4" />Create a render</Link>
             </Button>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {creating && (
-              <div className="flex items-center gap-2">
-                <Input
-                  autoFocus
-                  type="text"
-                  value={newProjectName}
-                  onChange={(event) => setNewProjectName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void createProject();
-                    if (event.key === "Escape") {
-                      setCreating(false);
-                      setNewProjectName("");
-                    }
-                  }}
-                  placeholder="Project name"
-                  className="h-9 flex-1"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!newProjectName.trim() || createBusy}
-                  onClick={() => void createProject()}
-                >
-                  Create
-                </Button>
-              </div>
-            )}
-
-            <Link
-              href="/app/projects"
-              className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-yellow-500/20">
-                <span className="text-sm font-semibold text-yellow-500">P</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">Personal</span>
-                <span className="text-xs text-muted-foreground">Your private space</span>
-              </div>
-            </Link>
-
-            {projects === null ? (
-              <Skeleton className="h-10 w-full" />
-            ) : (
-              recentProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/app/projects/${project.id}`}
-                  className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-accent"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
-                    <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">{project.name}</span>
-                    <span className="text-xs text-muted-foreground p-4">{project.assetCount} assets</span>
-                  </div>
-                </Link>
-              ))
-            )}
-
-            <Button
-              asChild
-              variant="ghost"
-              className="mt-1 w-full justify-start gap-2 text-muted-foreground"
-            >
-              <Link href="/app/projects">
-                <FolderOpen className="h-4 w-4" />
-                View all projects
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Recent work</CardTitle>
-            <Button asChild variant="ghost" size="sm" className="h-8 gap-1 text-muted-foreground">
-              <Link href="/app/projects">
-                Browse all
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col justify-center">
-            {assets === null ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <Skeleton key={index} className="aspect-[4/3] w-full" />
-                ))}
-              </div>
-            ) : assets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
-                  <Wand2 className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">Start a new generation</p>
-                  <p className="text-xs text-muted-foreground">
-                    Generate your first render to see it here.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href="/app/ai-image-generator">
-                      <ImageIcon className="mr-1 h-4 w-4" />
-                      Image
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" size="sm">
-                    <Link href="/app/ai-video-generator">
-                      <Video className="mr-1 h-4 w-4" />
-                      Video
-                    </Link>
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {assets.map((asset) => (
-                  <AssetCard key={asset.id} asset={asset} onChanged={fetchAssets} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {assets.map((asset) => <AssetCard key={asset.id} asset={asset} onChanged={fetchAssets} />)}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

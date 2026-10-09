@@ -4,10 +4,10 @@
 // libellés PRODUIT génériques), comparateur avant/après pour les images,
 // lecteur vidéo pour Animate, et vignettes de variations si quantité > 1.
 import { useState } from "react";
-import { Download, Loader2, MoveHorizontal } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CompareSlider } from "@/components/compare-slider";
 import { saveResult } from "@/lib/download";
@@ -30,26 +30,10 @@ const STAGE_LABELS: Record<string, string> = {
 
 interface ResultPanelProps {
   result: ResultState;
+  error?: string | null;
 }
 
-function ExampleBeforeAfter() {
-  return (
-    <div className="relative aspect-video w-full max-w-xs overflow-hidden rounded-md border">
-      <div className="absolute inset-0 flex">
-        <div className="flex-1 bg-gradient-to-br from-muted to-muted-foreground/20" />
-        <div className="flex-1 bg-gradient-to-bl from-primary/20 to-muted" />
-      </div>
-      <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/50" />
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border bg-background p-1.5 shadow">
-        <MoveHorizontal className="h-3 w-3 text-muted-foreground" />
-      </div>
-      <div className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">Before</div>
-      <div className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">After</div>
-    </div>
-  );
-}
-
-export function ResultPanel({ result }: ResultPanelProps) {
+export function ResultPanel({ result, error }: ResultPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   // Sortie actuellement affichée (variation sélectionnée pour les images) —
   // c'est elle que le bouton Download enregistre.
@@ -61,10 +45,10 @@ export function ResultPanel({ result }: ResultPanelProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Result</CardTitle>
-        <CardDescription>Drag the handle to compare with your original.</CardDescription>
+        <CardTitle>Preview</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         {result.status === "busy" && (
           <>
             <Skeleton className=" aspect-[4/3] w-full" />
@@ -76,39 +60,43 @@ export function ResultPanel({ result }: ResultPanelProps) {
         )}
 
         {result.status === "idle" && (
-          <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-3 rounded-lg border bg-muted/40 p-6 text-center">
-            <ExampleBeforeAfter />
+          <div className="flex aspect-[4/3] w-full items-center justify-center rounded-lg border border-dashed bg-muted/30 p-6 text-center">
             <p className="text-sm text-muted-foreground">Your result will appear here.</p>
           </div>
         )}
 
         {result.status === "done" && result.kind === "video" && (
-          <video
-            key={result.outputUrls[0]}
-            src={result.outputUrls[0]}
-            controls
-            className="aspect-video w-full rounded-lg border bg-black"
-          />
+          <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted">
+            <video
+              key={result.outputUrls[0]}
+              src={result.outputUrls[0]}
+              controls
+              aria-label="Video Preview"
+              className="aspect-video max-h-full w-full bg-black"
+            />
+          </div>
         )}
 
         {result.status === "done" && result.kind === "image" && (
           <>
-            {result.beforeUrl ? (
-              <CompareSlider
-                beforeSrc={result.beforeUrl}
-                afterSrc={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
-                afterLabel="Render"
-              />
-            ) : (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
-                alt="Generated render"
-                className="aspect-[4/3] w-full rounded-lg border object-contain [background-color:#e5e7eb] [background-image:linear-gradient(45deg,#cbd5e1_25%,transparent_25%),linear-gradient(-45deg,#cbd5e1_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#cbd5e1_75%),linear-gradient(-45deg,transparent_75%,#cbd5e1_75%)] [background-position:0_0,0_8px,8px_-8px,-8px_0] [background-size:16px_16px]"
-              />
-            )}
+            <div className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted">
+              {result.beforeUrl ? (
+                <CompareSlider
+                  beforeSrc={result.beforeUrl}
+                  afterSrc={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
+                  afterLabel="Render"
+                />
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={result.outputUrls[Math.min(selectedIndex, result.outputUrls.length - 1)]}
+                  alt="Generated render"
+                  className="max-h-full w-full object-contain"
+                />
+              )}
+            </div>
             {result.outputUrls.length > 1 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {result.outputUrls.map((url, index) => (
                   <button
                     key={url}
@@ -117,7 +105,7 @@ export function ResultPanel({ result }: ResultPanelProps) {
                     aria-pressed={index === selectedIndex}
                     onClick={() => setSelectedIndex(index)}
                     className={cn(
-                      "h-14 w-14 overflow-hidden rounded-md border-2 transition-colors",
+                      "h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 transition-colors",
                       index === selectedIndex ? "border-primary" : "border-transparent hover:border-muted-foreground/40"
                     )}
                   >

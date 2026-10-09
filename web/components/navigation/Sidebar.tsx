@@ -1,22 +1,22 @@
 "use client";
 
-import { type ComponentType } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Box,
-  CreditCard,
   FolderOpen,
+  Heart,
   Home,
   Image as ImageIcon,
   Menu,
   Mic,
-  Search,
+  Plus,
   Settings,
+  Trash2,
+  Upload,
   Video,
 } from "lucide-react";
-
-import { CreditAlert } from "@/components/billing/credit-alert";
 import { RenderuimLogo } from "@/components/icons/renderuim";
 import { LogoutButton } from "@/components/navigation/logout-button";
 import { ToolPickerPopover } from "@/components/navigation/ToolPickerPopover";
@@ -27,9 +27,8 @@ import type { DbUser } from "@/lib/db/queries";
 
 interface AppSidebarProps {
   user: DbUser;
-  balance: number;
-  lowThreshold: number;
   open: boolean;
+  mobileOpen: boolean;
   onToggle: () => void;
   showToggle?: boolean;
 }
@@ -59,7 +58,7 @@ function NavLink({ href, icon: Icon, label, active, collapsed }: NavLinkProps) {
     >
       <Link href={href} aria-current={active ? "page" : undefined}>
         <Icon className="h-3.5 w-3.5 shrink-0" />
-        {!collapsed && <span className="hidden min-w-0 truncate md:inline">{label}</span>}
+        {!collapsed && <span className="min-w-0 truncate">{label}</span>}
       </Link>
     </Button>
   );
@@ -104,26 +103,41 @@ function ToolCategoryLink({
 
 export function AppSidebar({
   user,
-  balance,
-  lowThreshold,
   open,
+  mobileOpen,
   onToggle,
   showToggle = true,
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const collapsed = !open;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const updateViewport = () => setIsMobileViewport(media.matches);
+    updateViewport();
+    media.addEventListener("change", updateViewport);
+    return () => media.removeEventListener("change", updateViewport);
+  }, []);
+  const isLibraryContext =
+    pathname.startsWith("/app/projects") ||
+    pathname.startsWith("/app/uploads") ||
+    pathname.startsWith("/app/trash");
 
   return (
     <aside
       className={cn(
-        "sticky top-0 flex shrink-0 flex-col border-r bg-background transition-[width] duration-200 ease-in-out",
-        collapsed ? "w-0 md:w-16" : "w-16 md:w-64",
+        "fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r bg-background shadow-xl transition-transform duration-200 ease-in-out md:sticky md:top-0 md:z-auto md:w-auto md:shrink-0 md:shadow-none md:transition-[width]",
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+        collapsed ? "md:w-16" : "md:w-64",
       )}
-      style={{ height: "100vh", maxHeight: "100vh" }}
+      style={{ height: "100dvh", maxHeight: "100dvh" }}
+      aria-label="Primary navigation"
+      inert={isMobileViewport && !mobileOpen}
     >
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b px-3">
         {!collapsed && (
-          <Link href="/app/dashboard" className="hidden min-w-0 items-center gap-2 text-foreground md:flex">
+          <Link href="/app/dashboard" className="flex min-w-0 items-center gap-2 text-foreground">
             <RenderuimLogo className="h-6 w-6 shrink-0" />
             <span className="truncate font-semibold">Renderuim</span>
           </Link>
@@ -135,59 +149,82 @@ export function AppSidebar({
             size="icon"
             onClick={onToggle}
             aria-label="Toggle sidebar"
-            className="h-8 w-8 shrink-0"
+            className="hidden h-8 w-8 shrink-0 md:flex"
           >
             <Menu className="h-5 w-5" />
           </Button>
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2.5 py-3">
-        <nav aria-label="Main navigation" className="flex shrink-0 flex-col gap-0.5">
-          <NavLink href="/app/dashboard" icon={Home} label="Home" active={pathname === "/app/dashboard"} collapsed={collapsed} />
-          <NavLink href="/app/search" icon={Search} label="Search" active={pathname.startsWith("/app/search")} collapsed={collapsed} />
-          <NavLink
-            href="/app/projects"
-            icon={FolderOpen}
-            label="Projects"
-            active={pathname.startsWith("/app/projects")}
-            collapsed={collapsed}
-          />
-        </nav>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2.5 py-3">
+        <ToolPickerPopover>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            className={cn(
+              "h-9 w-full justify-start gap-2 rounded-lg px-3",
+              collapsed && "justify-center px-0",
+            )}
+            aria-label="Create"
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+            {!collapsed && <span className="text-sm">Create</span>}
+          </Button>
+        </ToolPickerPopover>
+
+        <section className="flex flex-col gap-0.5">
+          {!collapsed && (
+            <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
+              WORKSPACE
+            </p>
+          )}
+          <nav aria-label="Workspace" className="flex flex-col gap-0.5">
+            <NavLink href="/app/dashboard" icon={Home} label="Home" active={pathname === "/app/dashboard"} collapsed={collapsed} />
+            <NavLink
+              href="/app/projects"
+              icon={FolderOpen}
+              label="Projects"
+              active={pathname.startsWith("/app/projects")}
+              collapsed={collapsed}
+            />
+          </nav>
+        </section>
 
         {!collapsed && (
-          <section className="hidden shrink-0 flex-col gap-0.5 border-t border-border pt-2 md:flex">
-            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">Create</p>
+          <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
+            <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
+              GENERATE
+            </p>
             <ToolCategoryLink category="image" pathname={pathname} icon={ImageIcon} label="Image" />
             <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" />
-            <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" />
             <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" />
+            <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" />
+          </section>
+        )}
+
+        {!isLibraryContext && (
+          <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
+            {!collapsed && (
+              <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
+                LIBRARY
+              </p>
+            )}
+            <nav aria-label="Library" className="flex flex-col gap-0.5">
+              <NavLink href="/app/favorites" icon={Heart} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
+              <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
+              <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
+            </nav>
           </section>
         )}
       </div>
-
       <div className="flex shrink-0 flex-col gap-1.5 border-t p-2.5">
-        <CreditAlert balance={balance} threshold={lowThreshold} />
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className={cn("h-8 w-full justify-start gap-2 px-3 text-muted-foreground hover:text-foreground", collapsed && "justify-center px-0")}
-          title="Credits"
-        >
-          <Link href="/pricing">
-            <CreditCard className="h-3.5 w-3.5 shrink-0" />
-            {!collapsed && <span className="hidden text-xs md:inline">{balance.toLocaleString()} credits</span>}
-          </Link>
-        </Button>
         <NavLink href="/app/settings" icon={Settings} label="Settings" active={pathname.startsWith("/app/settings")} collapsed={collapsed} />
-        <div className="hidden border-t pt-2 md:block">
+        <div className="border-t pt-2">
           {!collapsed && <p className="truncate px-3 pb-1 text-xs text-muted-foreground">{user.email}</p>}
           <LogoutButton collapsed={collapsed} className="h-8 w-full justify-start px-3" />
         </div>
-        <div className="md:hidden">
-          <LogoutButton collapsed className="h-8 w-full justify-center px-0" aria-label="Sign out" />
-        </div>
+
       </div>
     </aside>
   );

@@ -55,7 +55,7 @@ const IMAGE_SERVICES = [
 const VIDEO_SERVICES = [
   ["Video Generator", "/app/ai-video-generator"],
   ["Video Relight", "/app/ai-video-generator?mode=relight"],
-  ["Video Speed", "/app/video-upscaler"],
+  ["Upscale video", "/app/video-upscaler"],
   ["Clip Editor", "/app/clip-editor"],
   ["Video Project Editor", "/app/video-project-editor"],
 ] as const;
@@ -94,7 +94,7 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
   };
 
   return (
-    <Card className={cn("overflow-hidden", layout === "list" && "flex min-h-32 flex-row")}>
+    <Card className={cn("group overflow-hidden border-border transition-colors hover:border-primary/30", layout === "list" && "flex min-h-32 flex-row")}>
       <div className={cn("relative bg-muted", layout === "list" ? "w-40 shrink-0 sm:w-56" : "aspect-[4/3]")}>
         {asset.type === "video" ? (
           <>
@@ -118,7 +118,7 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
           </div>
         ) : (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={asset.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <img src={asset.url} alt="" className="h-full w-full object-contain p-1" loading="lazy" />
         )}
         <Badge variant="secondary" className="absolute left-2 top-2 capitalize">
           {asset.type === "3d_model" ? "3D" : asset.type}
@@ -182,7 +182,7 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
               onClick={() => void patch({ isFavorite: !asset.isFavorite })}
               aria-label={asset.isFavorite ? "Remove from favorites" : "Add to favorites"}
             >
-              <Star className={cn("h-4 w-4", asset.isFavorite && "fill-current text-yellow-500")} />
+              <Star className={cn("h-4 w-4", asset.isFavorite && "fill-current text-primary")} />
             </Button>
             <Button
               type="button"

@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FrameDropzone } from "@/components/video-generator/frame-dropzone";
 import { GenerateBar } from "@/components/video-generator/generate-bar";
 import { MediaAttachments, type AttachedMediaItem } from "@/components/video-generator/media-attachments";
-import { ModelSelect, type VideoModelOption } from "@/components/video-generator/model-select";
+import type { VideoModelOption } from "@/components/video-generator/model-select";
 import { ShotEditor } from "@/components/video-generator/shot-editor";
 import { BottomToolbar } from "@/components/video-generator/bottom-toolbar";
 import { VideoDropzone } from "@/components/video-generator/video-dropzone";
@@ -411,67 +411,60 @@ export default function VideoGeneratorPage() {
   };
 
   return (
-    <main className="flex min-h-screen w-full flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">Video Generator</h1>
-            <Badge variant="outline">{modeLabels[previewMode]}</Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Describe camera motion and choose references — AI mode is detected automatically.
-          </p>
+    <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Video Generator</h1>
+          <Badge variant="outline">{modeLabels[previewMode]}</Badge>
         </div>
-        <Badge variant="secondary" className="gap-1">
-          {balance === null ? "…" : balance} credits
-        </Badge>
       </header>
 
-      <div className="grid flex-1 lg:grid-cols-[360px_1fr]">
-        {/* Left controls */}
-        <div className="flex flex-col gap-4 border-r p-4 sm:p-5">
+      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(360px,440px)_minmax(0,1fr)] xl:gap-6">
+        <section aria-label="Video sources and controls" className="min-w-0">
           <Card>
-            <CardContent className="flex flex-col gap-4 p-4">
-              {isVideoMode ? (
-                <VideoDropzone
-                  previewUrl={state.attachedMedia.find((m) => m.type === "video")?.url ?? null}
-                  onFileSelected={setSourceVideo}
-                  label={modeHint === "relight" ? "Video to relight" : "Video to modify"}
-                />
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <FrameDropzone
-                    label="Start image"
-                    previewUrl={state.startImagePreview}
-                    onFileSelected={(file) =>
-                      updateState({ startImage: file, startImagePreview: URL.createObjectURL(file) })
-                    }
-                    placeholderTitle="Start image"
-                    placeholderDescription="Drop or click"
-                  />
-                  <FrameDropzone
-                    label="End image"
-                    previewUrl={state.endImagePreview}
-                    onFileSelected={(file) =>
-                      updateState({ endImage: file, endImagePreview: URL.createObjectURL(file) })
-                    }
-                    placeholderTitle="End image"
-                    placeholderDescription="Optional"
-                  />
-                </div>
-              )}
-
-              <MediaAttachments
-                media={state.attachedMedia}
-                onAdd={addMedia}
-                onRemove={removeMedia}
-                disabled={isBusy}
-                max={MAX_ATTACHED_MEDIA}
-              />
-
+            <CardContent className="flex flex-col gap-5 p-4 sm:p-5">
               <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Shots</span>
+                <h2 className="text-base font-semibold">Sources</h2>
+                {isVideoMode ? (
+                  <VideoDropzone
+                    previewUrl={state.attachedMedia.find((m) => m.type === "video")?.url ?? null}
+                    onFileSelected={setSourceVideo}
+                    label={modeHint === "relight" ? "Video to relight" : "Video to modify"}
+                  />
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <FrameDropzone
+                      label="Start image"
+                      previewUrl={state.startImagePreview}
+                      onFileSelected={(file) =>
+                        updateState({ startImage: file, startImagePreview: URL.createObjectURL(file) })
+                      }
+                      placeholderTitle="Start image"
+                      placeholderDescription="Drop or click"
+                    />
+                    <FrameDropzone
+                      label="End image"
+                      previewUrl={state.endImagePreview}
+                      onFileSelected={(file) =>
+                        updateState({ endImage: file, endImagePreview: URL.createObjectURL(file) })
+                      }
+                      placeholderTitle="End image"
+                      placeholderDescription="Optional"
+                    />
+                  </div>
+                )}
+                <MediaAttachments
+                  media={state.attachedMedia}
+                  onAdd={addMedia}
+                  onRemove={removeMedia}
+                  disabled={isBusy}
+                  max={MAX_ATTACHED_MEDIA}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 border-t pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-base font-semibold">Shots</h2>
                   <Button type="button" variant="outline" size="sm" onClick={addShot} disabled={isBusy}>
                     <Plus className="mr-1 h-4 w-4" />
                     Add shot
@@ -491,108 +484,73 @@ export default function VideoGeneratorPage() {
                 ))}
               </div>
 
-              <BottomToolbar
-                duration={state.duration}
-                onDurationChange={(d) => updateState({ duration: d as VideoDuration })}
-                aspectRatio={state.aspectRatio}
-                onAspectRatioChange={(r) => updateState({ aspectRatio: r as VideoAspectRatio })}
-                audioEnabled={state.audioEnabled}
-                onAudioEnabledChange={(a) => updateState({ audioEnabled: a })}
-                disabled={isBusy}
-              />
-
-              <ModelSelect
-                models={models}
-                selectedModel={state.selectedModel}
-                mode={previewMode}
-                onChange={(value) => updateState({ selectedModel: value })}
-              />
-
-              <GenerateBar
-                cost={cost}
-                hasEnoughCredits={hasEnoughCredits}
-                balance={balance}
-                isBusy={isBusy}
-                canGenerate={canGenerate}
-                onGenerate={handleGenerate}
-              />
-
-              {isBusy && progress && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Generating shot {progress.current} of {progress.total}…
-                </div>
-              )}
-
-              {error && (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              )}
+              <div className="border-t pt-4">
+                <h2 className="mb-3 text-base font-semibold">Output</h2>
+                <BottomToolbar
+                  duration={state.duration}
+                  onDurationChange={(d) => updateState({ duration: d as VideoDuration })}
+                  aspectRatio={state.aspectRatio}
+                  onAspectRatioChange={(r) => updateState({ aspectRatio: r as VideoAspectRatio })}
+                  audioEnabled={state.audioEnabled}
+                  onAudioEnabledChange={(a) => updateState({ audioEnabled: a })}
+                  disabled={isBusy}
+                />
+              </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        {/* Right preview */}
-        <div className="relative flex flex-col items-center justify-start gap-6 overflow-y-auto bg-black/20 p-6">
-          {resultUrl ? (
-            <div className="flex w-full max-w-4xl flex-col gap-3">
-              <span className="text-sm font-medium">Result</span>
-              <video
-                src={resultUrl}
-                controls
-                className={cn("w-full rounded-xl bg-black", aspectRatioClass(state.aspectRatio))}
-              />
-            </div>
-          ) : isBusy ? (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
-              <p className="text-lg font-semibold">Generating video…</p>
-              <p className="text-sm text-muted-foreground">
-                This may take a few minutes depending on the complexity of your shots.
-              </p>
-            </div>
-          ) : isVideoMode ? (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-                <Video className="h-8 w-8" />
+        <section aria-label="Video preview and history" className="flex min-w-0 flex-col gap-5">
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">Video Preview</h2>
+                {isBusy && <Badge variant="secondary">Generating</Badge>}
               </div>
+              {resultUrl ? (
+                <video
+                  src={resultUrl}
+                  controls
+                  aria-label="Video Preview"
+                  className={cn("w-full rounded-lg bg-black", aspectRatioClass(state.aspectRatio))}
+                />
+              ) : isBusy ? (
+                <div className={cn("flex w-full flex-col items-center justify-center gap-3 rounded-lg border bg-muted/30 p-6 text-center", aspectRatioClass(state.aspectRatio))}>
+                  <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+                  <p className="text-sm font-medium">Generating video</p>
+                  {progress && <p className="text-sm text-muted-foreground">Generating shot {progress.current} of {progress.total}</p>}
+                </div>
+              ) : (
+                <div className={cn("flex w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-muted/30 p-6 text-center", aspectRatioClass(state.aspectRatio))}>
+                  <Video className="h-7 w-7 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Your video will appear here.</p>
+                </div>
+              )}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="flex flex-col gap-3 p-4 sm:p-5">
               <div>
-                <p className="text-lg font-semibold">
-                  {modeHint === "relight" ? "Upload a video to relight" : "Upload a video to modify"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Then describe what you want to change in the shot prompt.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-                <Video className="h-8 w-8" />
-              </div>
-              <div>
-                <p className="text-lg font-semibold">Start with an image</p>
-                <p className="text-sm text-muted-foreground">
-                  Upload a start frame or describe a shot to generate a video.
-                </p>
-              </div>
-            </div>
-          )}
-          <Card className="mt-6 w-full max-w-4xl text-left">
-            <CardContent className="flex flex-col gap-3 p-4">
-              <div>
-                <h2 className="text-sm font-medium">Previous {modeLabels[activeFeature]} projects</h2>
-                <p className="text-xs text-muted-foreground">Add a previous video as a tagged reference for this service.</p>
+                <h2 className="text-base font-semibold">History</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Add a previous video as a tagged reference.</p>
               </div>
               {projectAssets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No previous videos for this service yet.</p>
+                <p className="py-2 text-sm text-muted-foreground">No previous videos for this service yet.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="flex gap-3 overflow-x-auto pb-2">
                   {projectAssets.map((asset) => (
-                    <div key={asset.id} className="rounded-md border p-1.5">
-                      <video src={asset.url} muted className="aspect-video w-full rounded object-cover" />
-                      <Button type="button" variant="outline" size="sm" className="mt-2 w-full" disabled={isBusy || state.attachedMedia.some((item) => item.assetId === asset.id)} onClick={() => addExistingVideo(asset)}>
+                    <div key={asset.id} className="w-36 shrink-0 rounded-md border p-1.5">
+                      <video src={asset.url} muted aria-label="Previous video" className="aspect-video w-full rounded bg-black object-cover" />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 h-9 w-full px-2 text-xs"
+                        disabled={isBusy || state.attachedMedia.some((item) => item.assetId === asset.id)}
+                        onClick={() => addExistingVideo(asset)}
+                      >
                         {state.attachedMedia.some((item) => item.assetId === asset.id) ? "Added as reference" : "Add as reference"}
                       </Button>
                     </div>
@@ -601,8 +559,17 @@ export default function VideoGeneratorPage() {
               )}
             </CardContent>
           </Card>
-        </div>
+        </section>
       </div>
+
+      <GenerateBar
+        cost={cost}
+        hasEnoughCredits={hasEnoughCredits}
+        balance={balance}
+        isBusy={isBusy}
+        canGenerate={canGenerate}
+        onGenerate={handleGenerate}
+      />
     </main>
   );
 }

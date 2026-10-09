@@ -17,13 +17,7 @@ interface SceneTypePickerProps {
 export function SceneTypePicker({ value, onChange }: SceneTypePickerProps) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-medium">Customize Scene</span>
-      <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Scene Type</span>
-        <p className="text-xs text-muted-foreground">
-          Choose a base to release the right adjustments.
-        </p>
-      </div>
+      <span className="text-sm font-medium">Scene</span>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {SCENE_TYPE_PRESETS.map((preset) => {
           const isActive = preset.id === value;
@@ -43,10 +37,7 @@ export function SceneTypePicker({ value, onChange }: SceneTypePickerProps) {
                   <Check className="h-3 w-3" />
                 </span>
               )}
-              <span className="block text-xs font-semibold">{preset.label}</span>
-              <span className="mt-0.5 block text-[11px] leading-tight text-muted-foreground">
-                {preset.description}
-              </span>
+              <span className="block text-sm font-medium">{preset.label}</span>
             </button>
           );
         })}

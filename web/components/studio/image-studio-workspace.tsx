@@ -87,6 +87,19 @@ const SIMPLE_TAB_CONFIG: Record<SimpleImageTab, { options?: PresetMeta[]; option
   background_remover: {},
 };
 
+const IMAGE_UPLOAD_COPY: Partial<Record<StudioTab, { title: string; description: string; ariaLabel: string }>> = {
+  print_render: { title: "Drop your 3D screenshot", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your 3D screenshot" },
+  plan_to_render: { title: "Drop your floor plan", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your floor plan" },
+  mood_swap: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your render" },
+  multi_angle: { title: "Drop your source image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your source image" },
+  variations: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image for variations" },
+  image_extender: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to extend" },
+  exterior_to_interior: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your exterior render" },
+  text_to_image: { title: "Add a reference image", description: "Optional ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an optional reference image" },
+  background_remover: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image" },
+  upscale: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to upscale" },
+};
+
 function initialSimpleState(optionId: string): SimpleImageState {
   return { file: null, previewUrl: null, optionId, sceneDetails: "" };
 }
@@ -360,7 +373,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     form.append("sceneDetails", sceneDetails);
     if (selectedModel) form.append("model", selectedModel);
     appendSharedSettings(form);
-    void submitGeneration(form, "image", previewUrl);
+    void submitGeneration(form, "image", selectedSourceAsset?.url ?? previewUrl);
   };
 
   const handleGenerateSimpleImage = () => {
@@ -387,7 +400,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     }
     if (selectedModel) form.append("model", selectedModel);
     appendSharedSettings(form);
-    void submitGeneration(form, "image", state.previewUrl);
+    void submitGeneration(form, "image", selectedSourceAsset?.url ?? state.previewUrl);
   };
 
   const handleUpscale = async () => {
@@ -416,7 +429,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         setError(data.error ?? "Upscale failed, please try again.");
         return;
       }
-      pollJob(data.jobId, "image", upscalePreviewUrl);
+      pollJob(data.jobId, "image", selectedSourceAsset?.url ?? upscalePreviewUrl);
     } catch {
       setResult({ status: "idle" });
       setError("Network error — please try again.");
@@ -464,37 +477,18 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     : 0;
 
   const title = STUDIO_TABS.find((t) => t.id === tab)?.label ?? "Image Studio";
+  const uploadCopy = IMAGE_UPLOAD_COPY[tab] ?? IMAGE_UPLOAD_COPY.variations!;
 
   return (
-    <main className="flex min-h-screen w-full flex-col gap-5 p-4 pb-0 sm:p-6 sm:pb-0">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-          <p className="text-sm text-muted-foreground">
-            AI renders for architecture, archviz &amp; real estate.
-          </p>
+    <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+          {tab !== "upscale" && result.status === "busy" && <Badge variant="secondary">Generating</Badge>}
         </div>
-        <Badge variant="secondary" className="gap-1">
-          {balance === null ? "…" : balance} credits
-        </Badge>
-      </header>
-
-      {showTabs && (
-        <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
-          <TabsList>
-            {STUDIO_TABS.map((studioTab) => (
-              <TabsTrigger key={studioTab.id} value={studioTab.id}>
-                {studioTab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      )}
-
-      <div className="grid flex-1 gap-6 lg:grid-cols-[400px_1fr]">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Project</span>
+        <div className="flex w-full items-center gap-3 sm:w-auto sm:justify-end">
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">Project</span>
+          <div className="w-full min-w-0 sm:w-64">
             <ProjectPicker
               projects={projects}
               value={selectedProjectId}
@@ -502,20 +496,44 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
               onCreateProject={handleCreateProject}
             />
           </div>
+        </div>
+      </header>
 
+      {showTabs && (
+        <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
+          <TabsList>
+            {STUDIO_TABS.map((studioTab) => (
+              <TabsTrigger key={studioTab.id} value={studioTab.id}>{studioTab.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
+
+      <div className="grid flex-1 items-start gap-5 lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] xl:gap-6">
+        <section aria-label="Working input" className="min-w-0">
           <Card>
-            <CardContent className="flex flex-col gap-4 p-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Working Input</CardTitle>
+              <CardDescription>Choose a source and shape the result.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-5">
               {tab === "print_render" ? (
                 <>
-                  <UploadDropzone
-                    previewUrl={selectedSourceAsset?.url ?? previewUrl}
-                    onFileSelected={(selected) => {
-                      setSelectedSourceAsset(null);
-                      setFile(selected);
-                      setPreviewUrl(URL.createObjectURL(selected));
-                      setError(null);
-                    }}
-                  />
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source</span>
+                    <UploadDropzone
+                      previewUrl={selectedSourceAsset?.url ?? previewUrl}
+                      onFileSelected={(selected) => {
+                        setSelectedSourceAsset(null);
+                        setFile(selected);
+                        setPreviewUrl(URL.createObjectURL(selected));
+                        setError(null);
+                      }}
+                      title={uploadCopy.title}
+                      description={uploadCopy.description}
+                      ariaLabel={uploadCopy.ariaLabel}
+                    />
+                  </div>
                   <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
                   <ReferencesPanel
                     references={references}
@@ -523,6 +541,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                     onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
                   />
                   <SettingsAccordion
+                    label="Design"
                     materialId={materialId}
                     lightingId={lightingId}
                     onMaterialChange={setMaterialId}
@@ -569,7 +588,10 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                     setError(null);
                   }}
                   uploadOptional={tab === "text_to_image"}
-                  uploadLabel={tab === "text_to_image" ? "Reference image" : undefined}
+                  uploadLabel="Source"
+                  uploadTitle={uploadCopy.title}
+                  uploadDescription={uploadCopy.description}
+                  uploadAriaLabel={uploadCopy.ariaLabel}
                   options={SIMPLE_TAB_CONFIG[tab].options}
                   optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
                   optionId={simpleTabs[tab].optionId}
@@ -578,42 +600,43 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
                 />
               )}
-
-              {error && (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              )}
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        <div className="flex flex-col gap-6 pb-6">
-          {result.status !== "idle" && <ResultPanel result={result} />}
+        <section aria-label="Preview and history" className="flex min-w-0 flex-col gap-5">
+          <ResultPanel result={result} error={error} />
           <Card>
-            <CardHeader>
-              <CardTitle>{result.status === "idle" ? `Previous ${title} results` : `More ${title} results`}</CardTitle>
-              <CardDescription>Select a previous result to use as the source image.</CardDescription>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">History</CardTitle>
+              <CardDescription>Choose a previous result to use as the source image.</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3">
+            <CardContent>
               {selectedSourceAsset && (
-                <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  <span>Project image selected as the source.</span>
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                  <span className="truncate">Selected as the current source.</span>
                   <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedSourceAsset(null)}>
                     Remove selection
                   </Button>
                 </div>
               )}
               {assets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No previous results for this feature in the selected project yet.</p>
+                <p className="py-2 text-sm text-muted-foreground">No previous results for this feature in the selected project yet.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="flex gap-3 overflow-x-auto pb-2">
                   {assets.map((asset) => (
-                    <div key={asset.id} className={`rounded-lg border p-1.5 ${selectedSourceAsset?.id === asset.id ? "border-primary" : ""}`}>
+                    <div key={asset.id} className={`w-32 shrink-0 rounded-md border p-1.5 sm:w-36 ${selectedSourceAsset?.id === asset.id ? "border-primary" : "border-border"}`}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={asset.url} alt="Previous feature result" className="aspect-[4/3] w-full rounded-md object-cover" />
-                      <Button type="button" size="sm" variant={selectedSourceAsset?.id === asset.id ? "default" : "outline"} className="mt-2 w-full" onClick={() => selectSourceAsset(asset)}>
-                        {selectedSourceAsset?.id === asset.id ? "Selected as source" : "Use as source"}
+                      <img src={asset.url} alt="Previous feature result" className="aspect-[4/3] w-full rounded object-cover" />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={selectedSourceAsset?.id === asset.id ? "default" : "outline"}
+                        aria-pressed={selectedSourceAsset?.id === asset.id}
+                        className="mt-2 h-9 w-full px-2 text-xs"
+                        onClick={() => selectSourceAsset(asset)}
+                      >
+                        {selectedSourceAsset?.id === asset.id ? "Selected" : "Use as source"}
                       </Button>
                     </div>
                   ))}
@@ -621,7 +644,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
               )}
             </CardContent>
           </Card>
-        </div>
+        </section>
       </div>
 
       {tab !== "upscale" && (

@@ -15,6 +15,9 @@ interface ImageFeaturePanelProps {
   /** L'upload est-il optionnel ? (text-to-image : l'image guide le style). */
   uploadOptional?: boolean;
   uploadLabel?: string;
+  uploadTitle?: string;
+  uploadDescription?: string;
+  uploadAriaLabel?: string;
   /** Presets de la fonction (ex. ambiances Mood) — omis si la fonction
    *  n'en a pas (Exterior -> Interior en V1). */
   options?: PresetMeta[];
@@ -30,6 +33,9 @@ export function ImageFeaturePanel({
   onFileSelected,
   uploadOptional,
   uploadLabel,
+  uploadTitle,
+  uploadDescription,
+  uploadAriaLabel,
   options,
   optionsLabel,
   optionId,
@@ -38,15 +44,21 @@ export function ImageFeaturePanel({
   onSceneDetailsChange,
 }: ImageFeaturePanelProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">
-          {uploadLabel ?? "Source image"}
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {uploadLabel ?? "Source"}
           {uploadOptional && (
             <span className="ml-1 text-xs font-normal text-muted-foreground">(optional)</span>
           )}
         </span>
-        <UploadDropzone previewUrl={previewUrl} onFileSelected={onFileSelected} />
+        <UploadDropzone
+          previewUrl={previewUrl}
+          onFileSelected={onFileSelected}
+          title={uploadTitle}
+          description={uploadDescription}
+          ariaLabel={uploadAriaLabel}
+        />
       </div>
       {options && optionId !== undefined && onOptionChange && (
         <div className="flex flex-col gap-2">

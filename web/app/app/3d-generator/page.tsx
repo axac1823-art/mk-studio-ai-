@@ -174,36 +174,33 @@ export default function ImageTo3DPage() {
   const iframeSrcDoc = modelViewerIframe(resultUrl);
 
   return (
-    <main className="flex min-h-screen w-full flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Image-to-3D</h1>
-          <p className="text-sm text-muted-foreground">Generate a 3D model from up to 6 views.</p>
-        </div>
+    <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Image-to-3D</h1>
         <div className="flex items-center gap-3">
           <nav className="flex rounded-md border p-1" aria-label="3D generation mode">
             <Link href="/app/3d-generator" aria-current="page" className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-foreground">Image-to-3D</Link>
             <Link href="/app/text-to-3d" className="rounded px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Text-to-3D</Link>
           </nav>
-          <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
         </div>
       </header>
 
-      <div className="grid flex-1 lg:grid-cols-[360px_1fr]">
-        <div className="flex flex-col gap-4 border-r p-4 sm:p-5">
+      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] xl:gap-6">
+        <section aria-label="Image views" className="min-w-0">
           <Card>
-            <CardContent className="flex flex-col gap-4 p-4">
+            <CardContent className="flex flex-col gap-5 p-4 sm:p-5">
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Views</label>
-                <div className="grid grid-cols-2 gap-3">
+                <h2 className="text-base font-semibold">Views</h2>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {VIEWS.map((view) => (
                     <div key={view} className="flex flex-col gap-1">
-                      <span className="text-xs font-medium capitalize text-muted-foreground">{view} *</span>
+                      <span className="text-xs font-medium capitalize text-muted-foreground">{view}</span>
                       <UploadDropzone
                         previewUrl={previews[view]}
                         onFileSelected={(file) => setView(view, file)}
-                        title={previews[view] ? view : `Drop ${view}`}
-                        description=""
+                        title={previews[view] ? `${view} view selected` : `Drop ${view} view`}
+                        description="PNG, JPEG or WebP"
+                        ariaLabel={`Upload ${view} view`}
                         icon={Box}
                         accept="image/png,image/jpeg,image/webp"
                       />
@@ -213,34 +210,7 @@ export default function ImageTo3DPage() {
                 <p className="text-xs text-muted-foreground">Upload at least one view. More views improve quality.</p>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="3d-model" className="text-sm font-medium">
-                  Model
-                </label>
-                <select
-                  id="3d-model"
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  disabled={isBusy || models.length === 0}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
-                >
-                  {models.length === 0 && <option value="">Auto</option>}
-                  {models.map((m) => (
-                    <option key={m.key} value={m.key}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  {models.find((m) => m.key === selectedModel)?.description ?? "Choose a 3D generation model."}
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Cost</span>
-                  <span className="font-medium">{cost} credits</span>
-                </div>
+              <div className="sticky bottom-0 z-10 -mx-4 mt-1 flex flex-col gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5">
                 <Button
                   type="button"
                   onClick={handleGenerate}
@@ -248,7 +218,7 @@ export default function ImageTo3DPage() {
                   className="w-full gap-2"
                 >
                   {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Box className="h-4 w-4" />}
-                  Generate 3D model
+                  Generate &middot; {cost} credits
                 </Button>
               </div>
 
@@ -259,29 +229,33 @@ export default function ImageTo3DPage() {
               )}
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        <div className="relative flex flex-col items-center justify-center overflow-y-auto bg-black/20 p-6">
-          {iframeSrcDoc ? (
-            <div className="flex h-full w-full max-w-4xl flex-col gap-3">
-              <span className="text-sm font-medium">Result</span>
-              <iframe title="3D preview" srcDoc={iframeSrcDoc} className="min-h-[480px] w-full flex-1 rounded-lg border-0" />
+        <section aria-label="3D Viewer" className="min-w-0">
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-4 sm:p-5">
+              <h2 className="text-base font-semibold">3D Viewer</h2>
+              {iframeSrcDoc ? (
+                <div className="flex w-full flex-col gap-3">
+              <iframe title="3D Viewer" srcDoc={iframeSrcDoc} className="min-h-[480px] w-full rounded-lg border-0 sm:min-h-[min(65vh,680px)]" />
               <a href={resultUrl ?? undefined} download className="text-sm text-primary underline underline-offset-4">
                 Download GLB
               </a>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
-                <Box className="h-8 w-8" />
-              </div>
-              <div>
-                <p className="text-lg font-semibold">Generate a 3D asset</p>
-                <p className="text-sm text-muted-foreground">Upload up to 6 views to build a 3D model.</p>
-              </div>
-            </div>
-          )}
-        </div>
+                </div>
+              ) : isBusy ? (
+                <div className="flex min-h-[480px] flex-col items-center justify-center gap-3 rounded-lg border bg-muted/30 text-center sm:min-h-[min(65vh,680px)]">
+                  <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+                  <p className="text-sm font-medium">Generating 3D model</p>
+                </div>
+              ) : (
+                <div className="flex min-h-[480px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-muted/20 text-center sm:min-h-[min(65vh,680px)]">
+                  <Box className="h-7 w-7 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Your 3D model will appear here.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
       </div>
     </main>
   );

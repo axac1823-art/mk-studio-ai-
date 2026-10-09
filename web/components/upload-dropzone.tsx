@@ -2,7 +2,7 @@
 
 // Zone de dépôt : glisser-déposer ou clic pour choisir un screenshot 3D
 // (SketchUp, Revit, 3ds Max...). Affiche l'aperçu de l'image choisie.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { ImagePlus, Info, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -17,6 +17,8 @@ interface UploadDropzoneProps {
   showHint?: boolean;
   /** Types MIME acceptés (défaut : images). */
   accept?: string;
+  ariaLabel?: string;
+  selectedLabel?: string;
 }
 
 export function UploadDropzone({
@@ -27,8 +29,11 @@ export function UploadDropzone({
   icon: Icon = ImagePlus,
   showHint = false,
   accept = "image/png,image/jpeg,image/webp",
+  ariaLabel = "Upload a 3D viewport screenshot",
+  selectedLabel = "Selected image. Click to replace",
 }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const descriptionId = useId();
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFiles = useCallback(
@@ -43,7 +48,9 @@ export function UploadDropzone({
     <div
       role="button"
       tabIndex={0}
-      aria-label="Upload a 3D viewport screenshot"
+      aria-label={previewUrl ? `Replace ${ariaLabel.replace(/^Upload\s+/i, "")}` : ariaLabel}
+      aria-describedby={description ? descriptionId : undefined}
+      aria-pressed={Boolean(previewUrl)}
       onClick={() => inputRef.current?.click()}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -63,24 +70,25 @@ export function UploadDropzone({
       }}
       className={cn(
         "flex aspect-[4/3] w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed transition-colors",
-        isDragging ? "border-primary bg-accent" : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50"
+        isDragging ? "border-primary bg-accent" : previewUrl ? "border-primary/40 bg-background" : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50"
       )}
     >
       {previewUrl ? (
         <div className="relative h-full w-full">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previewUrl} alt="Uploaded viewport screenshot" className="h-full w-full object-contain" />
+          <img src={previewUrl} alt={ariaLabel} className="h-full w-full object-contain" />
           <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-xs text-white">
-            <RefreshCw className="h-3 w-3" /> Click to replace
+            <RefreshCw className="h-3 w-3" /> {selectedLabel}
           </span>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2 p-6 text-center">
           {Icon ? <Icon className="h-8 w-8 text-muted-foreground" /> : null}
           <p className="text-sm font-medium">{title}</p>
-          {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+          {description ? <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p> : null}
         </div>
       )}
+      {previewUrl && description && <span id={descriptionId} className="sr-only">{description}</span>}
       <input
         ref={inputRef}
         type="file"

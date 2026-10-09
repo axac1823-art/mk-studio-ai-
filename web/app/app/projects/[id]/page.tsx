@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import {
   usePathname,
   useRouter,
@@ -204,7 +204,7 @@ export default function ProjectDetailPage({
   }, [filter]);
 
   return (
-    <main className="flex min-h-full w-full flex-col gap-5 p-4 sm:p-6 lg:p-7">
+    <main className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
       {/* Header */}
       <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">
@@ -220,41 +220,31 @@ export default function ProjectDetailPage({
               <div className="flex items-center gap-2">
                 <Link
                   href="/app/projects"
-                  className="text-xs text-muted-foreground hover:text-foreground"
+                  className="text-sm text-muted-foreground hover:text-foreground"
                 >
                   Projects
                 </Link>
 
-                <span className="text-xs text-muted-foreground/40">
+                <span aria-hidden="true" className="text-xs text-muted-foreground/40">
                   /
                 </span>
 
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate text-sm text-muted-foreground">
                   {projectName ?? "Project"}
                 </span>
               </div>
 
-              <h1 className="mt-1 truncate text-xl font-semibold tracking-tight">
-                {projectName ?? "Loading project…"}
+              <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">
+                {projectName ?? "Loading project..."}
               </h1>
 
               <p className="mt-1 text-sm text-muted-foreground">
                 {assets === null
-                  ? "Loading assets…"
+                  ? "Loading assets..."
                   : `${assets.length} ${activeFilterLabel.toLowerCase()}`}
               </p>
             </div>
           </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0"
-            title="Project actions"
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
         </div>
 
         {/* Tabs */}
@@ -324,15 +314,7 @@ export default function ProjectDetailPage({
 
       {assets === null ? (
         <div
-          className={assetLayoutClass(layout)}
-          style={
-            layout === "grid"
-              ? {
-                  gridTemplateColumns:
-                    `repeat(${columns}, minmax(0, 1fr))`,
-                }
-              : undefined
-          }
+          className={assetLayoutClass(layout, columns)}
         >
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton
@@ -347,7 +329,7 @@ export default function ProjectDetailPage({
         </div>
       ) : assets.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center py-20 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted">
             <FolderEmptyIcon />
           </div>
 
@@ -366,21 +348,13 @@ export default function ProjectDetailPage({
             className="mt-4"
           >
             <Link href="/app/ai-image-generator">
-              Create something
+              Start a render
             </Link>
           </Button>
         </div>
       ) : (
         <div
-          className={assetLayoutClass(layout)}
-          style={
-            layout === "grid"
-              ? {
-                  gridTemplateColumns:
-                    `repeat(${columns}, minmax(0, 1fr))`,
-                }
-              : undefined
-          }
+          className={assetLayoutClass(layout, columns)}
         >
           {assets.map((asset) => (
             <AssetCard

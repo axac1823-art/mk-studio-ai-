@@ -7,7 +7,6 @@
 import { Loader2, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { UPSCALE_FACTORS, type UpscaleFactor } from "@/lib/presets";
 import { cn } from "@/lib/utils";
@@ -39,8 +38,6 @@ interface UpscalePanelProps {
 }
 
 export function UpscalePanel({
-  models,
-  selectedModel,
   uploadFile,
   uploadPreviewUrl,
   factor,
@@ -48,7 +45,6 @@ export function UpscalePanel({
   cost,
   balance,
   isBusy,
-  onModelChange,
   onUploadFileSelected,
   onClearUpload,
   onFactorChange,
@@ -58,7 +54,6 @@ export function UpscalePanel({
   const hasEnoughCredits = balance === null || balance >= cost;
   const hasSource = uploadFile !== null;
   const canGenerate = hasSource && hasEnoughCredits && !isBusy;
-  const modelName = selectedModel ? models.find((m) => m.key === selectedModel)?.name : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,6 +64,9 @@ export function UpscalePanel({
           onFileSelected={(file) => {
             onUploadFileSelected(file, URL.createObjectURL(file));
           }}
+          title="Drop an image"
+          description="or click to browse ? PNG, JPEG or WebP up to 10 MB"
+          ariaLabel="Upload an image to upscale"
         />
         {uploadFile && (
           <Button
@@ -81,36 +79,6 @@ export function UpscalePanel({
             <X className="h-4 w-4" />
             Clear upload
           </Button>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Upscale model</span>
-        <Select value={selectedModel} onValueChange={onModelChange} disabled={models.length === 0}>
-          <SelectTrigger>
-            <SelectValue placeholder={models.length === 0 ? "No upscale models configured" : "Auto (recommended)"}>
-              {modelName ?? "Auto (recommended)"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">Auto (recommended)</SelectItem>
-            {models.map((model) => (
-              <SelectItem key={model.key} value={model.key}>
-                <div className="flex flex-col items-start">
-                  <span className="text-sm font-medium">
-                    {model.name}
-                    {!model.configured && (
-                      <span className="ml-2 text-[10px] text-amber-500">(not configured)</span>
-                    )}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{model.description}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {models.length === 0 && (
-          <p className="text-[11px] text-muted-foreground">No upscale provider configured on the worker.</p>
         )}
       </div>
 

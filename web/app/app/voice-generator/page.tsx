@@ -695,43 +695,31 @@ export default function VoiceGeneratorPage() {
    */
 
   return (
-    <main className="flex min-h-screen w-full flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-6">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Voice Generator
-          </h1>
-
-          <p className="text-sm text-muted-foreground">
-            Create a voiceover or a conversation with ElevenLabs.
-          </p>
-        </div>
-
-        <div className="text-sm text-muted-foreground">
-          {balance === null
-            ? "…"
-            : `${balance} credits`}
-        </div>
+    <main className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <header className="border-b pb-4">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Voice Generator</h1>
       </header>
 
-      <div className="grid flex-1 lg:grid-cols-[460px_1fr]">
-        <div className="flex flex-col gap-4 border-r p-4 sm:p-5">
+      <div className="grid flex-1 items-start gap-5 py-5 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] xl:gap-6">
+        <section aria-label="Voice generation controls" className="flex min-w-0 flex-col gap-4">
+
           {/* Mode */}
-          <div className="grid grid-cols-2 rounded-lg border p-1 text-sm">
+          <div role="group" aria-label="Generation mode" className="grid grid-cols-2 rounded-lg border p-1 text-sm">
             {(
               ["single", "dialogue"] as const
             ).map((value) => (
               <button
                 key={value}
                 type="button"
+                aria-pressed={mode === value}
                 onClick={() => {
                   setMode(value);
                   setError(null);
                 }}
-                className={`rounded-md px-3 py-2 capitalize ${
+                className={`min-h-9 rounded-md px-3 py-2 font-medium transition-colors ${
                   mode === value
                     ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
                 {value === "single"
@@ -742,7 +730,7 @@ export default function VoiceGeneratorPage() {
           </div>
 
           <Card>
-            <CardContent className="flex flex-col gap-4 p-4">
+            <CardContent className="flex flex-col gap-5 p-4 sm:p-5">
               {mode === "single" ? (
                 <>
                   {/* Single voice */}
@@ -789,7 +777,7 @@ export default function VoiceGeneratorPage() {
                   </label>
 
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
-                    Text
+                    Script
 
                     <textarea
                       value={text}
@@ -801,7 +789,7 @@ export default function VoiceGeneratorPage() {
                           ),
                         )
                       }
-                      placeholder="Type the script you want to narrate..."
+                      placeholder="Write or paste your script..."
                       rows={8}
                       disabled={isBusy}
                       className="rounded-md border bg-background px-3 py-2 text-sm font-normal"
@@ -1295,7 +1283,7 @@ Omar: What happened?`}
               )}
 
               {/* Cost + Generate */}
-              <div className="flex flex-col gap-2 border-t pt-3">
+              <div className="sticky bottom-0 z-10 -mx-4 mt-1 flex flex-col gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:px-5">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
                     Cost
@@ -1371,44 +1359,35 @@ Omar: What happened?`}
               </div>
             </CardContent>
           </Card>
-        </div>
+        </section>
 
-        {/* Result */}
-        <div className="relative flex flex-col items-center justify-center overflow-y-auto bg-black/20 p-6">
-          {audioUrl ? (
-            <div className="flex w-full max-w-xl flex-col gap-3">
-              <span className="text-sm font-medium">
-                Result
-              </span>
-
-              <audio
-                src={audioUrl}
-                controls
-                className="w-full"
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-500/15 text-violet-400">
-                <Volume2 className="h-8 w-8" />
-              </div>
-
+        <section aria-label="Audio result" className="min-w-0">
+          <Card className="h-full">
+            <CardContent className="flex min-h-[360px] h-full flex-col gap-4 p-4 sm:min-h-[440px] sm:p-6">
               <div>
-                <p className="text-lg font-semibold">
-                  {mode === "single"
-                    ? "Generate a voiceover"
-                    : "Create a conversation"}
-                </p>
-
-                <p className="text-sm text-muted-foreground">
-                  {mode === "single"
-                    ? "Type a script and click Generate."
-                    : "Write your dialogue, assign voices once, choose emotions, then generate."}
-                </p>
+                <h2 className="text-base font-semibold">Result</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Generated audio appears here.</p>
               </div>
-            </div>
-          )}
-        </div>
+              {audioUrl ? (
+                <div className="flex flex-1 items-center">
+                  <audio src={audioUrl} controls className="w-full" />
+                </div>
+              ) : isBusy ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border bg-muted/30 text-center">
+                  <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+                  <p className="text-sm font-medium">Generating audio</p>
+                </div>
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-muted/20 px-6 text-center">
+                  <Volume2 className="h-7 w-7 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    {mode === "single" ? "Your voiceover will appear here." : "Your dialogue will appear here."}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
       </div>
     </main>
   );

@@ -42,24 +42,25 @@ export function ReferencesPanel({ references, onAdd, onRemove }: ReferencesPanel
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <button
           type="button"
           disabled={isFull}
           onClick={() => inputRef.current?.click()}
           className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed transition-colors",
+            "flex h-12 w-12 items-center justify-center rounded-lg border-2 border-dashed transition-colors",
             isFull
               ? "cursor-not-allowed opacity-40"
               : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/50"
           )}
+          aria-label={isFull ? `Maximum ${MAX_REFERENCES} references` : "Add reference images"}
           title={isFull ? `Maximum ${MAX_REFERENCES} references` : "Add reference images"}
         >
           <Plus className="h-5 w-5 text-muted-foreground" />
         </button>
 
         {references.map((reference) => (
-          <div key={reference.id} className="group relative h-16 w-16">
+          <div key={reference.id} className="group relative h-12 w-12">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={reference.previewUrl}
@@ -78,9 +79,7 @@ export function ReferencesPanel({ references, onAdd, onRemove }: ReferencesPanel
         ))}
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Style or consistency references — the model conditions on them, your upload stays the main input.
-      </p>
+      <p className="text-xs text-muted-foreground">Visual references to guide style. Your source image remains the main input.</p>
 
       <input
         ref={inputRef}
