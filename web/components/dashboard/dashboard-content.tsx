@@ -10,8 +10,7 @@ import {
   Plus,
 } from "lucide-react";
 
-import { type AssetSummary } from "@/components/projects/asset-card";
-import { AssetLibraryGrid } from "@/components/projects/asset-library-grid";
+import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,6 +29,7 @@ interface ProjectSummary {
   id: string;
   name: string;
   assetCount: number;
+  coverUrl?: string | null;
 }
 
 export function DashboardContent() {
@@ -37,30 +37,38 @@ export function DashboardContent() {
   const [greeting, setGreeting] = useState("Good morning");
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [assetsError, setAssetsError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchProjects = useCallback(async () => {
+    setProjectsError(null);
     try {
       const res = await fetch("/api/projects");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { projects: ProjectSummary[] };
       setProjects(data.projects);
+      setProjectsError(null);
     } catch {
-      setError("Could not load projects.");
+      setProjects([]);
+      setProjectsError("Could not load projects.");
     }
   }, []);
 
   const fetchAssets = useCallback(async () => {
+    setAssetsError(null);
     try {
       const res = await fetch("/api/assets");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as { assets: AssetSummary[] };
-      setAssets(data.assets.slice().reverse().slice(0, 4));
+      setAssets(data.assets.slice().reverse().slice(0, 6));
+      setAssetsError(null);
     } catch {
-      setError("Could not load recent work.");
+      setAssets([]);
+      setAssetsError("Could not load recent work.");
     }
   }, []);
 
@@ -101,15 +109,22 @@ export function DashboardContent() {
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
       <section aria-labelledby="continue-working-title" className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 id="continue-working-title" className="text-lg font-semibold tracking-tight">Continue Working</h2>
             <p className="mt-1 text-sm text-muted-foreground">Pick up a project where you left off.</p>
           </div>
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setCreating((open) => !open)}>
-            <Plus className="mr-1.5 h-4 w-4" />
-            New project
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild type="button" variant="ghost" size="sm" className="gap-1">
+              <Link href="/app/projects?view=projects">
+                All projects <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setCreating((open) => !open)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              New project
+            </Button>
+          </div>
         </div>
 
         {creating && (
@@ -130,7 +145,7 @@ export function DashboardContent() {
               className="h-9 flex-1"
             />
             <Button type="submit" size="sm" disabled={!newProjectName.trim() || createBusy}>
-              {createBusy ? "Creating�" : "Create"}
+              {createBusy ? "Creating…" : "Create"}
             </Button>
           </form>
         )}
@@ -139,9 +154,19 @@ export function DashboardContent() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-[92px] w-full rounded-lg" />)}
           </div>
+        ) : projectsError ? (
+          <div role="alert" className="flex min-h-[92px] flex-col items-start justify-center gap-2 rounded-lg border border-dashed px-5 py-4">
+            <p className="text-sm text-muted-foreground">{projectsError}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void fetchProjects()}>
+              Retry
+            </Button>
+          </div>
         ) : projects.length === 0 ? (
-          <div className="rounded-lg border border-dashed px-5 py-6 text-sm text-muted-foreground">
-            No projects yet. Create a project to keep your work together.
+          <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed px-5 py-6">
+            <p className="text-sm text-muted-foreground">No projects yet. Create a project to keep your work together.</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setCreating(true)}>
+              <Plus className="mr-1.5 h-4 w-4" /> Create project
+            </Button>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -151,7 +176,16 @@ export function DashboardContent() {
                 href={`/app/projects/${project.id}`}
                 className="group flex min-h-[92px] items-center gap-3 rounded-lg border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><FolderOpen className="h-5 w-5" /></div>
+                <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-md bg-muted">
+                  {project.coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={project.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      <FolderOpen className="h-5 w-5" />
+                    </div>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium group-hover:text-foreground">{project.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{project.assetCount} assets</p>
@@ -185,23 +219,37 @@ export function DashboardContent() {
             <p className="mt-1 text-sm text-muted-foreground">Your latest generated assets.</p>
           </div>
           <Button asChild variant="ghost" size="sm" className="shrink-0 gap-1 text-muted-foreground">
-            <Link href="/app/projects">Browse all<ArrowRight className="h-3.5 w-3.5" /></Link>
+            <Link href="/app/projects?view=assets">View all assets<ArrowRight className="h-3.5 w-3.5" /></Link>
           </Button>
         </div>
         {assets === null ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
+          </div>
+        ) : assetsError ? (
+          <div role="alert" className="flex min-h-[120px] flex-col items-start justify-center gap-2 rounded-lg border border-dashed px-5 py-5">
+            <p className="text-sm text-muted-foreground">{assetsError}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void fetchAssets()}>
+              Retry
+            </Button>
           </div>
         ) : assets.length === 0 ? (
           <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed px-5 py-6">
-            <p className="text-sm font-medium">Your recent work will appear here.</p>
-            <p className="text-sm text-muted-foreground">Start with a render and find your outputs here.</p>
-            <Button asChild variant="outline" size="sm" className="mt-1">
-              <Link href="/app/ai-image-generator"><ImageIcon className="mr-1.5 h-4 w-4" />Create a render</Link>
-            </Button>
+            <p className="text-sm font-medium">No work yet</p>
+            <p className="text-sm text-muted-foreground">Your generated images and videos will appear here.</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/app/ai-image-generator"><ImageIcon className="mr-1.5 h-4 w-4" />Start a Render</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/app/search">Explore tools</Link>
+              </Button>
+            </div>
           </div>
         ) : (
-          <AssetLibraryGrid assets={assets} onChanged={fetchAssets} className="grid grid-cols-2 gap-3 sm:grid-cols-4" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-6">
+            {assets.map((asset) => <AssetCard key={asset.id} asset={asset} onChanged={fetchAssets} />)}
+          </div>
         )}
       </section>
     </main>

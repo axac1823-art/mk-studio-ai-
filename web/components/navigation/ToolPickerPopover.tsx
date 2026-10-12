@@ -100,19 +100,25 @@ export function ToolPickerPopover({
 
   const position = useMemo(() => {
     if (!rect) return { top: 0, left: 0 };
+
     const padding = 16;
     const popoverWidth = 640;
     const minVisibleHeight = 240;
+    const viewportWidth = window.innerWidth;
+    const isNarrowViewport = viewportWidth < popoverWidth + padding * 2;
 
-    if (placement === "right") {
+    // The right-side flyout would be pushed outside the viewport on phones.
+    // Fall back to a viewport-aligned popover instead of a negative left offset.
+    if (placement === "right" && !isNarrowViewport) {
       return {
-        top: rect.top,
-        left: Math.min(rect.right + 8, window.innerWidth - popoverWidth - padding),
+        top: Math.max(padding, Math.min(rect.top, window.innerHeight - minVisibleHeight - padding)),
+        left: Math.min(rect.right + 8, viewportWidth - popoverWidth - padding),
       };
     }
 
     const idealLeft = rect.left + rect.width / 2 - popoverWidth / 2;
-    const left = Math.max(padding, Math.min(idealLeft, window.innerWidth - popoverWidth - padding));
+    const maxLeft = Math.max(padding, viewportWidth - popoverWidth - padding);
+    const left = Math.max(padding, Math.min(idealLeft, maxLeft));
     const spaceBelow = window.innerHeight - rect.bottom - padding;
     const top = spaceBelow >= minVisibleHeight ? rect.bottom + 8 : padding;
     return { top, left };

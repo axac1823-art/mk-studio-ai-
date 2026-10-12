@@ -39,6 +39,7 @@ interface AssetCardProps {
   layout?: "grid" | "list";
   selected?: boolean;
   selectionActive?: boolean;
+  onSelect?: () => void;
   onToggleSelected?: (assetId: string, shiftKey: boolean) => void;
   onPreview?: () => void;
 }
@@ -64,7 +65,7 @@ export const VIDEO_SERVICES = [
   ["Video Project Editor", "/app/video-project-editor"],
 ] as const;
 
-export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid", selected = false, selectionActive = false, onToggleSelected, onPreview }: AssetCardProps) {
+export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout = "grid", selected = false, selectionActive = false, onSelect, onToggleSelected, onPreview }: AssetCardProps) {
   const [busy, setBusy] = useState(false);
 
   // Pas de logique métier ici : simple bascule de flag côté API, puis
@@ -143,7 +144,7 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
         <Badge variant="secondary" className="pointer-events-none absolute left-2 top-2 capitalize">
           {asset.type === "3d_model" ? "3D" : asset.type}
         </Badge>
-        {onToggleSelected && (
+        {(onToggleSelected || onSelect) && (
           <label
             className={cn(
               "absolute right-2 top-2 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border bg-background/90 shadow-sm transition-opacity",
@@ -154,7 +155,13 @@ export function AssetCard({ asset, trashed = false, onChanged, onDelete, layout 
             <input
               type="checkbox"
               checked={selected}
-              onChange={(event) => onToggleSelected(asset.id, (event.nativeEvent as MouseEvent).shiftKey)}
+              onChange={(event) => {
+                if (onToggleSelected) {
+                  onToggleSelected(asset.id, (event.nativeEvent as MouseEvent).shiftKey);
+                } else {
+                  onSelect?.();
+                }
+              }}
               aria-label={`Select ${asset.type === "3d_model" ? "3D model" : asset.type}`}
               aria-checked={selected}
               className="h-4 w-4 accent-primary"

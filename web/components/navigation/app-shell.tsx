@@ -37,6 +37,7 @@ export function AppShell({ user, balance, lowThreshold, children }: AppShellProp
         user={user}
         open={sidebarOpen}
         mobileOpen={mobileNavOpen}
+        showToggle
         onToggle={() => setSidebarOpen((open) => !open)}
       />
       {mobileNavOpen && (

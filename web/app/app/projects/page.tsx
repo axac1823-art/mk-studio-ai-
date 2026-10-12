@@ -17,8 +17,11 @@ import {
 } from "lucide-react";
 
 import type { ProjectSummary } from "@/components/projects/project-card";
-import { AssetLibraryGrid } from "@/components/projects/asset-library-grid";
-import type { AssetSummary } from "@/components/projects/asset-card";
+import {
+  AssetCard,
+  type AssetSummary,
+} from "@/components/projects/asset-card";
+import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
 import { Button } from "@/components/ui/button";
 import { ProjectLibraryTabs } from "@/components/projects/project-library-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -177,7 +180,7 @@ function NewProjectCard({
       <button
         type="button"
         onClick={onStart}
-        className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-dashed bg-muted/35 p-5 text-center transition-colors hover:bg-muted/70"
+        className="flex aspect-[16/9] w-full flex-col items-center justify-center rounded-xl border border-dashed bg-muted/35 p-5 text-center transition-colors hover:bg-muted/70"
       >
         <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-background shadow-sm">
           <Plus className="h-4 w-4" />
@@ -245,6 +248,23 @@ function EmptyState({
   );
 }
 
+function LoadError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div role="alert" className="flex min-h-[160px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/20 p-5 text-center">
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 export default function ProjectsPage() {
   const searchParams = useSearchParams();
 
@@ -259,7 +279,10 @@ export default function ProjectsPage() {
 
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<RecentAsset[] | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
+  const [projectsLoadError, setProjectsLoadError] = useState<string | null>(null);
+  const [assetsLoadError, setAssetsLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [creating, setCreating] = useState(false);
@@ -274,6 +297,7 @@ export default function ProjectsPage() {
 
 
   const fetchProjects = useCallback(async () => {
+    setProjectsLoadError(null);
     try {
       const response = await fetch("/api/projects", {
         cache: "no-store",
@@ -288,13 +312,15 @@ export default function ProjectsPage() {
       };
 
       setProjects(data.projects);
-      setError(null);
+      setProjectsLoadError(null);
     } catch {
-      setError("Could not load projects.");
+      setProjects([]);
+      setProjectsLoadError("Could not load projects.");
     }
   }, []);
 
   const fetchAssets = useCallback(async () => {
+    setAssetsLoadError(null);
     try {
       const endpoint =
         view === "favorites"
@@ -314,15 +340,24 @@ export default function ProjectsPage() {
       };
 
       setAssets(data.assets);
-      setError(null);
+      setSelectedAssetId((current) =>
+        current && data.assets.some((asset) => asset.id === current)
+          ? current
+          : null,
+      );
+      setAssetsLoadError(null);
     } catch {
-      setError("Could not load assets.");
+      setAssets([]);
+      setAssetsLoadError("Could not load assets.");
     }
   }, [view]);
 
   useEffect(() => {
     setError(null);
+    setProjectsLoadError(null);
+    setAssetsLoadError(null);
     setCreating(false);
+    setSelectedAssetId(null);
 
     if (view === "overview" || view === "projects" || view === "assets" || view === "favorites") {
       void fetchProjects();
@@ -393,12 +428,12 @@ export default function ProjectsPage() {
   };
 
   const recentProjects = useMemo(
-    () => projects?.slice(0, 8) ?? [],
+    () => projects?.slice(0, 3) ?? [],
     [projects]
   );
 
   const recentAssets = useMemo(
-    () => assets?.slice(0, 12) ?? [],
+    () => assets?.slice(0, 6) ?? [],
     [assets]
   );
 
@@ -469,6 +504,28 @@ export default function ProjectsPage() {
         </header>
         <ProjectLibraryTabs />
 
+        <nav aria-label="Project library views" className="flex flex-wrap items-center gap-2 border-b pb-3">
+          {([
+            { label: "Overview", href: "/app/projects?view=overview", active: view === "overview" },
+            { label: "All projects", href: "/app/projects?view=projects", active: view === "projects" },
+            { label: "All assets", href: "/app/projects?view=assets", active: view === "assets" },
+            { label: "Favorites", href: "/app/projects?view=favorites", active: view === "favorites" },
+          ] as const).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={item.active ? "page" : undefined}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                item.active
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
         {error && (
           <p
             role="alert"
@@ -476,6 +533,13 @@ export default function ProjectsPage() {
           >
             {error}
           </p>
+        )}
+
+        {selectedAssetId && assets && (
+          <AssetSelectionToolbar
+            asset={assets.find((asset) => asset.id === selectedAssetId) ?? null}
+            onClear={() => setSelectedAssetId(null)}
+          />
         )}
 
         {view === "overview" && (
@@ -493,14 +557,37 @@ export default function ProjectsPage() {
                     <Skeleton key={index} className="aspect-[4/3] w-full rounded-xl" />
                   ))}
                 </div>
+              ) : projectsLoadError ? (
+                <LoadError message={projectsLoadError} onRetry={() => void fetchProjects()} />
               ) : recentProjects.length === 0 ? (
-                <EmptyState
-                  icon={<FolderOpen className="h-5 w-5 text-muted-foreground" />}
-                  title="No projects yet"
-                  description="Create a project to keep your work organized."
-                />
+                <div className="max-w-md">
+                  <NewProjectCard
+                    creating={creating}
+                    name={name}
+                    busy={busy}
+                    onStart={() => setCreating(true)}
+                    onNameChange={setName}
+                    onCreate={() => void createProject()}
+                    onCancel={() => {
+                      setCreating(false);
+                      setName("");
+                    }}
+                  />
+                </div>
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <NewProjectCard
+                    creating={creating}
+                    name={name}
+                    busy={busy}
+                    onStart={() => setCreating(true)}
+                    onNameChange={setName}
+                    onCreate={() => void createProject()}
+                    onCancel={() => {
+                      setCreating(false);
+                      setName("");
+                    }}
+                  />
                   {recentProjects.map((project) => (
                     <ProjectCardItem key={project.id} project={project} />
                   ))}
@@ -524,6 +611,8 @@ export default function ProjectsPage() {
                     />
                   ))}
                 </div>
+              ) : assetsLoadError ? (
+                <LoadError message={assetsLoadError} onRetry={() => void fetchAssets()} />
               ) : recentAssets.length === 0 ? (
                 <EmptyState
                   icon={
@@ -533,7 +622,19 @@ export default function ProjectsPage() {
                   description="Generated and uploaded assets will appear here."
                 />
               ) : (
-                <AssetLibraryGrid assets={recentAssets} onChanged={fetchAssets} />
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                  {recentAssets.map((asset) => (
+                    <AssetCard
+                      key={asset.id}
+                      asset={asset}
+                      onChanged={() => void fetchAssets()}
+                      selected={selectedAssetId === asset.id}
+                      onSelect={() =>
+                        setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+                      }
+                    />
+                  ))}
+                </div>
               )}
             </section>
           </>
@@ -570,15 +671,14 @@ export default function ProjectsPage() {
             {projects === null ? (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
                 {Array.from({ length: 8 }).map((_, index) => (
-                  <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />
+                  <Skeleton
+                    key={index}
+                    className="aspect-[16/9] w-full rounded-xl"
+                  />
                 ))}
               </div>
-            ) : filteredProjects.length === 0 && !creating ? (
-              <EmptyState
-                icon={<FolderOpen className="h-5 w-5 text-muted-foreground" />}
-                title={projectSearch ? "No matching projects" : "No projects yet"}
-                description={projectSearch ? "Try a different project name." : "Create your first project to get started."}
-              />
+            ) : projectsLoadError ? (
+              <LoadError message={projectsLoadError} onRetry={() => void fetchProjects()} />
             ) : (
               <>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
@@ -659,9 +759,16 @@ export default function ProjectsPage() {
               </label>
             </div>
             {assets === null ? (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 sm:gap-4">
-                {Array.from({ length: 12 }).map((_, index) => <Skeleton key={index} className="aspect-[4/3] w-full rounded-lg" />)}
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    className="aspect-[4/3] w-full rounded-xl"
+                  />
+                ))}
               </div>
+            ) : assetsLoadError ? (
+              <LoadError message={assetsLoadError} onRetry={() => void fetchAssets()} />
             ) : filteredAssets.length === 0 ? (
               <EmptyState
                 icon={<ImageIcon className="h-5 w-5 text-muted-foreground" />}
@@ -669,10 +776,23 @@ export default function ProjectsPage() {
                 description="Try changing the type or project filters."
               />
             ) : (
-              <AssetLibraryGrid assets={filteredAssets} onChanged={fetchAssets} />
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {filteredAssets.map((asset) => (
+                  <AssetCard
+                    key={asset.id}
+                    asset={asset}
+                    onChanged={() => void fetchAssets()}
+                    selected={selectedAssetId === asset.id}
+                    onSelect={() =>
+                      setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+                    }
+                  />
+                ))}
+              </div>
             )}
           </section>
         )}
+
       </div>
     </main>
   );

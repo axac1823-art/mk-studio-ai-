@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenerationControls } from "@/components/studio/generation-controls";
-import { ImageFeaturePanel } from "@/components/studio/image-feature-panel";
+import { ImageFeaturePanel, ProjectSourceStrip } from "@/components/studio/image-feature-panel";
 import { ProjectPicker, type ProjectOption } from "@/components/studio/project-picker";
 import { ReferencesPanel, type ReferenceImage } from "@/components/studio/references-panel";
 import { ResultPanel, type ResultState } from "@/components/studio/result-panel";
@@ -27,6 +27,7 @@ import {
   type CostsConfig,
 } from "@/lib/config/action-costs";
 import { STUDIO_TABS, type StudioTab } from "@/lib/features";
+import { TOOLS } from "@/config/tools";
 import { generateUuid } from "@/lib/generate-uuid";
 import {
   ANGLE_PRESETS,
@@ -89,16 +90,16 @@ const SIMPLE_TAB_CONFIG: Record<SimpleImageTab, { options?: PresetMeta[]; option
 };
 
 const IMAGE_UPLOAD_COPY: Partial<Record<StudioTab, { title: string; description: string; ariaLabel: string }>> = {
-  print_render: { title: "Drop your 3D screenshot", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your 3D screenshot" },
-  plan_to_render: { title: "Drop your floor plan", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your floor plan" },
-  mood_swap: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your render" },
-  multi_angle: { title: "Drop your source image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your source image" },
-  variations: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image for variations" },
-  image_extender: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to extend" },
-  exterior_to_interior: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your exterior render" },
-  text_to_image: { title: "Add a reference image", description: "Optional ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an optional reference image" },
-  background_remover: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image" },
-  upscale: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to upscale" },
+  print_render: { title: "Drop your 3D screenshot", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your 3D screenshot" },
+  plan_to_render: { title: "Drop your floor plan", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your floor plan" },
+  mood_swap: { title: "Drop your render", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your render" },
+  multi_angle: { title: "Drop your source image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your source image" },
+  variations: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image for variations" },
+  image_extender: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to extend" },
+  exterior_to_interior: { title: "Drop your render", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your exterior render" },
+  text_to_image: { title: "Add a reference image", description: "Optional — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an optional reference image" },
+  background_remover: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image" },
+  upscale: { title: "Drop an image", description: "or click to browse — PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to upscale" },
 };
 
 function initialSimpleState(optionId: string): SimpleImageState {
@@ -119,6 +120,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [historyAssets, setHistoryAssets] = useState<AssetItem[]>([]);
+  const [historyAssetsLoading, setHistoryAssetsLoading] = useState(false);
+  const [historyAssetsError, setHistoryAssetsError] = useState<string | null>(null);
   const [selectedSourceAsset, setSelectedSourceAsset] = useState<AssetItem | null>(null);
 
   // --- Print Render ---
@@ -199,15 +203,40 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     }
   }, []);
 
-  const refreshAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
+  const refreshAssets = useCallback((projectId: string | null) => {
     if (!projectId) {
       setAssets([]);
       return;
     }
-    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`)
+    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&type=image`)
       .then((res) => res.json())
       .then((data) => setAssets(Array.isArray(data.assets) ? data.assets : []))
       .catch(() => setAssets([]));
+  }, []);
+
+  const refreshHistoryAssets = useCallback((projectId: string | null, activeFeature: StudioTab) => {
+    if (!projectId) {
+      setHistoryAssets([]);
+      setHistoryAssetsError(null);
+      setHistoryAssetsLoading(false);
+      return;
+    }
+
+    setHistoryAssetsLoading(true);
+    setHistoryAssetsError(null);
+    fetch(`/api/assets?project_id=${encodeURIComponent(projectId)}&feature=${encodeURIComponent(activeFeature)}&type=image`, {
+      cache: "no-store",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setHistoryAssets(Array.isArray(data.assets) ? data.assets : []))
+      .catch(() => {
+        setHistoryAssets([]);
+        setHistoryAssetsError("Unable to load history.");
+      })
+      .finally(() => setHistoryAssetsLoading(false));
   }, []);
 
   // Chargement initial : solde, coûts, projets, modèles upscale.
@@ -249,9 +278,10 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
 
   // La galerie suit le projet sélectionné.
   useEffect(() => {
-    refreshAssets(selectedProjectId, tab);
+    refreshAssets(selectedProjectId);
+    refreshHistoryAssets(selectedProjectId, tab);
     if (!preselectedAssetId) setSelectedSourceAsset(null);
-  }, [selectedProjectId, tab, preselectedAssetId, refreshAssets]);
+  }, [selectedProjectId, tab, preselectedAssetId, refreshAssets, refreshHistoryAssets]);
 
   useEffect(() => {
     if (!preselectedAssetId) return;
@@ -291,10 +321,8 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
             setResult({ status: "done", kind: data.kind ?? kind, beforeUrl, outputUrls });
             // Débit réel au succès + nouvel asset : on rafraîchit les deux.
             refreshBalance();
-            setSelectedProjectId((current) => {
-              refreshAssets(current, tab);
-              return current;
-            });
+            refreshAssets(selectedProjectId);
+            refreshHistoryAssets(selectedProjectId, tab);
           } else if (data.status === "error") {
             stopPolling();
             setResult({ status: "idle" });
@@ -309,7 +337,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
         }
       }, POLL_INTERVAL_MS);
     },
-    [stopPolling, refreshAssets, refreshBalance, tab]
+    [stopPolling, refreshAssets, refreshHistoryAssets, refreshBalance, selectedProjectId, tab]
   );
 
   const submitGeneration = async (form: FormData, kind: "image" | "video", beforeUrl: string | null) => {
@@ -477,177 +505,263 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       })
     : 0;
 
+  // A next action is only exposed when the current result maps to a real saved
+  // image asset that the destination route can consume through assetId.
+  const resultAssetId =
+    result.status === "done" && result.kind === "image" && result.outputUrls.length > 0
+      ? assets.find((asset) => result.outputUrls.includes(asset.url))?.id ?? null
+      : null;
+
+  const nextActionDefinitions = [
+    { id: "variations", label: "Variations" },
+    { id: "multi-angle", label: "Multi-Angle" },
+    { id: "ambiance-change", label: "Change Atmosphere" },
+    { id: "upscale", label: "Upscale" },
+    { id: "video-generator", label: "Image → Video" },
+  ].filter((action) => {
+    if (tab === "variations" && action.id === "variations") return false;
+    if (tab === "multi_angle" && action.id === "multi-angle") return false;
+    if (tab === "mood_swap" && action.id === "ambiance-change") return false;
+    if (tab === "upscale" && action.id === "upscale") return false;
+    return true;
+  });
+
+  const nextActions = resultAssetId
+    ? nextActionDefinitions
+        .map((action) => {
+          const tool = TOOLS.find((candidate) => candidate.id === action.id);
+          if (!tool) return null;
+          const separator = tool.route.includes("?") ? "&" : "?";
+          return {
+            label: action.label,
+            href: `${tool.route}${separator}assetId=${encodeURIComponent(resultAssetId)}`,
+          };
+        })
+        .filter((action): action is { label: string; href: string } => action !== null)
+    : [];
+
   const title = STUDIO_TABS.find((t) => t.id === tab)?.label ?? "Image Studio";
   const uploadCopy = IMAGE_UPLOAD_COPY[tab] ?? IMAGE_UPLOAD_COPY.variations!;
 
   return (
     <StudioShell
-      header={<>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
-          {tab !== "upscale" && result.status === "busy" && <Badge variant="secondary">Generating</Badge>}
-        </div>
-        <div className="flex w-full items-center gap-3 sm:w-auto sm:justify-end">
-          <span className="shrink-0 text-xs font-medium text-muted-foreground">Project</span>
-          <div className="w-full min-w-0 sm:w-64">
-            <ProjectPicker
-              projects={projects}
-              value={selectedProjectId}
-              onChange={setSelectedProjectId}
-              onCreateProject={handleCreateProject}
-            />
+      header={
+        <>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+              {tab !== "upscale" && result.status === "busy" && <Badge variant="secondary">Generating</Badge>}
+            </div>
+            <div className="flex w-full items-center gap-3 sm:w-auto sm:justify-end">
+              <span className="shrink-0 text-xs font-medium text-muted-foreground">Project</span>
+              <div className="w-full min-w-0 sm:w-64">
+                <ProjectPicker
+                  projects={projects}
+                  value={selectedProjectId}
+                  onChange={setSelectedProjectId}
+                  onCreateProject={handleCreateProject}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      {showTabs && (
-        <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
-          <TabsList>
-            {STUDIO_TABS.map((studioTab) => (
-              <TabsTrigger key={studioTab.id} value={studioTab.id}>{studioTab.label}</TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      )}
-      </>}
-      panel={
-        <section aria-label="Working input" className="min-w-0">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Working Input</CardTitle>
-              <CardDescription>Choose a source and shape the result.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-5">
-              {tab === "print_render" ? (
-                <>
-                  <div className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source</span>
-                    <UploadDropzone
-                      previewUrl={selectedSourceAsset?.url ?? previewUrl}
-                      onFileSelected={(selected) => {
-                        setSelectedSourceAsset(null);
-                        setFile(selected);
-                        setPreviewUrl(URL.createObjectURL(selected));
-                        setError(null);
-                      }}
-                      title={uploadCopy.title}
-                      description={uploadCopy.description}
-                      ariaLabel={uploadCopy.ariaLabel}
-                    />
-                  </div>
-                  <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
-                  <ReferencesPanel
-                    references={references}
-                    onAdd={handleAddReferences}
-                    onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
-                  />
-                  <SettingsAccordion
-                    label="Design"
-                    materialId={materialId}
-                    lightingId={lightingId}
-                    onMaterialChange={setMaterialId}
-                    onLightingChange={setLightingId}
-                  />
-                  <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
-                </>
-              ) : tab === "upscale" ? (
-                <UpscalePanel
-                  models={upscaleModels}
-                  selectedModel={selectedUpscaleModel}
-                  uploadFile={upscaleFile}
-                  uploadPreviewUrl={selectedSourceAsset?.url ?? upscalePreviewUrl}
-                  factor={upscaleFactor}
-                  enhance={upscaleEnhance}
-                  cost={upscaleCost}
-                  balance={balance}
-                  isBusy={isBusy}
-                  onModelChange={setSelectedUpscaleModel}
-                  onUploadFileSelected={(file, previewUrl) => {
-                    setSelectedSourceAsset(null);
-                    setUpscaleFile(file);
-                    setUpscalePreviewUrl(previewUrl);
-                    setError(null);
-                  }}
-                  onClearUpload={() => {
-                    setSelectedSourceAsset(null);
-                    setUpscaleFile(null);
-                    setUpscalePreviewUrl(null);
-                  }}
-                  onFactorChange={setUpscaleFactor}
-                  onEnhanceChange={setUpscaleEnhance}
-                  onGenerate={handleUpscale}
-                />
-              ) : (
-                <ImageFeaturePanel
-                  previewUrl={selectedSourceAsset?.url ?? simpleTabs[tab].previewUrl}
-                  onFileSelected={(selected) => {
-                    setSelectedSourceAsset(null);
-                    updateSimpleTab(tab, {
-                      file: selected,
-                      previewUrl: URL.createObjectURL(selected),
-                    });
-                    setError(null);
-                  }}
-                  uploadOptional={tab === "text_to_image"}
-                  uploadLabel="Source"
-                  uploadTitle={uploadCopy.title}
-                  uploadDescription={uploadCopy.description}
-                  uploadAriaLabel={uploadCopy.ariaLabel}
-                  options={SIMPLE_TAB_CONFIG[tab].options}
-                  optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
-                  optionId={simpleTabs[tab].optionId}
-                  onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
-                  sceneDetails={simpleTabs[tab].sceneDetails}
-                  onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </section>
+          {showTabs && (
+            <Tabs value={tab} onValueChange={(value) => setTab(value as StudioTab)}>
+              <TabsList>
+                {STUDIO_TABS.map((studioTab) => (
+                  <TabsTrigger key={studioTab.id} value={studioTab.id}>{studioTab.label}</TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
+        </>
       }
-      stage={<ResultPanel result={result} error={error} />}
+      panel={
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Working Input</CardTitle>
+            <CardDescription>Choose a source and shape the result.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5">
+            {tab === "print_render" ? (
+              <>
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Source</span>
+                  <UploadDropzone
+                    previewUrl={selectedSourceAsset?.url ?? previewUrl}
+                    onFileSelected={(selected) => {
+                      setSelectedSourceAsset(null);
+                      setFile(selected);
+                      setPreviewUrl(URL.createObjectURL(selected));
+                      setError(null);
+                    }}
+                    title={uploadCopy.title}
+                    description={uploadCopy.description}
+                    ariaLabel={uploadCopy.ariaLabel}
+                  />
+                  <ProjectSourceStrip
+                    sourceAssets={assets}
+                    selectedSourceAssetId={selectedSourceAsset?.id ?? null}
+                    onSelectSourceAsset={selectSourceAsset}
+                  />
+                </div>
+                <SceneTypePicker value={sceneTypeId} onChange={setSceneTypeId} />
+                <ReferencesPanel
+                  references={references}
+                  onAdd={handleAddReferences}
+                  onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
+                />
+                <SettingsAccordion
+                  label="Design"
+                  materialId={materialId}
+                  lightingId={lightingId}
+                  onMaterialChange={setMaterialId}
+                  onLightingChange={setLightingId}
+                />
+                <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
+              </>
+            ) : tab === "upscale" ? (
+              <UpscalePanel
+                models={upscaleModels}
+                selectedModel={selectedUpscaleModel}
+                uploadFile={upscaleFile}
+                uploadPreviewUrl={selectedSourceAsset?.url ?? upscalePreviewUrl}
+                factor={upscaleFactor}
+                enhance={upscaleEnhance}
+                cost={upscaleCost}
+                balance={balance}
+                isBusy={isBusy}
+                onModelChange={setSelectedUpscaleModel}
+                sourceAssets={assets}
+                selectedSourceAssetId={selectedSourceAsset?.id ?? null}
+                onSelectSourceAsset={selectSourceAsset}
+                onUploadFileSelected={(file, previewUrl) => {
+                  setSelectedSourceAsset(null);
+                  setUpscaleFile(file);
+                  setUpscalePreviewUrl(previewUrl);
+                  setError(null);
+                }}
+                onClearUpload={() => {
+                  setSelectedSourceAsset(null);
+                  setUpscaleFile(null);
+                  setUpscalePreviewUrl(null);
+                }}
+                onFactorChange={setUpscaleFactor}
+                onEnhanceChange={setUpscaleEnhance}
+                onGenerate={handleUpscale}
+              />
+            ) : (
+              <ImageFeaturePanel
+                previewUrl={selectedSourceAsset?.url ?? simpleTabs[tab].previewUrl}
+                onFileSelected={(selected) => {
+                  setSelectedSourceAsset(null);
+                  updateSimpleTab(tab, {
+                    file: selected,
+                    previewUrl: URL.createObjectURL(selected),
+                  });
+                  setError(null);
+                }}
+                uploadOptional={tab === "text_to_image"}
+                uploadLabel={tab === "text_to_image" ? "Reference image" : "Source"}
+                uploadTitle={uploadCopy.title}
+                uploadDescription={uploadCopy.description}
+                uploadAriaLabel={uploadCopy.ariaLabel}
+                sourceAssets={assets}
+                selectedSourceAssetId={selectedSourceAsset?.id ?? null}
+                onSelectSourceAsset={selectSourceAsset}
+                options={SIMPLE_TAB_CONFIG[tab].options}
+                optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
+                optionId={simpleTabs[tab].optionId}
+                onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
+                sceneDetails={simpleTabs[tab].sceneDetails}
+                onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
+                descriptionRequired={tab === "text_to_image"}
+              />
+            )}
+          </CardContent>
+        </Card>
+      }
+      stage={<ResultPanel result={result} error={error} nextActions={nextActions} />}
       history={
-<Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">History</CardTitle>
-              <CardDescription>Choose a previous result to use as the source image.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {selectedSourceAsset && (
-                <div className="mb-3 flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                  <span className="truncate">Selected as the current source.</span>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedSourceAsset(null)}>
-                    Remove selection
-                  </Button>
-                </div>
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle className="text-base">History</CardTitle>
+                <CardDescription>Choose a previous result to use as the source image.</CardDescription>
+              </div>
+              {historyAssets.length > 0 && (
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {historyAssets.length} {historyAssets.length === 1 ? "result" : "results"}
+                </span>
               )}
-              {assets.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">No previous results for this feature in the selected project yet.</p>
-              ) : (
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {assets.map((asset) => (
-                    <div key={asset.id} className={`w-32 shrink-0 rounded-md border p-1.5 sm:w-36 ${selectedSourceAsset?.id === asset.id ? "border-primary" : "border-border"}`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={asset.url} alt="Previous feature result" className="aspect-[4/3] w-full rounded object-cover" />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={selectedSourceAsset?.id === asset.id ? "default" : "outline"}
-                        aria-pressed={selectedSourceAsset?.id === asset.id}
-                        className="mt-2 h-9 w-full px-2 text-xs"
-                        onClick={() => selectSourceAsset(asset)}
-                      >
-                        {selectedSourceAsset?.id === asset.id ? "Selected" : "Use as source"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {selectedSourceAsset && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <span className="truncate">Selected as the current source.</span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedSourceAsset(null)}>
+                  Remove selection
+                </Button>
+              </div>
+            )}
+            {historyAssetsLoading ? (
+              <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Loading history">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="h-16 w-20 shrink-0 animate-pulse rounded-lg bg-muted" />
+                ))}
+              </div>
+            ) : historyAssetsError ? (
+              <div role="alert" className="rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-center">
+                <p className="text-sm text-muted-foreground">{historyAssetsError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => refreshHistoryAssets(selectedProjectId, tab)}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : historyAssets.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">
+                No previous results for this feature in the selected project yet.
+              </p>
+            ) : (
+              <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Previous results">
+                {historyAssets.slice(0, 6).map((asset, index) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    aria-label={`Use history result ${index + 1} as source`}
+                    aria-pressed={selectedSourceAsset?.id === asset.id}
+                    onClick={() => selectSourceAsset(asset)}
+                    className={`group relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      selectedSourceAsset?.id === asset.id
+                        ? "border-primary ring-1 ring-primary"
+                        : "border-transparent hover:border-muted-foreground/40"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={asset.url}
+                      alt=""
+                      className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.03]"
+                      loading="lazy"
+                    />
+                    <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1 py-0.5 text-[9px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                      {selectedSourceAsset?.id === asset.id ? "Selected" : "Use as source"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       }
       bar={tab !== "upscale" ? (
-<GenerationControls
+        <GenerationControls
           quantity={quantity}
           quality={quality}
           aspectRatio={aspectRatio}

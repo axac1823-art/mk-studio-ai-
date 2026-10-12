@@ -49,6 +49,13 @@ export function SessionTimeout() {
   }, [clearTimer, logout]);
 
   useEffect(() => {
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      return;
+    }
+
     const supabase = createClient();
     let authSubscription: { subscription: { unsubscribe: () => void } } | null = null;
 

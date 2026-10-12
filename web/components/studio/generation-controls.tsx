@@ -1,7 +1,5 @@
 "use client";
 
-// Barre d'outils de génération (bas de studio) — Model, Quantity, Quality,
-// Aspect ratio, Resolution, Generate.
 import { Loader2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -26,8 +24,10 @@ function Control({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
       {children}
     </div>
   );
@@ -80,7 +80,7 @@ export function GenerationControls({
         </div>
         <Control label="Quality">
           <Select value={quality} onValueChange={(value) => onQualityChange(value as QualityTier)}>
-            <SelectTrigger className="h-9 w-[120px] text-xs">
+            <SelectTrigger className="h-8 w-[104px] text-xs">
               <SelectValue placeholder="Standard" />
             </SelectTrigger>
             <SelectContent>
@@ -95,7 +95,7 @@ export function GenerationControls({
 
         <Control label="Aspect ratio">
           <Select value={aspectRatio} onValueChange={(value) => onAspectRatioChange(value as AspectRatio)}>
-            <SelectTrigger className="h-9 w-[100px] text-xs">
+            <SelectTrigger className="h-8 w-[88px] text-xs">
               <SelectValue placeholder="4:3" />
             </SelectTrigger>
             <SelectContent>
@@ -110,7 +110,7 @@ export function GenerationControls({
 
         <Control label="Resolution">
           <Select value={resolution} onValueChange={(value) => onResolutionChange(value as Resolution)}>
-            <SelectTrigger className="h-9 w-[90px] text-xs">
+            <SelectTrigger className="h-8 w-[82px] text-xs">
               <SelectValue placeholder="1K" />
             </SelectTrigger>
             <SelectContent>
@@ -138,9 +138,9 @@ export function GenerationControls({
           </Select>
         </Control>
 
-        <div className="ml-auto flex w-full flex-col items-stretch gap-1 sm:w-auto sm:items-end">
+        <div className="ml-auto flex w-full flex-col items-end gap-1 sm:w-auto sm:min-w-[210px]">
           {!hasEnoughCredits && balance !== null && (
-            <p role="alert" className="text-xs text-destructive">
+            <p role="alert" className="max-w-[360px] text-right text-xs text-destructive">
               You don&apos;t have enough credits. {cost} required, {balance} available.{" "}
               <a href="/app/billing" className="font-medium underline">
                 Buy more
@@ -155,17 +155,18 @@ export function GenerationControls({
           >
             {isBusy ? (
               <>
-                <Loader2 className="animate-spin" />
+                <Loader2 className="mr-2 animate-spin" />
                 Generating…
               </>
             ) : (
               <>
-                <Sparkles />
-                Generate — {cost} credits
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate · {cost} credits
               </>
             )}
           </Button>
         </div>
+
       </div>
     </div>
   );

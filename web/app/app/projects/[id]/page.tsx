@@ -9,8 +9,11 @@ import {
   useSearchParams,
 } from "next/navigation";
 
-import type { AssetSummary } from "@/components/projects/asset-card";
-import { AssetLibraryGrid } from "@/components/projects/asset-library-grid";
+import {
+  AssetCard,
+  type AssetSummary,
+} from "@/components/projects/asset-card";
+import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
 import {
   AssetLayoutControls,
   assetLayoutClass,
@@ -55,6 +58,7 @@ export default function ProjectDetailPage({
 
   const [projectName, setProjectName] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -101,6 +105,11 @@ export default function ProjectDetailPage({
 
         setProjectName(data.project.name);
         setAssets(data.assets);
+        setSelectedAssetId((current) =>
+          current && data.assets.some((asset) => asset.id === current)
+            ? current
+            : null,
+        );
       } catch {
         setError("Could not load this project.");
         setAssets(null);
@@ -200,6 +209,9 @@ export default function ProjectDetailPage({
         return "All assets";
     }
   }, [filter]);
+
+  const selectedAsset =
+    assets?.find((asset) => asset.id === selectedAssetId) ?? null;
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
@@ -301,6 +313,11 @@ export default function ProjectDetailPage({
         onColumnsChange={setColumns}
       />
 
+      <AssetSelectionToolbar
+        asset={selectedAsset}
+        onClear={() => setSelectedAssetId(null)}
+      />
+
       {error && (
         <p
           role="alert"
@@ -351,12 +368,27 @@ export default function ProjectDetailPage({
           </Button>
         </div>
       ) : (
-        <AssetLibraryGrid
-          assets={assets}
-          layout={layout}
+        <div
           className={assetLayoutClass(layout, columns)}
-          onChanged={() => fetchProject(filter, serviceFilter)}
-        />
+        >
+          {assets.map((asset) => (
+            <AssetCard
+              key={asset.id}
+              asset={asset}
+              layout={layout}
+              selected={selectedAssetId === asset.id}
+              onSelect={() =>
+                setSelectedAssetId((current) => current === asset.id ? null : asset.id)
+              }
+              onChanged={() =>
+                void fetchProject(
+                  filter,
+                  serviceFilter,
+                )
+              }
+            />
+          ))}
+        </div>
       )}
     </main>
   );

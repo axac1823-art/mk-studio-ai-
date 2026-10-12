@@ -46,11 +46,12 @@ export function ModelSelect({ models, selectedModel, mode, onChange }: ModelSele
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-sm font-medium">Model</span>
-      <Select value={selectedModel} onValueChange={onChange} disabled={compatible.length === 0}>
+      <Select value={selectedModel || "__auto__"} onValueChange={(value) => onChange(value === "__auto__" ? "" : value)} disabled={compatible.length === 0}>
         <SelectTrigger>
-          <SelectValue placeholder={compatible.length === 0 ? "No models available" : "Choose a model"} />
+          <SelectValue placeholder={compatible.length === 0 ? "No models available" : "Auto (recommended)"} />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="__auto__">Auto (recommended)</SelectItem>
           {compatible.map((model) => (
             <SelectItem key={model.key} value={model.key}>
               <div className="flex flex-col items-start">
