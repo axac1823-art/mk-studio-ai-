@@ -638,6 +638,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   onGenerate={handleUpscale}
                 />
               ) : (
+                <>
                 <ImageFeaturePanel
                   previewUrl={selectedSourceAsset?.url ?? simpleTabs[tab].previewUrl}
                   onFileSelected={(selected) => {
@@ -660,6 +661,14 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   sceneDetails={simpleTabs[tab].sceneDetails}
                   onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
                 />
+                {tab === "text_to_image" && (
+                  <ReferencesPanel
+                    references={references}
+                    onAdd={handleAddReferences}
+                    onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
+                  />
+                )}
+                </>
               )}
             </CardContent>
           </Card>

@@ -183,7 +183,7 @@ export function AssetCard({
                 <img src={asset.url} alt="" className="h-full w-full object-contain p-1.5 transition-transform duration-300 group-hover:scale-[1.02]" loading="lazy" />
               )}
               {!trashed && (
-                <span className="pointer-events-none absolute inset-x-2 bottom-2 flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-xs font-medium text-white opacity-0 shadow-sm backdrop-blur-md transition-opacity opacity-100 sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+                <span className="pointer-events-none absolute inset-x-2 bottom-2 flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-xs font-medium text-white opacity-100 shadow-sm backdrop-blur-md transition-opacity sm:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                   <Eye className="h-3.5 w-3.5" /> View image &amp; details
                 </span>
               )}
