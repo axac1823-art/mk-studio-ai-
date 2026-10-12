@@ -306,5 +306,8 @@ Vérification rapide :
 
 ## COMANDE FOR RUIN WORKER 
  .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000    
+
+ IN:
 ## COMMANDE FOR RUN WEB 
 npm start -- -H 0.0.0.0 
+IN:(http://192.168.1.4:3000/)

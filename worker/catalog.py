@@ -486,9 +486,9 @@ LIP_SYNC_CANDIDATES: list[Candidate] = [
     ),
 ]
 
-# Background Remover : utiliser uniquement le service de segmentation dédié
-# qui renvoie un PNG avec canal alpha. Les modèles génératifs peuvent réinventer
-# le sujet ou peindre une fausse transparence dans l'image.
+# Background Remover : services dédiés en priorité. Magic Hour utilise ici
+# son éditeur d'image standard (Flux 2 Klein, éligible free tier) avec le prompt
+# d'isolation ; sa sortie générative peut ne pas contenir un vrai canal alpha.
 BACKGROUND_REMOVER_CANDIDATES: list[Candidate] = [
     Candidate(
         "removebg",
@@ -502,6 +502,20 @@ BACKGROUND_REMOVER_CANDIDATES: list[Candidate] = [
         IMAGE_TIMEOUT_MS,
         ("standard", "pro"),
         removebg_input,
+        extract_image_urls,
+    ),
+    Candidate(
+        "magichour-background-remover",
+        "Magic Hour Background Remover",
+        "Prompt-guided background removal with image editing",
+        "magichour",
+        "flux-2-klein",
+        3,
+        1,
+        0,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        magichour_edit_input,
         extract_image_urls,
     ),
     Candidate(

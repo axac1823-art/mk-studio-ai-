@@ -1,52 +1,348 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  Image as ImageIcon,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
-import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
-import { AssetLayoutControls, assetLayoutClass } from "@/components/projects/asset-layout-controls";
-import { AssetServiceFilter } from "@/components/projects/asset-service-filter";
-import { ProjectCard, type ProjectSummary } from "@/components/projects/project-card";
-import { useAssetLayout } from "@/components/projects/use-asset-layout";
+import { AssetCard } from "@/components/projects/asset-card";
+import type { ProjectSummary } from "@/components/projects/project-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type ProjectsView = "projects" | "assets" | "favorites";
-type FavoriteTypeFilter = "all" | "image" | "video" | "audio";
+type ViewMode = "overview" | "projects" | "assets" | "favorites";
+
+type RecentAsset = {
+  id: string;
+  projectId?: string | null;
+  type: "image" | "video" | "audio" | "3d_model";
+  url: string;
+  isFavorite: boolean;
+  generationId?: string | null;
+  createdAt?: string;
+};
+
+function ProjectCover({
+  project,
+}: {
+  project: ProjectSummary;
+}) {
+  return (
+    <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
+      {project.coverUrl ? (
+        <>
+          <img
+            src={project.coverUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.035]"
+          />
+
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+
+          <div className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-sm">
+            <FolderOpen className="h-3.5 w-3.5" />
+          </div>
+
+          <button
+            type="button"
+            aria-label={`More options for ${project.name}`}
+            onClick={(event) => event.preventDefault()}
+            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/35 text-white opacity-0 backdrop-blur-sm transition-opacity hover:bg-black/50 group-hover:opacity-100"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+
+          <div className="absolute inset-x-0 bottom-0 p-3">
+            <p className="truncate text-sm font-semibold text-white">
+              {project.name}
+            </p>
+
+            <p className="mt-0.5 text-xs text-white/75">
+              {project.assetCount}{" "}
+              {project.assetCount === 1 ? "asset" : "assets"}
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="absolute inset-0 bg-gradient-to-br from-muted to-muted/70" />
+
+          <div className="absolute inset-0 flex items-center justify-center">
+            <FolderOpen className="h-10 w-10 text-muted-foreground/50" />
+          </div>
+
+          <button
+            type="button"
+            aria-label={`More options for ${project.name}`}
+            onClick={(event) => event.preventDefault()}
+            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-background/70 text-foreground opacity-0 backdrop-blur-sm transition-opacity hover:bg-background group-hover:opacity-100"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+
+          <div className="absolute inset-x-0 bottom-0 p-3">
+            <p className="truncate text-sm font-semibold">
+              {project.name}
+            </p>
+
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {project.assetCount}{" "}
+              {project.assetCount === 1 ? "asset" : "assets"}
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ProjectCardItem({
+  project,
+  onDelete,
+}: {
+  project: ProjectSummary;
+  onDelete?: (id: string) => void;
+}) {
+  return (
+    <div className="group relative w-[200px] shrink-0">
+      <Link href={`/app/projects/${project.id}`} className="block">
+        <ProjectCover project={project} />
+      </Link>
+
+      {onDelete && (
+        <button
+          type="button"
+          aria-label={`Delete ${project.name}`}
+          onClick={() => onDelete(project.id)}
+          className="absolute bottom-2 right-2 z-20 hidden h-8 w-8 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm hover:bg-destructive group-hover:flex"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function NewProjectCard({
+  creating,
+  name,
+  busy,
+  onStart,
+  onNameChange,
+  onCreate,
+  onCancel,
+}: {
+  creating: boolean;
+  name: string;
+  busy: boolean;
+  onStart: () => void;
+  onNameChange: (value: string) => void;
+  onCreate: () => void;
+  onCancel: () => void;
+}) {
+  if (creating) {
+    return (
+      <div className="w-[200px] shrink-0">
+        <div className="flex aspect-square flex-col justify-center gap-3 rounded-xl border bg-muted/40 p-4">
+          <input
+            autoFocus
+            value={name}
+            onChange={(event) => onNameChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onCreate();
+              if (event.key === "Escape") onCancel();
+            }}
+            placeholder="Project name"
+            className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+          />
+
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="flex-1"
+              disabled={!name.trim() || busy}
+              onClick={onCreate}
+            >
+              Create
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onCancel}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-[200px] shrink-0">
+      <button
+        type="button"
+        onClick={onStart}
+        className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-dashed bg-muted/35 p-5 text-center transition-colors hover:bg-muted/70"
+      >
+        <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-background shadow-sm">
+          <Plus className="h-4 w-4" />
+        </span>
+
+        <span className="text-sm font-semibold">New project</span>
+
+        <span className="mt-1 max-w-[150px] text-xs leading-5 text-muted-foreground">
+          Create a project to organize your assets
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function AssetTile({
+  asset,
+  onChanged,
+}: {
+  asset: RecentAsset;
+  onChanged: () => void;
+}) {
+  return <AssetCard asset={asset} onChanged={onChanged} />;
+}
+function SectionHeader({
+  title,
+  count,
+  onPrevious,
+  onNext,
+}: {
+  title: string;
+  count?: number;
+  onPrevious?: () => void;
+  onNext?: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-muted-foreground">
+          {title}
+        </span>
+
+        {typeof count === "number" && (
+          <span className="text-xs text-muted-foreground/60">
+            {count}
+          </span>
+        )}
+      </div>
+
+      {(onPrevious || onNext) && (
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onPrevious}
+            disabled={!onPrevious}
+            aria-label="Previous projects"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onNext}
+            disabled={!onNext}
+            aria-label="Next projects"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-dashed bg-muted/20">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-muted">
+          {icon}
+        </div>
+
+        <h2 className="text-sm font-semibold">{title}</h2>
+
+        <p className="mt-1 text-sm text-muted-foreground">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function ProjectsPage() {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const viewParam = searchParams.get("view");
-  const view: ProjectsView =
-    viewParam === "assets" || viewParam === "favorites" ? viewParam : "projects";
+
+  const rawView = searchParams.get("view");
+
+  const view: ViewMode =
+    rawView === "projects" ||
+    rawView === "assets" ||
+    rawView === "favorites"
+      ? rawView
+      : "overview";
+
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
-  const [assets, setAssets] = useState<AssetSummary[] | null>(null);
-  const [assetType, setAssetType] = useState<FavoriteTypeFilter>("all");
-  const [serviceFilter, setServiceFilter] = useState("all");
+  const [assets, setAssets] = useState<RecentAsset[] | null>(null);
+
   const [error, setError] = useState<string | null>(null);
+
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const projectsLayout = useAssetLayout("all-projects");
-  const allAssetsLayout = useAssetLayout("all-assets");
-  const favoritesLayout = useAssetLayout("project-favorites");
-  const { layout, columns, setLayout, setColumns } =
-    view === "favorites"
-      ? favoritesLayout
-      : view === "assets"
-        ? allAssetsLayout
-        : projectsLayout;
+
+  const projectsRailRef = useRef<HTMLDivElement | null>(null);
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch("/api/projects");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { projects: ProjectSummary[] };
+      const response = await fetch("/api/projects", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        projects: ProjectSummary[];
+      };
+
       setProjects(data.projects);
       setError(null);
     } catch {
@@ -54,61 +350,81 @@ export default function ProjectsPage() {
     }
   }, []);
 
-  const fetchAssets = useCallback(async (
-    type: FavoriteTypeFilter,
-    service: string,
-    favoritesOnly: boolean,
-  ) => {
+  const fetchAssets = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (favoritesOnly) params.set("favorite", "1");
-      if (type !== "all") params.set("type", type);
-      if (service !== "all") params.set("feature", service);
-      const query = params.toString();
-      const res = await fetch(query ? `/api/assets?${query}` : "/api/assets");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { assets: AssetSummary[] };
+      const endpoint =
+        view === "favorites"
+          ? "/api/assets?favorite=1"
+          : "/api/assets";
+
+      const response = await fetch(endpoint, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        assets: RecentAsset[];
+      };
+
       setAssets(data.assets);
       setError(null);
     } catch {
-      setError(favoritesOnly ? "Could not load favorite assets." : "Could not load assets.");
+      setError("Could not load assets.");
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
-    void fetchProjects();
-  }, [fetchProjects]);
+    setError(null);
+    setCreating(false);
 
-  useEffect(() => {
-    if (view !== "projects") {
-      void fetchAssets(assetType, serviceFilter, view === "favorites");
+    if (view === "overview" || view === "projects") {
+      void fetchProjects();
+    } else {
+      setProjects(null);
     }
-  }, [view, assetType, serviceFilter, fetchAssets]);
 
-  useEffect(() => {
-    if (searchParams.get("create") !== "1") return;
-    setCreating(true);
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("create");
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+    if (
+      view === "overview" ||
+      view === "assets" ||
+      view === "favorites"
+    ) {
+      void fetchAssets();
+    } else {
+      setAssets(null);
+    }
+  }, [view, fetchProjects, fetchAssets]);
 
   const createProject = async () => {
     const trimmed = name.trim();
-    if (!trimmed || busy) return;
+
+    if (!trimmed || busy) {
+      return;
+    }
+
     setBusy(true);
+
     try {
-      const res = await fetch("/api/projects", {
+      const response = await fetch("/api/projects", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: trimmed,
+        }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
       setName("");
       setCreating(false);
+
       await fetchProjects();
-      window.dispatchEvent(new Event("projects:updated"));
     } catch {
       setError("Could not create the project.");
     } finally {
@@ -118,200 +434,306 @@ export default function ProjectsPage() {
 
   const deleteProject = async (id: string) => {
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const response = await fetch(`/api/projects/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
       await fetchProjects();
-      window.dispatchEvent(new Event("projects:updated"));
     } catch {
       setError("Could not delete the project.");
     }
   };
 
+  const recentProjects = useMemo(
+    () => projects?.slice(0, 8) ?? [],
+    [projects]
+  );
+
+  const recentAssets = useMemo(
+    () => assets?.slice(0, 12) ?? [],
+    [assets]
+  );
+
+  const scrollProjects = (direction: "left" | "right") => {
+    const container = projectsRailRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    container.scrollBy({
+      left: direction === "left" ? -440 : 440,
+      behavior: "smooth",
+    });
+  };
+
+  const pageTitle =
+    view === "overview"
+      ? "Projects"
+      : view === "projects"
+        ? "All projects"
+        : view === "assets"
+          ? "All assets"
+          : "Favorites";
+
+  const showCreateProject = view === "overview" || view === "projects";
+
   return (
-    <main className="flex min-h-[calc(100vh-3.5rem)] w-full flex-col gap-5 p-4 sm:p-6">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">
-          {view === "projects" ? "All projects" : view === "favorites" ? "Favorites" : "All assets"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {view === "projects"
-            ? "Your generations, organized by project."
-            : view === "favorites"
-              ? "Favorite assets from all your projects."
-              : "Images, videos, and audio from all your projects."}
-        </p>
-      </header>
+    <main className="h-full min-h-0 w-full overflow-y-auto bg-background p-4 sm:p-6">
+      <div className="mx-auto flex w-full max-w-screen-3xl flex-col gap-6 rounded-xl bg-panel-4 p-6">
+        <header className="flex items-center justify-between gap-4">
+          <h1 className="text-lg font-semibold tracking-tight">
+            {pageTitle}
+          </h1>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+          {showCreateProject && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add
+            </Button>
+          )}
+        </header>
 
-      {view !== "projects" ? (
-        <>
-          <Tabs
-            value={assetType}
-            onValueChange={(value) => {
-              setAssetType(value as FavoriteTypeFilter);
-              setServiceFilter("all");
-            }}
+        {error && (
+          <p
+            role="alert"
+            className="text-sm text-destructive"
           >
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="image">Images</TabsTrigger>
-              <TabsTrigger value="video">Videos</TabsTrigger>
-              <TabsTrigger value="audio">Audio</TabsTrigger>
-            </TabsList>
-          </Tabs>
+            {error}
+          </p>
+        )}
 
-          {(assetType === "image" || assetType === "video") && (
-            <AssetServiceFilter
-              type={assetType}
-              value={serviceFilter}
-              onChange={setServiceFilter}
-            />
-          )}
+        {view === "overview" && (
+          <>
+            <section className="flex flex-col gap-3">
+              <SectionHeader
+                title="Recent projects"
+                count={projects?.length}
+                onPrevious={() => scrollProjects("left")}
+                onNext={() => scrollProjects("right")}
+              />
 
-          <AssetLayoutControls
-            layout={layout}
-            columns={columns}
-            onLayoutChange={setLayout}
-            onColumnsChange={setColumns}
-          />
-
-          {assets === null ? (
-            <div
-              className={assetLayoutClass(layout)}
-              style={
-                layout === "grid"
-                  ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
-                  : undefined
-              }
-            >
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton key={index} className="aspect-[4/3] w-full" />
-              ))}
-            </div>
-          ) : assets.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
-              <p className="text-sm font-medium">
-                {view === "favorites" ? "No favorite assets yet" : "No assets yet"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {view === "favorites"
-                  ? "Mark an asset as a favorite from any project to find it here."
-                  : "Create an image, video, or audio asset to see it here."}
-              </p>
-            </div>
-          ) : (
-            <div
-              className={assetLayoutClass(layout)}
-              style={
-                layout === "grid"
-                  ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
-                  : undefined
-              }
-            >
-              {assets.map((asset) => (
-                <AssetCard
-                  key={asset.id}
-                  asset={asset}
-                  layout={layout}
-                  onChanged={() => void fetchAssets(assetType, serviceFilter, view === "favorites")}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <AssetLayoutControls
-            layout={layout}
-            columns={columns}
-            onLayoutChange={setLayout}
-            onColumnsChange={setColumns}
-          />
-
-          {projects === null ? (
-            <div
-              className={assetLayoutClass(layout)}
-              style={
-                layout === "grid"
-                  ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
-                  : undefined
-              }
-            >
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton key={index} className="aspect-[4/3] w-full" />
-              ))}
-            </div>
-          ) : (
-            <div
-              className={assetLayoutClass(layout)}
-              style={
-                layout === "grid"
-                  ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }
-                  : undefined
-              }
-            >
-              {projects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  layout={layout}
-                  onDelete={deleteProject}
-                />
-              ))}
-
-              <Card className="overflow-hidden">
-                {creating ? (
-                  <CardContent
-                    className={
-                      layout === "grid"
-                        ? "flex aspect-[4/3] flex-col justify-center gap-2 p-3"
-                        : "flex min-h-32 flex-col justify-center gap-2 p-3"
-                    }
-                  >
-                    <input
-                      autoFocus
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") void createProject();
-                        if (event.key === "Escape") setCreating(false);
-                      }}
-                      placeholder="Project name"
-                      className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+              {projects === null ? (
+                <div className="flex gap-4 overflow-hidden">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Skeleton
+                      key={index}
+                      className="aspect-square w-[200px] shrink-0 rounded-xl"
                     />
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!name.trim() || busy}
-                      onClick={() => void createProject()}
+                  ))}
+                </div>
+              ) : recentProjects.length === 0 ? (
+                <div className="flex gap-4 overflow-x-auto pb-1">
+                  <NewProjectCard
+                    creating={creating}
+                    name={name}
+                    busy={busy}
+                    onStart={() => setCreating(true)}
+                    onNameChange={setName}
+                    onCreate={() => void createProject()}
+                    onCancel={() => {
+                      setCreating(false);
+                      setName("");
+                    }}
+                  />
+                </div>
+              ) : (
+                <div
+                  ref={projectsRailRef}
+                  className="flex gap-4 overflow-x-auto pb-1 scrollbar-none"
+                >
+                  <NewProjectCard
+                    creating={creating}
+                    name={name}
+                    busy={busy}
+                    onStart={() => setCreating(true)}
+                    onNameChange={setName}
+                    onCreate={() => void createProject()}
+                    onCancel={() => {
+                      setCreating(false);
+                      setName("");
+                    }}
+                  />
+
+                  {recentProjects.map((project) => (
+                    <ProjectCardItem
+                      key={project.id}
+                      project={project}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="flex flex-col gap-3">
+              <SectionHeader
+                title="Recent assets"
+                count={assets?.length}
+              />
+
+              {assets === null ? (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <Skeleton
+                      key={index}
+                      className="aspect-square w-full rounded-xl"
+                    />
+                  ))}
+                </div>
+              ) : recentAssets.length === 0 ? (
+                <EmptyState
+                  icon={
+                    <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                  }
+                  title="No recent assets"
+                  description="Generated and uploaded assets will appear here."
+                />
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                  {recentAssets.map((asset) => (
+                    <AssetTile
+                      key={asset.id}
+                      asset={asset}
+                      onChanged={() => void fetchAssets()}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+
+        {view === "projects" && (
+          <section className="flex flex-col gap-4">
+            {projects === null ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    className="aspect-square w-full rounded-xl"
+                  />
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                  <NewProjectCard
+                    creating={creating}
+                    name={name}
+                    busy={busy}
+                    onStart={() => setCreating(true)}
+                    onNameChange={setName}
+                    onCreate={() => void createProject()}
+                    onCancel={() => {
+                      setCreating(false);
+                      setName("");
+                    }}
+                  />
+
+                  {projects.map((project) => (
+                    <div
+                      key={project.id}
+                      className="w-[200px] max-w-full"
                     >
-                      Create
-                    </Button>
-                  </CardContent>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setCreating(true)}
-                    className={
-                      layout === "grid"
-                        ? "flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-                        : "flex min-h-32 w-full flex-row items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                      <ProjectCardItem
+                        project={project}
+                        onDelete={(id) => void deleteProject(id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {projects.length === 0 && (
+                  <EmptyState
+                    icon={
+                      <FolderOpen className="h-5 w-5 text-muted-foreground" />
                     }
-                  >
-                    <Plus className="h-6 w-6" />
-                    <span className="text-sm font-medium">New project</span>
-                  </button>
+                    title="No projects yet"
+                    description="Create your first project to get started."
+                  />
                 )}
-              </Card>
-            </div>
-          )}
-        </>
-      )}
+              </>
+            )}
+          </section>
+        )}
+
+        {view === "assets" && (
+          <section className="flex flex-col gap-4">
+            {assets === null ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    className="aspect-square w-full rounded-xl"
+                  />
+                ))}
+              </div>
+            ) : assets.length === 0 ? (
+              <EmptyState
+                icon={
+                  <ImageIcon className="h-5 w-5 text-muted-foreground" />
+                }
+                title="No assets"
+                description="Your images, videos, audio, and 3D assets will appear here."
+              />
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {assets.map((asset) => (
+                  <AssetTile
+                    key={asset.id}
+                    asset={asset}
+                    onChanged={() => void fetchAssets()}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {view === "favorites" && (
+          <section className="flex flex-col gap-4">
+            {assets === null ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    className="aspect-square w-full rounded-xl"
+                  />
+                ))}
+              </div>
+            ) : assets.length === 0 ? (
+              <EmptyState
+                icon={
+                  <span className="text-lg text-muted-foreground">
+                    ★
+                  </span>
+                }
+                title="No favorites yet"
+                description="Favorite assets will appear here."
+              />
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                {assets.map((asset) => (
+                  <AssetTile
+                    key={asset.id}
+                    asset={asset}
+                    onChanged={() => void fetchAssets()}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      </div>
     </main>
   );
 }

@@ -32,7 +32,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     return [
       { id: "generate", name: "Generate image render", icon: Wand2, action: () => navigate("/app/ai-image-generator") },
       { id: "video", name: "Generate video", icon: Video, action: () => navigate("/app/ai-video-generator") },
-      { id: "video-upscale", name: "Change video speed", icon: FastForward, action: () => navigate("/app/video-upscaler") },
+      { id: "video-upscale", name: "Upscale video", icon: FastForward, action: () => navigate("/app/video-upscaler") },
       { id: "clip-editor", name: "Edit clip", icon: Scissors, action: () => navigate("/app/clip-editor") },
       { id: "video-project", name: "Edit video project", icon: MonitorPlay, action: () => navigate("/app/video-project-editor") },
       { id: "voice", name: "Generate voiceover", icon: Mic, action: () => navigate("/app/voice-generator") },
@@ -88,9 +88,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           <input
             ref={inputRef}
             type="text"
+            aria-label="Search commands"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Ask RenderStudio or find tutorials..."
+            placeholder="Search commands..."
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">ESC</kbd>

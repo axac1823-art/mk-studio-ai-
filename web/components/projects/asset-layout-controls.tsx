@@ -46,6 +46,18 @@ export function AssetLayoutControls({
   );
 }
 
-export function assetLayoutClass(layout: AssetLayout): string {
-  return cn(layout === "list" ? "flex flex-col gap-3" : "grid gap-4");
+const GRID_COLUMN_CLASSES: Record<number, string> = {
+  2: "grid-cols-2 md:grid-cols-1 lg:grid-cols-2",
+  3: "grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3",
+  4: "grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4",
+  5: "grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5",
+  6: "grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6",
+};
+
+export function assetLayoutClass(layout: AssetLayout, columns = 4): string {
+  return cn(
+    layout === "list"
+      ? "flex flex-col gap-3"
+      : cn("grid gap-4", GRID_COLUMN_CLASSES[columns] ?? GRID_COLUMN_CLASSES[4]),
+  );
 }

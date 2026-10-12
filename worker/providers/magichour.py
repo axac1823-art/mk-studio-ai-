@@ -23,7 +23,6 @@ lue à l'appel, jamais à l'import (échec vite -> fallback).
 import base64
 import mimetypes
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import httpx
 
@@ -47,17 +46,17 @@ def _headers() -> dict:
 
 def _ensure_file_path(uri: str) -> str:
     """Magic Hour n'accepte que des URL http ou des `file_path` de SON
-    stockage : les data URIs et les fichiers locaux (/storage/...) sont
-    versés au préalable. Les URL http passent telles quelles."""
+    stockage : les data URIs et les fichiers du stockage local (y compris
+    leurs URLs publiques) sont versés au préalable. Les URLs externes passent
+    telles quelles."""
     parsed = parse_data_uri(uri)
     if parsed:
         mime, data = parsed
         ext = mime.split("/")[1] if "/" in mime else "png"
         content = base64.b64decode(data)
-    elif uri.startswith("/storage/"):
-        path = storage.resolve(uri)
-        content = Path(path).read_bytes()
-        ext = path.suffix.lstrip(".") or "mp4"
+    elif local_path := storage.local_path_from_url(uri):
+        content = local_path.read_bytes()
+        ext = local_path.suffix.lstrip(".") or "mp4"
         mime = mimetypes.guess_type(f"file.{ext}")[0] or "video/mp4"
     else:
         return uri

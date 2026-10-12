@@ -1,17 +1,21 @@
 "use client";
 
-// Panneau Upscale — flux simple et autonome : upload d'une image,
-// choix du modèle upscaler, facteur 2×/4×, toggle Enhance, puis génération.
-// Le résultat est un NOUVEL asset lié à l'original (parent_generation_id) —
-// avant/après conservé.
+// Le panneau Upscale conserve le comportement de génération et le routage existants.
 import { Loader2, Sparkles, X } from "lucide-react";
 
+import { ProjectSourceStrip, type ImageSourceAsset } from "@/components/studio/image-feature-panel";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { UploadDropzone } from "@/components/upload-dropzone";
 import { UPSCALE_FACTORS, type UpscaleFactor } from "@/lib/presets";
 import { cn } from "@/lib/utils";
-import { UploadDropzone } from "@/components/upload-dropzone";
 
 export interface UpscaleModelOption {
   key: string;
@@ -23,8 +27,17 @@ export interface UpscaleModelOption {
 interface UpscalePanelProps {
   models: UpscaleModelOption[];
   selectedModel: string;
+  /** False while the existing cost config has not loaded or is unavailable. */
+  costReady?: boolean;
+  /** Per-model estimates computed with the existing computeDisplayCost function. */
+  modelCosts?: Record<string, number>;
+  /** Estimate for the existing empty-string / server-default model selection. */
+  autoCost?: number;
   uploadFile: File | null;
   uploadPreviewUrl: string | null;
+  sourceAssets?: ImageSourceAsset[];
+  selectedSourceAssetId?: string | null;
+  onSelectSourceAsset?: (asset: ImageSourceAsset) => void;
   factor: UpscaleFactor;
   enhance: boolean;
   cost: number;
@@ -38,14 +51,25 @@ interface UpscalePanelProps {
   onGenerate: () => void;
 }
 
+function CreditEstimate({ value }: { value?: number }) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs font-semibold tabular-nums">{value} cr</span>;
+}
+
 export function UpscalePanel({
   models,
   selectedModel,
+  modelCosts,
+  autoCost,
   uploadFile,
   uploadPreviewUrl,
+  sourceAssets,
+  selectedSourceAssetId,
+  onSelectSourceAsset,
   factor,
   enhance,
   cost,
+  costReady = true,
   balance,
   isBusy,
   onModelChange,
@@ -55,110 +79,140 @@ export function UpscalePanel({
   onEnhanceChange,
   onGenerate,
 }: UpscalePanelProps) {
-  const hasEnoughCredits = balance === null || balance >= cost;
-  const hasSource = uploadFile !== null;
+  const hasEnoughCredits = !costReady || balance === null || balance >= cost;
+  const hasSource = uploadFile !== null || uploadPreviewUrl !== null;
   const canGenerate = hasSource && hasEnoughCredits && !isBusy;
-  const modelName = selectedModel ? models.find((m) => m.key === selectedModel)?.name : null;
+  const selectedOption = models.find((model) => model.key === selectedModel);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium">Source image</span>
+    <div className="flex flex-col gap-5">
+      <section className="flex flex-col gap-2">
+        <span className="text-sm font-semibold">Source image</span>
         <UploadDropzone
           previewUrl={uploadPreviewUrl}
-          onFileSelected={(file) => {
-            onUploadFileSelected(file, URL.createObjectURL(file));
-          }}
+          onFileSelected={(file) => onUploadFileSelected(file, URL.createObjectURL(file))}
+          title="Drop an image"
+          description="or click to browse — PNG, JPEG or WebP up to 10 MB"
+          ariaLabel="Upload an image to upscale"
         />
-        {uploadFile && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="w-fit gap-1 text-muted-foreground"
-            onClick={onClearUpload}
-          >
-            <X className="h-4 w-4" />
-            Clear upload
+        <ProjectSourceStrip
+          sourceAssets={sourceAssets}
+          selectedSourceAssetId={selectedSourceAssetId}
+          onSelectSourceAsset={onSelectSourceAsset}
+        />
+        {hasSource && (
+          <Button type="button" variant="ghost" size="sm" className="w-fit gap-1 text-muted-foreground" onClick={onClearUpload} disabled={isBusy}>
+            <X className="h-4 w-4" />Clear source
           </Button>
         )}
-      </div>
+      </section>
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium">Upscale model</span>
-        <Select value={selectedModel} onValueChange={onModelChange} disabled={models.length === 0}>
-          <SelectTrigger>
-            <SelectValue placeholder={models.length === 0 ? "No upscale models configured" : "Auto (recommended)"}>
-              {modelName ?? "Auto (recommended)"}
-            </SelectValue>
+      <section className="flex flex-col gap-2 border-t pt-4">
+        <div>
+          <h3 className="text-sm font-semibold">AI version</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">Choose an available version and compare its estimated credit cost.</p>
+        </div>
+        <Select
+          value={selectedModel || "__auto__"}
+          onValueChange={(value) => onModelChange(value === "__auto__" ? "" : value)}
+          disabled={models.length === 0 || isBusy}
+        >
+          <SelectTrigger className="h-10 w-full text-sm">
+            <SelectValue placeholder={models.length === 0 ? "No upscale versions available" : "Auto (recommended)"} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Auto (recommended)</SelectItem>
+            <SelectItem value="__auto__">
+              <div className="flex w-full min-w-0 items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <span className="block text-sm font-medium">Auto (recommended)</span>
+                  <span className="block text-xs text-muted-foreground">Use the current service default</span>
+                </div>
+                <CreditEstimate value={autoCost} />
+              </div>
+            </SelectItem>
             {models.map((model) => (
               <SelectItem key={model.key} value={model.key}>
-                <div className="flex flex-col items-start">
-                  <span className="text-sm font-medium">
-                    {model.name}
-                    {!model.configured && (
-                      <span className="ml-2 text-[10px] text-amber-500">(not configured)</span>
-                    )}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{model.description}</span>
+                <div className="flex w-full min-w-0 items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <span className="block text-sm font-medium">
+                      {model.name}
+                      {!model.configured && <span className="ml-2 text-xs font-normal text-amber-600">Not configured</span>}
+                    </span>
+                    <span className="block max-w-[240px] truncate text-xs text-muted-foreground">{model.description}</span>
+                  </div>
+                  {model.configured ? <CreditEstimate value={modelCosts?.[model.key]} /> : null}
                 </div>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {models.length === 0 && (
-          <p className="text-[11px] text-muted-foreground">No upscale provider configured on the worker.</p>
+        {models.length === 0 ? (
+          <p className="text-xs leading-5 text-muted-foreground">No upscale version is currently available from the configured service.</p>
+        ) : (
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Selected AI version</p>
+                <p className="mt-0.5 truncate text-sm font-semibold">{selectedOption?.name ?? "Auto (recommended)"}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-xs text-muted-foreground">Estimated cost</p>
+                {costReady ? (
+                  <p className="mt-0.5 text-base font-semibold tabular-nums">{cost} <span className="text-xs font-medium text-muted-foreground">credits</span></p>
+                ) : (
+                  <p className="mt-0.5 text-sm font-medium text-muted-foreground">Estimate unavailable</p>
+                )}
+              </div>
+            </div>
+            {selectedOption && !selectedOption.configured && (
+              <p role="status" className="mt-2 text-xs leading-5 text-amber-600">This version is listed as not configured.</p>
+            )}
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">The estimate follows the existing pricing configuration; final charging stays with the current service.</p>
+          </div>
         )}
-      </div>
+      </section>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Scale</span>
-        <div className="flex overflow-hidden rounded-md border">
+      <section className="flex flex-col gap-2 border-t pt-4">
+        <span className="text-sm font-semibold">Scale</span>
+        <div className="grid grid-cols-2 overflow-hidden rounded-lg border">
           {UPSCALE_FACTORS.map((preset) => (
             <button
               key={preset.id}
               type="button"
               aria-pressed={factor === preset.id}
               onClick={() => onFactorChange(preset.id)}
+              disabled={isBusy}
               className={cn(
-                "flex-1 px-3 py-1.5 text-xs font-medium transition-colors",
-                factor === preset.id ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+                "min-h-10 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                factor === preset.id ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent",
               )}
             >
               {preset.label}
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-        <div className="flex flex-col gap-0.5">
+      <section className="flex items-center justify-between gap-3 rounded-lg border p-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
           <span className="text-sm font-medium">Enhance quality</span>
-          <span className="text-xs text-muted-foreground">Sharpen and improve details</span>
+          <span className="text-xs leading-5 text-muted-foreground">Sharpen and improve details.</span>
         </div>
-        <Switch checked={enhance} onCheckedChange={onEnhanceChange} />
-      </div>
+        <Switch checked={enhance} onCheckedChange={onEnhanceChange} disabled={isBusy} />
+      </section>
 
-      <div className="flex flex-col gap-1">
-        {!hasEnoughCredits && balance !== null && (
-          <p role="alert" className="text-xs text-destructive">
-            You don&apos;t have enough credits for this upscale. {cost} credits required. You have {balance} credits.
+      <div className="flex flex-col gap-2 border-t pt-4">
+        {costReady && !hasEnoughCredits && balance !== null && (
+          <p role="alert" className="text-xs leading-5 text-destructive">
+            This upscale needs {cost} credits; your balance is {balance}.{" "}
+            <a href="/app/billing" className="font-medium underline underline-offset-2">Buy more</a>
           </p>
         )}
-        <Button onClick={onGenerate} disabled={!canGenerate} className="w-full">
+        <Button onClick={onGenerate} disabled={!canGenerate} className="h-10 w-full">
           {isBusy ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Upscaling…
-            </>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Upscaling…</>
           ) : (
-            <>
-              <Sparkles />
-              Upscale — {cost} credits
-            </>
+            <><Sparkles className="mr-2 h-4 w-4" />{costReady ? `Upscale · ${cost} credits` : "Upscale"}</>
           )}
         </Button>
       </div>

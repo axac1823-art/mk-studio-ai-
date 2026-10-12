@@ -7,6 +7,7 @@ creditCost). Sortie : un asset par image produite (fichier dans storage +
 ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 """
 import db
+import storage
 from catalog import MODEL_CATALOG
 from prompts import build_feature_prompt
 from workflows.common import (
@@ -29,6 +30,11 @@ def run(job: dict) -> None:
         mark_processing(conn, job["id"])
         try:
             req = {**input_, "prompt": build_feature_prompt(feature, input_)}
+            if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
+                # Les assets choisis dans la galerie sont des URLs du stockage
+                # worker. Normaliser en data URI pour Magic Hour, remove.bg et
+                # Gemini, qui n'acceptent pas tous une URL LAN privée.
+                req["imageUrl"] = storage.image_data_uri_if_local(req["imageUrl"])
             feature_candidates = MODEL_CATALOG[feature]
             if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
