@@ -1,13 +1,13 @@
 "use client";
 
-// Contrôles créatifs Render : les matériaux et l'éclairage restent visibles.
-import { useId } from "react";
+import { useState } from "react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 
 import { PresetGrid } from "@/components/studio/preset-grid";
 import { LIGHTING_PRESETS, MATERIAL_PRESETS } from "@/lib/presets";
+import { cn } from "@/lib/utils";
 
 interface SettingsAccordionProps {
-  /** Titre conservé pour compatibilité avec l'appelant existant. */
   label?: string;
   materialId: string;
   lightingId: string;
@@ -16,43 +16,45 @@ interface SettingsAccordionProps {
 }
 
 export function SettingsAccordion({
-  label = "Design",
+  label = "Advanced design",
   materialId,
   lightingId,
   onMaterialChange,
   onLightingChange,
 }: SettingsAccordionProps) {
-  const sectionId = useId();
-  const designTitleId = `${sectionId}-design-title`;
-  const materialTitleId = `${sectionId}-material-title`;
-  const lightingTitleId = `${sectionId}-lighting-title`;
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <section className="flex min-w-0 flex-col gap-4 border-t pt-4" aria-labelledby={designTitleId}>
-      <div className="flex flex-col gap-1">
-        <h3 id={designTitleId} className="text-sm font-semibold tracking-tight">
-          {label}
-        </h3>
-        <p className="text-xs leading-5 text-muted-foreground">
-          Choose the material character and lighting mood for this render.
-        </p>
-      </div>
-
-      <section className="flex min-w-0 flex-col gap-2" aria-labelledby={materialTitleId}>
-        <div className="flex items-baseline justify-between gap-2">
-          <h4 id={materialTitleId} className="text-sm font-medium">Material</h4>
-          <span className="text-xs text-muted-foreground">Surface character</span>
+    <section className="overflow-hidden rounded-xl border border-border/70 bg-muted/10">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        className="flex w-full items-center justify-between gap-3 p-3.5 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="flex min-w-0 items-start gap-2.5">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground">
+            <SlidersHorizontal className="h-4 w-4" />
+          </span>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-sm font-semibold">{label}</span>
+            <span className="text-xs text-muted-foreground">Material and lighting</span>
+          </span>
+        </span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (
+        <div className="flex flex-col gap-5 border-t border-border/70 bg-background p-3.5">
+          <div className="flex flex-col gap-2.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Material style</span>
+            <PresetGrid items={MATERIAL_PRESETS} value={materialId} onChange={onMaterialChange} />
+          </div>
+          <div className="flex flex-col gap-2.5 border-t border-border/70 pt-4">
+            <span className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Lighting</span>
+            <PresetGrid items={LIGHTING_PRESETS} value={lightingId} onChange={onLightingChange} />
+          </div>
         </div>
-        <PresetGrid items={MATERIAL_PRESETS} value={materialId} onChange={onMaterialChange} />
-      </section>
-
-      <section className="flex min-w-0 flex-col gap-2 border-t pt-3" aria-labelledby={lightingTitleId}>
-        <div className="flex items-baseline justify-between gap-2">
-          <h4 id={lightingTitleId} className="text-sm font-medium">Lighting</h4>
-          <span className="text-xs text-muted-foreground">Time and atmosphere</span>
-        </div>
-        <PresetGrid items={LIGHTING_PRESETS} value={lightingId} onChange={onLightingChange} />
-      </section>
+      )}
     </section>
   );
 }

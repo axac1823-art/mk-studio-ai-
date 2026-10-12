@@ -124,6 +124,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [references, setReferences] = useState<ReferenceImage[]>([]);
+  const nextReferenceTag = useRef(1);
   const [sceneTypeId, setSceneTypeId] = useState(SCENE_TYPE_PRESETS[0].id);
   const [materialId, setMaterialId] = useState(MATERIAL_PRESETS[0].id);
   const [lightingId, setLightingId] = useState(LIGHTING_PRESETS[0].id);
@@ -366,7 +367,10 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     form.append("feature", "print_render");
     if (selectedSourceAsset) form.append("imageUrl", selectedSourceAsset.url);
     else if (file) form.append("image", file);
-    for (const reference of references) form.append("reference", reference.file);
+    for (const reference of references) {
+      form.append("reference", reference.file);
+      form.append("referenceTag", reference.tag);
+    }
     form.append("sceneTypeId", sceneTypeId);
     form.append("materialId", materialId);
     form.append("lightingId", lightingId);
@@ -389,7 +393,11 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
     if (tab === "text_to_image") {
       form.append("sceneDetails", state.sceneDetails.trim());
       if (selectedSourceAsset) form.append("imageUrl", selectedSourceAsset.url);
-      else if (state.file) form.append("reference", state.file);
+      else if (state.file) form.append("image", state.file);
+      for (const reference of references) {
+        form.append("reference", reference.file);
+        form.append("referenceTag", reference.tag);
+      }
     } else {
       if (selectedSourceAsset) form.append("imageUrl", selectedSourceAsset.url);
       else if (state.file) form.append("image", state.file);
@@ -441,6 +449,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
       ...current,
       ...files.map((file) => ({
         id: generateUuid(),
+        tag: `@img${nextReferenceTag.current++}`,
         file,
         previewUrl: URL.createObjectURL(file),
       })),
@@ -602,7 +611,11 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                     onMaterialChange={setMaterialId}
                     onLightingChange={setLightingId}
                   />
-                  <SceneDetails value={sceneDetails} onChange={setSceneDetails} />
+                  <SceneDetails
+                    value={sceneDetails}
+                    onChange={setSceneDetails}
+                    referenceTags={references.map((reference) => reference.tag)}
+                  />
                 </>
               ) : tab === "upscale" ? (
                 <UpscalePanel
@@ -650,7 +663,7 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                     setError(null);
                   }}
                   uploadOptional={tab === "text_to_image"}
-                  uploadLabel="Source"
+                  uploadLabel={tab === "text_to_image" ? "Source image (optional)" : "Source"}
                   uploadTitle={uploadCopy.title}
                   uploadDescription={uploadCopy.description}
                   uploadAriaLabel={uploadCopy.ariaLabel}
@@ -660,6 +673,9 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                   onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
                   sceneDetails={simpleTabs[tab].sceneDetails}
                   onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
+                  referenceTags={tab === "text_to_image"
+                    ? references.map((reference) => reference.tag)
+                    : []}
                 />
                 {tab === "text_to_image" && (
                   <ReferencesPanel

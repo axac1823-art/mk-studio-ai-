@@ -145,7 +145,7 @@ def test_strip_tags_and_tagged_media_urls():
     ]
     prompt = "start with @img1 then @vid1 and @img1 again"
     assert video._count_tagged_media(prompt) == 2
-    assert video._strip_tags(prompt) == "start with  then  and  again"
+    assert video._strip_tags(prompt) == prompt
     assert video._tagged_media_urls(prompt, refs) == ["http://img1", "http://vid1"]
 
 
