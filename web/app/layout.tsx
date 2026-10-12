@@ -59,16 +59,18 @@ const themeInitScript = `
     } catch {}
     document.documentElement.classList.remove("light", "dark");
     document.documentElement.classList.add(theme);
-    var desktop = window.matchMedia("(min-width: 768px)").matches;
-    var heroImage = desktop
-      ? (theme === "dark" ? "/hero.webp" : "/hero_white.webp")
-      : (theme === "dark" ? "/mobile_hero.webp" : "/mobile_lightmod.webp");
-    var preload = document.createElement("link");
-    preload.rel = "preload";
-    preload.as = "image";
-    preload.href = heroImage;
-    preload.setAttribute("fetchpriority", "high");
-    document.head.appendChild(preload);
+    if (window.location.pathname === "/") {
+      var desktop = window.matchMedia("(min-width: 768px)").matches;
+      var heroImage = desktop
+        ? (theme === "dark" ? "/hero.webp" : "/hero_white.webp")
+        : (theme === "dark" ? "/mobile_hero.webp" : "/mobile_lightmod.webp");
+      var preload = document.createElement("link");
+      preload.rel = "preload";
+      preload.as = "image";
+      preload.href = heroImage;
+      preload.setAttribute("fetchpriority", "high");
+      document.head.appendChild(preload);
+    }
   })();
 `;
 

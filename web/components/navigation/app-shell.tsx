@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation";
 
 import { AppSidebar } from "@/components/navigation/Sidebar";
 import { AppHeader } from "@/components/navigation/app-header";
+import {
+  ProjectLibraryMobileNav,
+  ProjectLibrarySidebar,
+} from "@/components/projects/project-library-sidebar";
 import type { DbUser } from "@/lib/db/queries";
 
 interface AppShellProps {
@@ -31,14 +35,21 @@ export function AppShell({ user, balance, lowThreshold, children }: AppShellProp
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileNavOpen]);
 
+  const isProjectLibrary =
+    pathname.startsWith("/app/projects") ||
+    pathname.startsWith("/app/uploads") ||
+    pathname.startsWith("/app/trash");
+
   return (
     <div className="renderuim-app flex min-h-screen w-full bg-background text-foreground">
       <AppSidebar
         user={user}
-        open={sidebarOpen}
+        open={isProjectLibrary || sidebarOpen}
         mobileOpen={mobileNavOpen}
-        showToggle
-        onToggle={() => setSidebarOpen((open) => !open)}
+        showToggle={!isProjectLibrary}
+        onToggle={() => {
+          if (!isProjectLibrary) setSidebarOpen((open) => !open);
+        }}
       />
       {mobileNavOpen && (
         <button
@@ -48,7 +59,9 @@ export function AppShell({ user, balance, lowThreshold, children }: AppShellProp
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
         />
       )}
+      {isProjectLibrary && <ProjectLibrarySidebar />}
       <div className="flex min-w-0 flex-1 flex-col">
+        {isProjectLibrary && <ProjectLibraryMobileNav />}
         <AppHeader
           user={user}
           balance={balance}

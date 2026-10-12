@@ -34,8 +34,7 @@ Scope MVP : **10 fonctions métier** —
 
 Exclusions V1 (ne pas implémenter, retirer le cas échéant) :
 édition conversationnelle par chat, swap d'objets/mobilier, presets non liés
-au bâti. A `ModelPicker` with `Auto` is shown in each AI tool; server
-routing still handles `Auto` and fallback. La narration
+au bâti. Aucun sélecteur de modèle n'est visible dans les autres outils ; le routage reste côté serveur avec fallback invisible. Exception explicite : Image Workspace affiche les versions retournées par le service courant et leur coût estimé depuis CostsConfig. La narration
 /voix off a été temporairement réintégrée à la demande explicite pour le
 Voice Generator.
 
@@ -237,8 +236,7 @@ Voice Generator est utilisé, `ELEVENLABS_API_KEY`.
 - Changement de fournisseur ou de version de modèle IA : toucher
   **uniquement** `MODEL_CATALOG` dans `lib/ai/catalog.ts` (et l'adaptateur
   `lib/ai/providers/<provider>.ts` si le fournisseur est nouveau), rien
-  d'autre. (A `ModelPicker` with `Auto` is shown in each AI tool; server
-  routing still handles `Auto` and fallback.)
+  d'autre. (Les sélecteurs de modèle restent absents des outils, sauf dans Image Workspace, où les versions du service courant et leurs coûts sont affichés depuis CostsConfig.)
 - shadcn/ui a été installé **à la main** (le CLI npm était défaillant) :
   `components.json` + `components/ui/` + thème dans `tailwind.config.ts` et
   `globals.css`. Pour ajouter un composant, reprendre le source officiel
@@ -299,8 +297,7 @@ Exigences d'architecture pour les jalons 5-6 (à respecter telles quelles) :
   relancer les tests end-to-end quand une clé ou un provider change.
 - **Recadrage MVP** : agrégateur vertical archviz/immobilier — les outils
   ajoutés (Voice Generator, Video Editor, Video Upscaler) restent orientés
-  production multimédia de présentation. A `ModelPicker` with `Auto`
-  is shown in each AI tool; server routing still handles `Auto` and fallback.
+  production multimédia de présentation. Exception UI approuvée : Image Workspace affiche les versions disponibles et leurs coûts estimés ; les autres outils restent sans sélecteur visible.
 - **Auth** : toutes les routes `/app/*` sont protégées par `middleware.ts`
   (Supabase SSR). Les routes API filtrent par `user_id` et le worker
   exige `WORKER_API_KEY`. En local, `AUTH_DEBUG=true` fournit un fallback

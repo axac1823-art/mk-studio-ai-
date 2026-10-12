@@ -2,7 +2,7 @@
 
 import { type ComponentType, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Box,
   FolderOpen,
@@ -30,6 +30,7 @@ interface AppSidebarProps {
   open: boolean;
   mobileOpen: boolean;
   onToggle: () => void;
+  showToggle?: boolean;
 }
 
 interface NavLinkProps {
@@ -68,13 +69,11 @@ function ToolCategoryLink({
   pathname,
   icon: Icon,
   label,
-  collapsed,
 }: {
   category: ToolCategory;
   pathname: string;
   icon: ComponentType<{ className?: string }>;
   label: string;
-  collapsed: boolean;
 }) {
   const active = toolsByCategory(category).some((tool) =>
     pathname.startsWith(tool.route.split("?")[0]),
@@ -88,7 +87,6 @@ function ToolCategoryLink({
         size="sm"
         className={cn(
           "h-8 w-full justify-start gap-2 rounded-lg px-4 text-xs font-medium",
-          collapsed && "justify-center px-0",
           active
             ? "bg-accent text-foreground hover:bg-accent"
             : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -97,7 +95,7 @@ function ToolCategoryLink({
         title={label}
       >
         <Icon className="h-3.5 w-3.5 shrink-0" />
-        {!collapsed && <span className="truncate">{label}</span>}
+        <span className="truncate">{label}</span>
       </Button>
     </ToolPickerPopover>
   );
@@ -108,16 +106,9 @@ export function AppSidebar({
   open,
   mobileOpen,
   onToggle,
+  showToggle = true,
 }: AppSidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const projectView = searchParams.get("view");
-  const isProjectsOverview =
-    (pathname === "/app/projects" && (!projectView || projectView === "overview")) ||
-    pathname.startsWith("/app/projects/");
-  const isAllProjects = pathname === "/app/projects" && projectView === "projects";
-  const isAllAssets = pathname === "/app/projects" && projectView === "assets";
-  const isFavorites = pathname === "/app/projects" && projectView === "favorites";
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
   const collapsed = !open;
@@ -135,6 +126,11 @@ export function AppSidebar({
       sidebarRef.current.inert = isMobileViewport && !mobileOpen;
     }
   }, [isMobileViewport, mobileOpen]);
+
+  const isLibraryContext =
+    pathname.startsWith("/app/projects") ||
+    pathname.startsWith("/app/uploads") ||
+    pathname.startsWith("/app/trash");
 
   return (
     <aside
@@ -155,21 +151,7 @@ export function AppSidebar({
             <span className="truncate font-semibold">Renderuim</span>
           </Link>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={onToggle}
-          aria-label="Toggle sidebar"
-          aria-expanded={open}
-          className="hidden h-8 w-8 shrink-0 md:flex"
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2.5 py-3">
-        <ToolPickerPopover>
+        {showToggle && (
           <Button
             type="button"
             variant="ghost"
@@ -178,53 +160,9 @@ export function AppSidebar({
             aria-label="Toggle sidebar"
             className="hidden h-8 w-8 shrink-0 md:flex"
           >
-            <Plus className="h-4 w-4 shrink-0" />
-            {!collapsed && <span className="text-sm">Create</span>}
+            <Menu className="h-5 w-5" />
           </Button>
-        </ToolPickerPopover>
-
-        <section className="flex flex-col gap-0.5">
-          {!collapsed && (
-            <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
-              WORKSPACE
-            </p>
-          )}
-          <nav aria-label="Workspace" className="flex flex-col gap-0.5">
-            <NavLink href="/app/dashboard" icon={Home} label="Home" active={pathname === "/app/dashboard"} collapsed={collapsed} />
-            <NavLink
-              href="/app/projects"
-              icon={FolderOpen}
-              label="Projects"
-              active={pathname.startsWith("/app/projects")}
-              collapsed={collapsed}
-            />
-          </nav>
-        </section>
-
-        <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
-          {!collapsed && (
-            <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
-              GENERATE
-            </p>
-          )}
-          <ToolCategoryLink category="image" pathname={pathname} icon={ImageIcon} label="Image" collapsed={collapsed} />
-          <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" collapsed={collapsed} />
-          <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" collapsed={collapsed} />
-          <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" collapsed={collapsed} />
-        </section>
-
-        <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
-            {!collapsed && (
-              <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
-                LIBRARY
-              </p>
-            )}
-            <nav aria-label="Library" className="flex flex-col gap-0.5">
-              <NavLink href="/app/favorites" icon={Heart} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
-              <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
-              <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
-            </nav>
-        </section>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2.5 py-3">
@@ -256,44 +194,38 @@ export function AppSidebar({
               href="/app/projects"
               icon={FolderOpen}
               label="Projects"
-              active={isProjectsOverview}
-              collapsed={collapsed}
-            />
-            <NavLink
-              href="/app/projects?view=projects"
-              icon={FolderOpen}
-              label="All projects"
-              active={isAllProjects}
+              active={pathname.startsWith("/app/projects")}
               collapsed={collapsed}
             />
           </nav>
         </section>
 
-        <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
-          {!collapsed && (
+        {!collapsed && (
+          <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
             <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
               GENERATE
             </p>
-          )}
-          <ToolCategoryLink category="image" pathname={pathname} icon={ImageIcon} label="Image" collapsed={collapsed} />
-          <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" collapsed={collapsed} />
-          <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" collapsed={collapsed} />
-          <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" collapsed={collapsed} />
-        </section>
+            <ToolCategoryLink category="image" pathname={pathname} icon={ImageIcon} label="Image" />
+            <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" />
+            <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" />
+            <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" />
+          </section>
+        )}
 
-        <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
-          {!collapsed && (
-            <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
-              LIBRARY
-            </p>
-          )}
-          <nav aria-label="Library" className="flex flex-col gap-0.5">
-            <NavLink href="/app/projects?view=assets" icon={ImageIcon} label="All assets" active={isAllAssets} collapsed={collapsed} />
-            <NavLink href="/app/projects?view=favorites" icon={Heart} label="Favorites" active={isFavorites || pathname.startsWith("/app/favorites")} collapsed={collapsed} />
-            <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
-            <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
-          </nav>
-        </section>
+        {!isLibraryContext && (
+          <section className="flex shrink-0 flex-col gap-0.5 border-t border-border pt-3">
+            {!collapsed && (
+              <p className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted-foreground">
+                LIBRARY
+              </p>
+            )}
+            <nav aria-label="Library" className="flex flex-col gap-0.5">
+              <NavLink href="/app/favorites" icon={Heart} label="Favorites" active={pathname.startsWith("/app/favorites")} collapsed={collapsed} />
+              <NavLink href="/app/uploads" icon={Upload} label="Uploads" active={pathname.startsWith("/app/uploads")} collapsed={collapsed} />
+              <NavLink href="/app/trash" icon={Trash2} label="Trash" active={pathname.startsWith("/app/trash")} collapsed={collapsed} />
+            </nav>
+          </section>
+        )}
       </div>
       <div className="flex shrink-0 flex-col gap-1.5 border-t p-2.5">
         <NavLink href="/app/settings" icon={Settings} label="Settings" active={pathname.startsWith("/app/settings")} collapsed={collapsed} />

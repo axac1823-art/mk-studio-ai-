@@ -8,7 +8,6 @@ import Link from "next/link";
 
 import { type AssetSummary } from "@/components/projects/asset-card";
 import { AssetLibraryGrid } from "@/components/projects/asset-library-grid";
-import { ProjectLibraryTabs } from "@/components/projects/project-library-sidebar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -40,8 +39,6 @@ export default function TrashPage() {
           Deleted assets are kept for 30 days before permanent removal.
         </p>
       </header>
-      <ProjectLibraryTabs />
-
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

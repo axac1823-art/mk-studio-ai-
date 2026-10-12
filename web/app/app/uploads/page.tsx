@@ -8,7 +8,6 @@ import Link from "next/link";
 
 import { AssetCard, type AssetSummary } from "@/components/projects/asset-card";
 import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
-import { ProjectLibraryTabs } from "@/components/projects/project-library-sidebar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -42,8 +41,6 @@ export default function UploadsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Uploads</h1>
         <p className="text-sm text-muted-foreground">Source images and videos ready to use.</p>
       </header>
-      <ProjectLibraryTabs />
-
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

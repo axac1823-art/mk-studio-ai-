@@ -23,7 +23,6 @@ import {
 } from "@/components/projects/asset-card";
 import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
 import { Button } from "@/components/ui/button";
-import { ProjectLibraryTabs } from "@/components/projects/project-library-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ViewMode = "overview" | "projects" | "assets" | "favorites";
@@ -502,8 +501,6 @@ export default function ProjectsPage() {
             </Button>
           )}
         </header>
-        <ProjectLibraryTabs />
-
         <nav aria-label="Project library views" className="flex flex-wrap items-center gap-2 border-b pb-3">
           {([
             { label: "Overview", href: "/app/projects?view=overview", active: view === "overview" },
