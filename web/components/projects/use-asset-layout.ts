@@ -13,7 +13,7 @@ export function useAssetLayout(storageKey: string) {
       const saved = window.localStorage.getItem(`asset-layout:${storageKey}`);
       if (!saved) return;
       const parsed = JSON.parse(saved) as { layout?: AssetLayout; columns?: number };
-      if (parsed.layout === "grid" || parsed.layout === "list") setLayout(parsed.layout);
+      if (parsed.layout === "grid" || parsed.layout === "list" || parsed.layout === "square") setLayout(parsed.layout);
       if (typeof parsed.columns === "number" && [2, 3, 4, 5, 6].includes(parsed.columns)) setColumns(parsed.columns);
     } catch {
       // Un stockage local indisponible n'empêche pas l'affichage des assets.

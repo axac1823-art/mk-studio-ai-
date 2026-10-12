@@ -5,7 +5,7 @@ import { LayoutGrid, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type AssetLayout = "grid" | "list";
+export type AssetLayout = "grid" | "list" | "square";
 
 interface AssetLayoutControlsProps {
   layout: AssetLayout;
