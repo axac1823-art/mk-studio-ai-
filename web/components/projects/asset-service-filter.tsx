@@ -1,12 +1,16 @@
 "use client";
 
-interface ServiceOption {
+export interface ServiceOption {
   id: string;
   label: string;
   types: Array<"image" | "video" | "audio">;
 }
 
-const SERVICES: ServiceOption[] = [
+/**
+ * The shared service catalogue used by both the existing service select and the
+ * Magnific-inspired toolbar. Keep these IDs aligned with the current app/API.
+ */
+export const ASSET_SERVICE_OPTIONS: ServiceOption[] = [
   { id: "text_to_image", label: "Image Generator", types: ["image"] },
   { id: "print_render", label: "Render", types: ["image"] },
   { id: "mood_swap", label: "Mood", types: ["image"] },
@@ -39,8 +43,15 @@ interface AssetServiceFilterProps {
   onChange: (value: string) => void;
 }
 
-export function AssetServiceFilter({ type, value, onChange }: AssetServiceFilterProps) {
-  const options = SERVICES.filter((service) => type === "all" || service.types.includes(type));
+/** Legacy select retained for any other page that still uses this component. */
+export function AssetServiceFilter({
+  type,
+  value,
+  onChange,
+}: AssetServiceFilterProps) {
+  const options = ASSET_SERVICE_OPTIONS.filter(
+    (service) => type === "all" || service.types.includes(type),
+  );
 
   return (
     <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -51,7 +62,11 @@ export function AssetServiceFilter({ type, value, onChange }: AssetServiceFilter
         className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"
       >
         <option value="all">All services</option>
-        {options.map((service) => <option key={service.id} value={service.id}>{service.label}</option>)}
+        {options.map((service) => (
+          <option key={service.id} value={service.id}>
+            {service.label}
+          </option>
+        ))}
       </select>
     </label>
   );

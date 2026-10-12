@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -19,12 +19,16 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { assetLayoutClass, type AssetLayout } from "@/components/projects/asset-layout-controls";
 import { AssetCard } from "@/components/projects/asset-card";
+import { AssetNavigationToolbar, type AssetNavigationSort, type AssetNavigationTypeFilter } from "@/components/projects/asset-navigation-toolbar";
 import type { ProjectSummary } from "@/components/projects/project-card";
+import { useAssetLayout } from "@/components/projects/use-asset-layout";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ViewMode = "overview" | "projects" | "assets" | "favorites";
+type AssetTypeFilter = AssetNavigationTypeFilter;
 
 type RecentAsset = {
   id: string;
@@ -218,11 +222,13 @@ function NewProjectCard({
 function AssetTile({
   asset,
   onChanged,
+  layout = "grid",
 }: {
   asset: RecentAsset;
   onChanged: () => void;
+  layout?: AssetLayout;
 }) {
-  return <AssetCard asset={asset} onChanged={onChanged} />;
+  return <AssetCard asset={asset} onChanged={onChanged} layout={layout} />;
 }
 function SectionHeader({
   title,
@@ -308,6 +314,8 @@ function EmptyState({
 
 export default function ProjectsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const createRequested = searchParams.get("create") === "1";
 
   const rawView = searchParams.get("view");
 
@@ -320,8 +328,15 @@ export default function ProjectsPage() {
 
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [assets, setAssets] = useState<RecentAsset[] | null>(null);
+  const [assetTypeFilter, setAssetTypeFilter] = useState<AssetTypeFilter>("all");
+  const [assetServiceFilter, setAssetServiceFilter] = useState("all");
+  const [assetProjectFilter, setAssetProjectFilter] = useState("all");
+  const [assetSort, setAssetSort] = useState<AssetNavigationSort>("recent");
+  const { layout, columns, setLayout, setColumns } = useAssetLayout("library:assets");
 
   const [error, setError] = useState<string | null>(null);
+  const [projectsLoadError, setProjectsLoadError] = useState<string | null>(null);
+  const [assetsLoadError, setAssetsLoadError] = useState<string | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -344,20 +359,27 @@ export default function ProjectsPage() {
       };
 
       setProjects(data.projects);
-      setError(null);
+      setProjectsLoadError(null);
     } catch {
-      setError("Could not load projects.");
+      setProjectsLoadError("Could not load projects.");
     }
   }, []);
 
   const fetchAssets = useCallback(async () => {
     try {
-      const endpoint =
-        view === "favorites"
-          ? "/api/assets?favorite=1"
-          : "/api/assets";
+      const params = new URLSearchParams();
+      const useLibraryFilters = view === "assets" || view === "favorites";
 
-      const response = await fetch(endpoint, {
+      if (view === "favorites") params.set("favorite", "1");
+      if (useLibraryFilters && assetTypeFilter !== "all" && assetTypeFilter !== "3d_model") {
+        params.set("type", assetTypeFilter);
+      }
+      if (useLibraryFilters && assetServiceFilter !== "all") {
+        params.set("feature", assetServiceFilter);
+      }
+
+      const query = params.toString();
+      const response = await fetch(`/api/assets${query ? `?${query}` : ""}`, {
         cache: "no-store",
       });
 
@@ -369,23 +391,31 @@ export default function ProjectsPage() {
         assets: RecentAsset[];
       };
 
-      setAssets(data.assets);
-      setError(null);
+      const nextAssets = useLibraryFilters && assetTypeFilter === "3d_model"
+        ? data.assets.filter((asset) => asset.type === "3d_model")
+        : data.assets;
+
+      setAssets(nextAssets);
+      setAssetsLoadError(null);
     } catch {
-      setError("Could not load assets.");
+      setAssetsLoadError("Could not load assets.");
     }
-  }, [view]);
+  }, [view, assetTypeFilter, assetServiceFilter]);
 
   useEffect(() => {
     setError(null);
-    setCreating(false);
+    setProjectsLoadError(null);
+    setAssetsLoadError(null);
+    setCreating(view === "projects" && createRequested);
 
-    if (view === "overview" || view === "projects") {
+    if (view === "overview" || view === "projects" || view === "assets" || view === "favorites") {
       void fetchProjects();
     } else {
       setProjects(null);
     }
+  }, [view, fetchProjects, createRequested]);
 
+  useEffect(() => {
     if (
       view === "overview" ||
       view === "assets" ||
@@ -395,7 +425,7 @@ export default function ProjectsPage() {
     } else {
       setAssets(null);
     }
-  }, [view, fetchProjects, fetchAssets]);
+  }, [view, fetchAssets]);
 
   const createProject = async () => {
     const trimmed = name.trim();
@@ -423,6 +453,7 @@ export default function ProjectsPage() {
 
       setName("");
       setCreating(false);
+      if (createRequested) router.replace("/app/projects?view=projects", { scroll: false });
 
       await fetchProjects();
     } catch {
@@ -453,9 +484,31 @@ export default function ProjectsPage() {
     [projects]
   );
 
+  const filteredAssets = useMemo(
+    () => {
+      const useLibraryFilters = view === "assets" || view === "favorites";
+      const result = (assets ?? []).filter((asset) => {
+        if (!useLibraryFilters) return true;
+        const matchesType = assetTypeFilter === "all" || asset.type === assetTypeFilter;
+        const matchesProject = assetProjectFilter === "all" || asset.projectId === assetProjectFilter;
+        return matchesType && matchesProject;
+      });
+
+      result.sort((left, right) => {
+        if (assetSort === "type") return left.type.localeCompare(right.type);
+        const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+        const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+        return assetSort === "oldest" ? leftTime - rightTime : rightTime - leftTime;
+      });
+
+      return result;
+    },
+    [assets, assetTypeFilter, assetProjectFilter, assetSort, view]
+  );
+
   const recentAssets = useMemo(
-    () => assets?.slice(0, 12) ?? [],
-    [assets]
+    () => filteredAssets.slice(0, 12),
+    [filteredAssets]
   );
 
   const scrollProjects = (direction: "left" | "right") => {
@@ -485,30 +538,24 @@ export default function ProjectsPage() {
   return (
     <main className="h-full min-h-0 w-full overflow-y-auto bg-background p-4 sm:p-6">
       <div className="mx-auto flex w-full max-w-screen-3xl flex-col gap-6 rounded-xl bg-panel-4 p-6">
-        <header className="flex items-center justify-between gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-lg font-semibold tracking-tight">
             {pageTitle}
           </h1>
 
           {showCreateProject && (
-            <Button
-              type="button"
-              size="sm"
-              className="h-8 gap-1.5"
-              onClick={() => setCreating(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add
+            <Button type="button" size="sm" className="h-8 gap-1.5" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" /> Add project
             </Button>
           )}
         </header>
 
-        {error && (
+        {(error || projectsLoadError || assetsLoadError) && (
           <p
             role="alert"
             className="text-sm text-destructive"
           >
-            {error}
+            {error || projectsLoadError || assetsLoadError}
           </p>
         )}
 
@@ -543,6 +590,7 @@ export default function ProjectsPage() {
                     onCancel={() => {
                       setCreating(false);
                       setName("");
+                      if (createRequested) router.replace("/app/projects?view=projects", { scroll: false });
                     }}
                   />
                 </div>
@@ -561,6 +609,7 @@ export default function ProjectsPage() {
                     onCancel={() => {
                       setCreating(false);
                       setName("");
+                      if (createRequested) router.replace("/app/projects?view=projects", { scroll: false });
                     }}
                   />
 
@@ -598,12 +647,13 @@ export default function ProjectsPage() {
                   description="Generated and uploaded assets will appear here."
                 />
               ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+                <div className={assetLayoutClass(layout, columns)}>
                   {recentAssets.map((asset) => (
                     <AssetTile
                       key={asset.id}
                       asset={asset}
                       onChanged={() => void fetchAssets()}
+                      layout={layout}
                     />
                   ))}
                 </div>
@@ -636,6 +686,7 @@ export default function ProjectsPage() {
                     onCancel={() => {
                       setCreating(false);
                       setName("");
+                      if (createRequested) router.replace("/app/projects?view=projects", { scroll: false });
                     }}
                   />
 
@@ -668,16 +719,32 @@ export default function ProjectsPage() {
 
         {view === "assets" && (
           <section className="flex flex-col gap-4">
+            <AssetNavigationToolbar
+              typeFilter={assetTypeFilter}
+              onTypeFilterChange={(value: AssetNavigationTypeFilter) => setAssetTypeFilter(value)}
+              serviceFilter={assetServiceFilter}
+              onServiceFilterChange={setAssetServiceFilter}
+              layout={layout}
+              columns={columns}
+              onLayoutChange={setLayout}
+              onColumnsChange={setColumns}
+              projects={(projects ?? []).map(({ id, name }) => ({ id, name }))}
+              projectFilter={assetProjectFilter}
+              onProjectFilterChange={setAssetProjectFilter}
+              sortBy={assetSort}
+              onSortByChange={setAssetSort}
+              onCreateFolder={() => router.push("/app/projects?view=projects&create=1")}
+            />
             {assets === null ? (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+              <div className={assetLayoutClass(layout, columns)}>
                 {Array.from({ length: 12 }).map((_, index) => (
                   <Skeleton
                     key={index}
-                    className="aspect-square w-full rounded-xl"
+                    className={layout === "grid" ? "aspect-[4/3] w-full rounded-xl" : "h-24 w-full rounded-xl"}
                   />
                 ))}
               </div>
-            ) : assets.length === 0 ? (
+            ) : filteredAssets.length === 0 ? (
               <EmptyState
                 icon={
                   <ImageIcon className="h-5 w-5 text-muted-foreground" />
@@ -686,12 +753,13 @@ export default function ProjectsPage() {
                 description="Your images, videos, audio, and 3D assets will appear here."
               />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-                {assets.map((asset) => (
+              <div className={assetLayoutClass(layout, columns)}>
+                {filteredAssets.map((asset) => (
                   <AssetTile
                     key={asset.id}
                     asset={asset}
                     onChanged={() => void fetchAssets()}
+                    layout={layout}
                   />
                 ))}
               </div>
@@ -701,16 +769,32 @@ export default function ProjectsPage() {
 
         {view === "favorites" && (
           <section className="flex flex-col gap-4">
+            <AssetNavigationToolbar
+              typeFilter={assetTypeFilter}
+              onTypeFilterChange={(value: AssetNavigationTypeFilter) => setAssetTypeFilter(value)}
+              serviceFilter={assetServiceFilter}
+              onServiceFilterChange={setAssetServiceFilter}
+              layout={layout}
+              columns={columns}
+              onLayoutChange={setLayout}
+              onColumnsChange={setColumns}
+              projects={(projects ?? []).map(({ id, name }) => ({ id, name }))}
+              projectFilter={assetProjectFilter}
+              onProjectFilterChange={setAssetProjectFilter}
+              sortBy={assetSort}
+              onSortByChange={setAssetSort}
+              onCreateFolder={() => router.push("/app/projects?view=projects&create=1")}
+            />
             {assets === null ? (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+              <div className={assetLayoutClass(layout, columns)}>
                 {Array.from({ length: 12 }).map((_, index) => (
                   <Skeleton
                     key={index}
-                    className="aspect-square w-full rounded-xl"
+                    className={layout === "grid" ? "aspect-[4/3] w-full rounded-xl" : "h-24 w-full rounded-xl"}
                   />
                 ))}
               </div>
-            ) : assets.length === 0 ? (
+            ) : filteredAssets.length === 0 ? (
               <EmptyState
                 icon={
                   <span className="text-lg text-muted-foreground">
@@ -721,12 +805,13 @@ export default function ProjectsPage() {
                 description="Favorite assets will appear here."
               />
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
-                {assets.map((asset) => (
+              <div className={assetLayoutClass(layout, columns)}>
+                {filteredAssets.map((asset) => (
                   <AssetTile
                     key={asset.id}
                     asset={asset}
                     onChanged={() => void fetchAssets()}
+                    layout={layout}
                   />
                 ))}
               </div>

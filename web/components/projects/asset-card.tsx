@@ -48,7 +48,7 @@ interface AssetCardProps {
   onChanged: () => void;
   /** Optional callback for permanent deletion in Trash. */
   onDelete?: (assetId: string) => void;
-  layout?: "grid" | "list";
+  layout?: "grid" | "list" | "square";
   /** Library selection stays separate from opening the preview. */
   selected?: boolean;
   onSelect?: () => void;
@@ -144,7 +144,7 @@ export function AssetCard({
           layout === "list" && "flex min-h-32 flex-row hover:translate-y-0",
         )}
       >
-        <div className={cn("relative min-w-0 overflow-hidden bg-muted/40", layout === "list" ? "h-32 w-36 shrink-0 sm:w-52" : "aspect-[4/3]")}>
+        <div className={cn("relative min-w-0 overflow-hidden bg-muted/40", layout === "list" ? "h-32 w-36 shrink-0 sm:w-52" : layout === "square" ? "aspect-square" : "aspect-[4/3]")}>
           {asset.type === "audio" ? (
             <div className="flex h-full min-h-32 w-full flex-col items-center justify-center gap-3 p-4">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl border bg-background text-muted-foreground"><Music className="h-5 w-5" /></span>

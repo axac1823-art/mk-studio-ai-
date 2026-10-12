@@ -13,29 +13,20 @@ import {
   AssetCard,
   type AssetSummary,
 } from "@/components/projects/asset-card";
-import {
-  AssetLayoutControls,
-  assetLayoutClass,
-} from "@/components/projects/asset-layout-controls";
-import {
-  AssetServiceFilter,
-} from "@/components/projects/asset-service-filter";
+import { AssetNavigationToolbar } from "@/components/projects/asset-navigation-toolbar";
+import { assetLayoutClass } from "@/components/projects/asset-layout-controls";
 import { useAssetLayout } from "@/components/projects/use-asset-layout";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 
-type TypeFilter = "all" | "image" | "video" | "audio";
+type TypeFilter = "all" | "image" | "video" | "audio" | "3d_model";
 
 function normalizeType(value: string | null): TypeFilter {
   if (
     value === "image" ||
     value === "video" ||
-    value === "audio"
+    value === "audio" ||
+    value === "3d_model"
   ) {
     return value;
   }
@@ -101,8 +92,12 @@ export default function ProjectDetailPage({
           assets: AssetSummary[];
         };
 
+        const nextAssets = type === "3d_model"
+          ? data.assets.filter((asset) => asset.type === "3d_model")
+          : data.assets;
+
         setProjectName(data.project.name);
-        setAssets(data.assets);
+        setAssets(nextAssets);
       } catch {
         setError("Could not load this project.");
         setAssets(null);
@@ -116,43 +111,25 @@ export default function ProjectDetailPage({
   }, [fetchProject, filter, serviceFilter]);
 
   const updateFilter = (nextType: TypeFilter) => {
-    const params = new URLSearchParams(
-      searchParams.toString(),
-    );
+    const nextParams = new URLSearchParams(searchParams.toString());
 
-    if (nextType === "all") {
-      params.set("type", "all");
-    } else {
-      params.set("type", nextType);
-    }
+    if (nextType === "all") nextParams.delete("type");
+    else nextParams.set("type", nextType);
 
-    params.delete("feature");
+    nextParams.delete("feature");
 
-    const query = params.toString();
-
-    router.replace(
-      query ? `${pathname}?${query}` : pathname,
-      { scroll: false },
-    );
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   const updateServiceFilter = (nextService: string) => {
-    const params = new URLSearchParams(
-      searchParams.toString(),
-    );
+    const nextParams = new URLSearchParams(searchParams.toString());
 
-    if (nextService === "all") {
-      params.delete("feature");
-    } else {
-      params.set("feature", nextService);
-    }
+    if (nextService === "all") nextParams.delete("feature");
+    else nextParams.set("feature", nextService);
 
-    const query = params.toString();
-
-    router.replace(
-      query ? `${pathname}?${query}` : pathname,
-      { scroll: false },
-    );
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
   const deleteProject = async () => {
@@ -198,6 +175,8 @@ export default function ProjectDetailPage({
         return "Videos";
       case "audio":
         return "Audio";
+      case "3d_model":
+        return "3D models";
       default:
         return "All assets";
     }
@@ -247,33 +226,7 @@ export default function ProjectDetailPage({
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-          <Tabs
-            value={filter}
-            onValueChange={(value) =>
-              updateFilter(value as TypeFilter)
-            }
-          >
-            <TabsList>
-              <TabsTrigger value="all">
-                All
-              </TabsTrigger>
-
-              <TabsTrigger value="image">
-                Images
-              </TabsTrigger>
-
-              <TabsTrigger value="video">
-                Videos
-              </TabsTrigger>
-
-              <TabsTrigger value="audio">
-                Audio
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
+        <div className="flex justify-end border-b pb-3">
           <Button
             type="button"
             variant="ghost"
@@ -283,26 +236,22 @@ export default function ProjectDetailPage({
             className="gap-2 text-muted-foreground hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />
-            Delete
+            Delete project
           </Button>
         </div>
       </header>
 
-      {(filter === "image" || filter === "video") && (
-        <AssetServiceFilter
-          type={filter}
-          value={serviceFilter}
-          onChange={updateServiceFilter}
-        />
-      )}
-
-      <AssetLayoutControls
+      <AssetNavigationToolbar
+        typeFilter={filter}
+        onTypeFilterChange={updateFilter}
+        serviceFilter={serviceFilter}
+        onServiceFilterChange={updateServiceFilter}
         layout={layout}
         columns={columns}
         onLayoutChange={setLayout}
         onColumnsChange={setColumns}
+        onCreateFolder={() => router.push("/app/projects?view=projects&create=1")}
       />
-
       {error && (
         <p
           role="alert"
