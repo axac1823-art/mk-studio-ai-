@@ -20,7 +20,7 @@ interface SettingsAccordionProps {
 }
 
 export function SettingsAccordion({
-  label = "Customize Design",
+  label = "Design",
   materialId,
   lightingId,
   onMaterialChange,
@@ -45,11 +45,11 @@ export function SettingsAccordion({
       {isOpen && (
         <div className="flex flex-col gap-4 border-t p-3">
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Material style</span>
+            <span className="text-sm font-medium">Material style</span>
             <PresetGrid items={MATERIAL_PRESETS} value={materialId} onChange={onMaterialChange} />
           </div>
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Lighting</span>
+            <span className="text-sm font-medium">Lighting</span>
             <PresetGrid items={LIGHTING_PRESETS} value={lightingId} onChange={onLightingChange} />
           </div>
         </div>
