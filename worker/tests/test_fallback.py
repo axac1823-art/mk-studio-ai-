@@ -4,7 +4,7 @@
 
 Couvre : ordre des tentatives, fallback après erreurs, normalisation de la
 sortie, échec global (AllModelsFailedError), tri par tier de qualité,
-troncature des références, sortie vide = échec.
+compatibilité des références, sortie vide = échec.
 """
 from catalog import Candidate
 from workflows.engine import AllModelsFailedError, execute_with_fallback, order_candidates
@@ -118,8 +118,11 @@ def main() -> None:
         return {}
 
     limited = fake_candidate("limited", max_references=1, build_input=build_input_spy)
-    execute_with_fallback("print_render", [limited], base_request(), fake_adapter([], calls))
-    check(len(seen_refs) == 1 and seen_refs[0] == "ref-1", "3 références fournies -> 1 seule passée au modèle")
+    capable = fake_candidate("capable", max_references=3, build_input=build_input_spy)
+    outcome = execute_with_fallback("print_render", [limited, capable], base_request(), fake_adapter([], calls))
+    check(outcome["winner"].key == "capable", "le modèle sans capacité saute avant l'appel")
+    check(calls == ["fake/capable"], "aucun appel au modèle incompatible")
+    check(seen_refs == ["ref-1", "ref-2", "ref-3"], "les trois images référencées arrivent sans changement")
 
     print("\n[6] Sortie vide du fournisseur = échec -> fallback")
     calls = []

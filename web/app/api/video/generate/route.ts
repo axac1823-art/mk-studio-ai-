@@ -105,6 +105,19 @@ export async function POST(req: NextRequest) {
   if (mediaMeta.length > MAX_ATTACHED_MEDIA) {
     return NextResponse.json({ error: `Too many attached media (${MAX_ATTACHED_MEDIA} max).` }, { status: 400 });
   }
+  const mediaTypesByTag = new Map(mediaMeta.map((media) => [media.tag, media.type]));
+  for (const shot of payload.shots) {
+    const describedTags: string[] = shot.prompt.match(/@(img|vid)\d+/g) ?? [];
+    for (let index = 0; index < describedTags.length; index += 1) {
+      const tag = describedTags[index];
+      if (describedTags.indexOf(tag) !== index) continue;
+      const mediaKind = tag.startsWith("@img") ? "img" : "vid";
+      const expectedType = mediaKind === "img" ? "image" : "video";
+      if (mediaTypesByTag.get(tag) !== expectedType) {
+        return NextResponse.json({ error: `Description refers to an unavailable reference (${tag}). Choose an attached reference tag.` }, { status: 400 });
+      }
+    }
+  }
 
   const { dbUser: user } = await requireAuth();
   const attachedMedia: Array<{ tag: string; asset_url: string; type: "image" | "video" }> = [];

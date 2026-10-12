@@ -62,7 +62,7 @@ def _tag_key(match: re.Match) -> str:
 
 def _strip_tags(prompt: str) -> str:
     """Supprime les tags @imgN/@vidN du prompt envoyé au provider."""
-    return _TAG_RE.sub("", prompt).strip()
+    return prompt.strip()
 
 
 def _lookup_media(media_references: list[dict], tag: str) -> dict | None:
@@ -86,6 +86,29 @@ def _tagged_media_urls(prompt: str, media_references: list[dict]) -> list[str]:
         if ref and ref.get("asset_url"):
             urls.append(ref["asset_url"])
     return urls
+
+
+def _reference_map(prompt: str, media_references: list[dict]) -> str:
+    """Keep the user's @tags meaningful after resolving them to provider inputs."""
+    entries: list[str] = []
+    seen: set[str] = set()
+    for match in _TAG_RE.finditer(prompt):
+        tag = f"@{_tag_key(match)}"
+        if tag in seen:
+            continue
+        seen.add(tag)
+        ref = _lookup_media(media_references, tag)
+        if not ref:
+            continue
+        kind = "video" if match.group("type") == "vid" else "image"
+        entries.append(f"{tag} is the attached {kind} selected for this description.")
+    if not entries:
+        return ""
+    return (
+        "\n\nREFERENCE TAG MAP: Use the exact attached media named by each tag in the user's description. "
+        "The @tags below are labels for the supplied media, not literal visual content.\n"
+        + "\n".join(entries)
+    )
 
 
 def resolve_video_mode(input_: dict) -> VideoMode:
@@ -344,11 +367,10 @@ def run_multi_reference(
         return _execute_single_video("multi_reference", filtered, req, adapter_override=adapter_override)
 
     # Fallback best-effort : image_to_video avec la première image taguée.
-    first_ref = (req.get("referenceUrls") or [None])[0]
-    if not first_ref:
-        raise AllModelsFailedError("video", [{"candidateKey": "none", "ok": False, "error": "multi_reference fallback missing reference"}])
-    fallback_req = {**req, "imageUrl": first_ref, "referenceUrls": (req.get("referenceUrls") or [])[1:]}
-    return _execute_single_video("image_to_video", candidates, fallback_req, adapter_override=adapter_override)
+    raise AllModelsFailedError(
+        "multi_reference",
+        [{"candidateKey": "none", "ok": False, "error": "No configured candidate supports tagged multi-reference input."}],
+    )
 
 
 def run_video_to_video(
@@ -399,7 +421,7 @@ def run_multi_shot(
             set_video_progress(conn, job["id"], {"current": idx + 1, "total": len(shots)})
 
         prompt = _strip_tags(shot.get("prompt", ""))
-        wrapped = build_animate_prompt(scene_details=prompt)
+        wrapped = build_animate_prompt(scene_details=prompt) + _reference_map(shot.get("prompt", ""), media_refs)
         tagged_urls = _tagged_media_urls(shot.get("prompt", ""), media_refs)
 
         # Détermine l'image de départ pour ce shot.
@@ -494,10 +516,11 @@ def run(job: dict, adapter_override=None) -> None:
             if mode == "video_to_video"
             else build_video_relight_prompt(scene_details=stripped)
         )
+        prompt += _reference_map(first_prompt, media_refs)
         req = _build_request(job, prompt, {"videoUrl": video_url})
     else:
         candidates = MODEL_CATALOG.get("animate", [])
-        prompt = build_animate_prompt(scene_details=stripped)
+        prompt = build_animate_prompt(scene_details=stripped) + _reference_map(first_prompt, media_refs)
         req = _build_request(job, prompt, {
             "referenceUrls": _tagged_media_urls(first_prompt, media_refs),
         })

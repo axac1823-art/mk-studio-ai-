@@ -433,6 +433,31 @@ def _join(parts: list[str | None]) -> str:
     return ", ".join(part for part in parts if part)
 
 
+def add_image_reference_map(prompt: str, fields: dict) -> str:
+    """Associe les tags visibles dans Description à l'ordre des images envoyées."""
+    references = fields.get("referenceUrls") or []
+    reference_tags = fields.get("referenceTags") or [f"@img{index + 1}" for index in range(len(references))]
+    lines = [
+        f"{reference_tags[index]} is supplemental reference image {index + 1} in the order attached."
+        for index in range(min(len(references), len(reference_tags)))
+    ]
+    if not lines:
+        return prompt
+    source_note = (
+        " The optional source image is the untagged base input."
+        if fields.get("feature") == "text_to_image" and fields.get("imageUrl")
+        else ""
+    )
+    return (
+        prompt
+        + "\n\nREFERENCE TAG MAP: The attached reference images are supplied in the same order as this map."
+        + source_note
+        + " When the user's description mentions a tag, use that exact corresponding image as its visual reference. "
+        + "Do not substitute another reference or confuse a tagged reference with the main source image.\n"
+        + "\n".join(lines)
+    )
+
+
 def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:
     """Fonction 1 — Screenshot-to-Render."""
     return _join(

@@ -61,15 +61,21 @@ def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, 
     for candidate in candidates:
         started = time.monotonic()
         try:
+            reference_count = len(req.get("referenceUrls", []))
+            if feature == "text_to_image" and req.get("imageUrl"):
+                reference_count += 1
+            if reference_count > candidate.max_references:
+                raise ValueError(
+                    f"candidate accepts {candidate.max_references} reference images; "
+                    f"request contains {reference_count}"
+                )
             if adapter_override is not None:
                 run = adapter_override
             else:
                 run = PROVIDERS[candidate.provider].generate
-            # Tronque les références au max supporté par le candidat.
-            truncated = dict(req)
-            if candidate.max_references < len(truncated.get("referenceUrls", [])):
-                truncated["referenceUrls"] = truncated["referenceUrls"][: candidate.max_references]
-            data = run(candidate.model_id, candidate.build_input(truncated), candidate.timeout_ms)
+            # Les candidats insuffisants ont été sautés, les tags gardent ainsi leur image exacte.
+            candidate_req = dict(req)
+            data = run(candidate.model_id, candidate.build_input(candidate_req), candidate.timeout_ms)
             output_urls = candidate.extract_output(data)
             if not output_urls:
                 raise ValueError("provider returned an empty output")

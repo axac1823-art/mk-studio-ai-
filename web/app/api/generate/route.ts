@@ -151,6 +151,14 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  const submittedReferenceTags = form.getAll("referenceTag").filter((value): value is string => typeof value === "string");
+  if (submittedReferenceTags.length > 0 && submittedReferenceTags.length !== referenceFiles.length) {
+    return NextResponse.json({ error: "Reference labels do not match the attached images." }, { status: 400 });
+  }
+  const referenceTags = referenceFiles.map((_, index) => submittedReferenceTags[index] ?? `@img${index + 1}`);
+  if (referenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(referenceTags).size !== referenceTags.length) {
+    return NextResponse.json({ error: "Invalid or repeated reference labels." }, { status: 400 });
+  }
 
   const rawQuality = form.get("quality");
   const quality: QualityTier = QUALITY_TIERS.includes(rawQuality as QualityTier)
@@ -170,6 +178,10 @@ export async function POST(req: NextRequest) {
     : 1;
 
   const sceneDetails = optionalString(form, "sceneDetails")?.slice(0, SCENE_DETAILS_MAX);
+  const describedReferenceTags = sceneDetails?.match(/@img[1-9]\d*/g) ?? [];
+  if (describedReferenceTags.some((tag) => !referenceTags.includes(tag))) {
+    return NextResponse.json({ error: "Description refers to an image tag that is not attached. Update the description or add that reference." }, { status: 400 });
+  }
   const model = optionalString(form, "model"); // choix utilisateur (optionnel)
   const cameraState = parseCameraState(optionalString(form, "cameraState"));
   if (cameraState === "invalid" || (cameraState && feature !== "multi_angle")) {
@@ -233,6 +245,7 @@ export async function POST(req: NextRequest) {
       feature,
       imageUrl,
       referenceUrls,
+      referenceTags,
       quality,
       aspectRatio,
       resolution,

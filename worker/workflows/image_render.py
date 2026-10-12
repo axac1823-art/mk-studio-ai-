@@ -9,7 +9,7 @@ ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 import db
 import storage
 from catalog import MODEL_CATALOG
-from prompts import build_feature_prompt
+from prompts import add_image_reference_map, build_feature_prompt
 from workflows.common import (
     complete_job,
     fail_job,
@@ -29,7 +29,9 @@ def run(job: dict) -> None:
     with db.connect() as conn:
         mark_processing(conn, job["id"])
         try:
-            req = {**input_, "prompt": build_feature_prompt(feature, input_)}
+            prompt = build_feature_prompt(feature, input_)
+            prompt = add_image_reference_map(prompt, input_)
+            req = {**input_, "prompt": prompt}
             if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
                 # Les assets choisis dans la galerie sont des URLs du stockage
                 # worker. Normaliser en data URI pour Magic Hour, remove.bg et

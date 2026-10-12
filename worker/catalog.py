@@ -336,8 +336,9 @@ def bfl_text_to_image_input(req: dict) -> dict:
         "safety_tolerance": 2,
         "quantity": req["quantity"],
     }
-    if req.get("imageUrl"):
-        payload["input_image"] = to_base64_or_url(req["imageUrl"])
+    image_url = req.get("imageUrl") or next(iter(req.get("referenceUrls", [])), None)
+    if image_url:
+        payload["input_image"] = to_base64_or_url(image_url)
     return payload
 
 
@@ -362,7 +363,7 @@ def google_text_to_image_input(req: dict) -> dict:
     """Google text-to-image : prompt + références optionnelles."""
     return {
         "prompt": req["prompt"],
-        "images": req.get("referenceUrls", []),
+        "images": ([req["imageUrl"]] if req.get("imageUrl") else []) + req.get("referenceUrls", []),
         "quantity": req["quantity"],
     }
 
@@ -577,10 +578,10 @@ THREED_CANDIDATES: list[Candidate] = [
 # peuvent aussi servir quand une image est fournie ; ici on privilégie les
 # modèles natifs text-to-image.
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
-    Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders", "bfl", "flux-pro", 7, 5, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls),
-    Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation", "bfl", "flux-dev", 5, 3, 0, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls),
+    Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders", "bfl", "flux-pro", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls),
+    Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls),
     Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image", "openai", "gpt-image-1", 6, 8, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls),
-    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image", "google", "gemini-2.5-flash-image", 3, 3, 0, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls),
+    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image", "google", "gemini-2.5-flash-image", 3, 3, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls),
     # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
     # image de référence est fournie, car l'API Magic Hour exige une image
     # d'entrée.
