@@ -281,7 +281,7 @@ export default function VideoGeneratorPage() {
     else params.set("mode", nextWorkflow);
     const query = params.toString();
     router.replace(query ? `/app/ai-video-generator?${query}` : "/app/ai-video-generator", { scroll: false });
-  }, [router, searchParams, selectedWorkflow, state.attachedMedia, state.startImage, state.endImage]);
+  }, [router, searchParams, selectedWorkflow, state.attachedMedia, state.startImage, state.endImage, state.shots.length]);
 
   useEffect(() => {
     if (selectedWorkflow !== "multi_shot") return;

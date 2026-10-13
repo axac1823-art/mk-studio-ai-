@@ -13,20 +13,20 @@ import {
   AssetCard,
   type AssetSummary,
 } from "@/components/projects/asset-card";
-import { AssetNavigationToolbar } from "@/components/projects/asset-navigation-toolbar";
+import { AssetSelectionToolbar } from "@/components/projects/asset-selection-toolbar";
 import { assetLayoutClass } from "@/components/projects/asset-layout-controls";
+import { AssetLibraryToolbar } from "@/components/projects/asset-library-toolbar";
 import { useAssetLayout } from "@/components/projects/use-asset-layout";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type TypeFilter = "all" | "image" | "video" | "audio" | "3d_model";
+type TypeFilter = "all" | "image" | "video" | "audio";
 
 function normalizeType(value: string | null): TypeFilter {
   if (
     value === "image" ||
     value === "video" ||
-    value === "audio" ||
-    value === "3d_model"
+    value === "audio"
   ) {
     return value;
   }
@@ -48,6 +48,7 @@ export default function ProjectDetailPage({
 
   const [projectName, setProjectName] = useState<string | null>(null);
   const [assets, setAssets] = useState<AssetSummary[] | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -92,12 +93,11 @@ export default function ProjectDetailPage({
           assets: AssetSummary[];
         };
 
-        const nextAssets = type === "3d_model"
-          ? data.assets.filter((asset) => asset.type === "3d_model")
-          : data.assets;
-
         setProjectName(data.project.name);
-        setAssets(nextAssets);
+        setAssets(data.assets);
+        setSelectedAssetIds((current) =>
+          current.filter((id) => data.assets.some((asset) => asset.id === id)),
+        );
       } catch {
         setError("Could not load this project.");
         setAssets(null);
@@ -110,26 +110,26 @@ export default function ProjectDetailPage({
     void fetchProject(filter, serviceFilter);
   }, [fetchProject, filter, serviceFilter]);
 
-  const updateFilter = (nextType: TypeFilter) => {
+  /** Keep the existing URL-driven type + service filter behavior. */
+  const updateAssetFilters = (nextType: TypeFilter, nextService: string) => {
     const nextParams = new URLSearchParams(searchParams.toString());
 
-    if (nextType === "all") nextParams.delete("type");
-    else nextParams.set("type", nextType);
+    if (nextType === "all") {
+      nextParams.delete("type");
+    } else {
+      nextParams.set("type", nextType);
+    }
 
-    nextParams.delete("feature");
-
-    const query = nextParams.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
-
-  const updateServiceFilter = (nextService: string) => {
-    const nextParams = new URLSearchParams(searchParams.toString());
-
-    if (nextService === "all") nextParams.delete("feature");
-    else nextParams.set("feature", nextService);
+    if (nextService === "all") {
+      nextParams.delete("feature");
+    } else {
+      nextParams.set("feature", nextService);
+    }
 
     const query = nextParams.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
   };
 
   const deleteProject = async () => {
@@ -175,24 +175,55 @@ export default function ProjectDetailPage({
         return "Videos";
       case "audio":
         return "Audio";
-      case "3d_model":
-        return "3D models";
       default:
         return "All assets";
     }
   }, [filter]);
 
+  const toggleSelected = useCallback(
+    (assetId: string, shiftKey: boolean) => {
+      setSelectedAssetIds((prev) => {
+        if (shiftKey && prev.length > 0 && assets) {
+          const lastSelectedId = prev[prev.length - 1];
+          const lastIndex = assets.findIndex((a) => a.id === lastSelectedId);
+          const currentIndex = assets.findIndex((a) => a.id === assetId);
+          if (lastIndex !== -1 && currentIndex !== -1) {
+            const start = Math.min(lastIndex, currentIndex);
+            const end = Math.max(lastIndex, currentIndex);
+            const rangeIds = assets.slice(start, end + 1).map((a) => a.id);
+            const next = new Set([...prev, ...rangeIds]);
+            return Array.from(next);
+          }
+        }
+        return prev.includes(assetId)
+          ? prev.filter((id) => id !== assetId)
+          : [...prev, assetId];
+      });
+    },
+    [assets],
+  );
+
+  const handleSelectAll = useCallback(() => {
+    if (!assets) return;
+    if (selectedAssetIds.length === assets.length) {
+      setSelectedAssetIds([]);
+    } else {
+      setSelectedAssetIds(assets.map((a) => a.id));
+    }
+  }, [assets, selectedAssetIds.length]);
+
+  const selectedAssets = useMemo(
+    () => (assets ?? []).filter((asset) => selectedAssetIds.includes(asset.id)),
+    [assets, selectedAssetIds],
+  );
+
   return (
     <main className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-6 px-4 py-5 sm:px-6 lg:px-8">
-      {/* Header */}
       <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-sm font-semibold">
-              {projectName
-                ?.trim()
-                .charAt(0)
-                .toUpperCase() || "P"}
+              {projectName?.trim().charAt(0).toUpperCase() || "P"}
             </div>
 
             <div className="min-w-0">
@@ -224,16 +255,14 @@ export default function ProjectDetailPage({
               </p>
             </div>
           </div>
-        </div>
 
-        <div className="flex justify-end border-b pb-3">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             disabled={deleting}
             onClick={() => void deleteProject()}
-            className="gap-2 text-muted-foreground hover:text-destructive"
+            className="shrink-0 gap-2 text-muted-foreground hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />
             Delete project
@@ -241,30 +270,33 @@ export default function ProjectDetailPage({
         </div>
       </header>
 
-      <AssetNavigationToolbar
-        typeFilter={filter}
-        onTypeFilterChange={updateFilter}
-        serviceFilter={serviceFilter}
-        onServiceFilterChange={updateServiceFilter}
+      {/* Magnific-inspired Filter / Layout / Add controls. */}
+      <AssetLibraryToolbar
+        type={filter}
+        service={serviceFilter}
         layout={layout}
         columns={columns}
+        onFilterChange={updateAssetFilters}
         onLayoutChange={setLayout}
         onColumnsChange={setColumns}
-        onCreateFolder={() => router.push("/app/projects?view=projects&create=1")}
       />
+
+      <AssetSelectionToolbar
+        selectedAssets={selectedAssets}
+        totalCount={assets?.length ?? 0}
+        onSelectAll={handleSelectAll}
+        onClear={() => setSelectedAssetIds([])}
+        onChanged={() => void fetchProject(filter, serviceFilter)}
+      />
+
       {error && (
-        <p
-          role="alert"
-          className="text-sm text-destructive"
-        >
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
 
       {assets === null ? (
-        <div
-          className={assetLayoutClass(layout, columns)}
-        >
+        <div className={assetLayoutClass(layout, columns)}>
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton
               key={index}
@@ -282,40 +314,28 @@ export default function ProjectDetailPage({
             <FolderEmptyIcon />
           </div>
 
-          <p className="mt-4 text-sm font-medium">
-            No assets found
-          </p>
+          <p className="mt-4 text-sm font-medium">No assets found</p>
 
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
             There are no assets matching this filter in this project yet.
           </p>
 
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="mt-4"
-          >
-            <Link href="/app/ai-image-generator">
-              Start a render
-            </Link>
+          <Button asChild variant="outline" size="sm" className="mt-4">
+            <Link href="/app/ai-image-generator">Start a render</Link>
           </Button>
         </div>
       ) : (
-        <div
-          className={assetLayoutClass(layout, columns)}
-        >
+        <div className={assetLayoutClass(layout, columns)}>
           {assets.map((asset) => (
             <AssetCard
               key={asset.id}
               asset={asset}
               layout={layout}
-              onChanged={() =>
-                void fetchProject(
-                  filter,
-                  serviceFilter,
-                )
-              }
+              selected={selectedAssetIds.includes(asset.id)}
+              selectionActive={selectedAssetIds.length > 0}
+              onToggleSelected={toggleSelected}
+              onSelect={() => toggleSelected(asset.id, false)}
+              onChanged={() => void fetchProject(filter, serviceFilter)}
             />
           ))}
         </div>

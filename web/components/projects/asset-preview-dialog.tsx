@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import Link from "next/link";
 import {
   CalendarClock,
@@ -10,10 +10,14 @@ import {
   Download,
   Image as ImageIcon,
   Loader2,
+  Scan,
   Sparkles,
   Star,
+  Trash2,
   WandSparkles,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -182,10 +186,7 @@ function formatTimestamp(value: string | null | undefined): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function serviceLabel(feature: string | null | undefined): string | null {
@@ -193,37 +194,66 @@ function serviceLabel(feature: string | null | undefined): string | null {
   return SERVICE_LABELS[feature] ?? humanize(feature);
 }
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+
+  if (navigator?.clipboard && typeof navigator.clipboard.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Insecure context or permission denied; fallback to execCommand
+    }
+  }
+
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "-9999px";
+    textArea.style.opacity = "0";
+    textArea.style.pointerEvents = "none";
+    textArea.setAttribute("readonly", "");
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    textArea.setSelectionRange(0, textArea.value.length);
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    return successful;
+  } catch {
+    return false;
+  }
+}
+
 function ProviderMark({ provider }: { provider: ProviderInfo }) {
   return (
     <span
       aria-label={`${provider.name} logo mark`}
       title={provider.name}
-      className={cn(
-        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold tracking-tight ring-1 ring-inset",
-        provider.tone,
-      )}
+      className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold tracking-tight ring-1 ring-inset", provider.tone)}
     >
       {provider.mark}
     </span>
   );
 }
 
-export function AssetPreviewDialog({
-  asset,
-  onClose,
-  onChanged,
-  createServices,
-}: AssetPreviewDialogProps) {
+export function AssetPreviewDialog({ asset, onClose, onChanged, createServices }: AssetPreviewDialogProps) {
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dragStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const [details, setDetails] = useState<AssetDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [metadataError, setMetadataError] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [promptCopied, setPromptCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
 
   const assetId = asset?.id;
   const assetUrl = asset?.url;
@@ -233,25 +263,22 @@ export function AssetPreviewDialog({
   useEffect(() => {
     if (!assetId || !assetUrl || !assetType) return;
     let cancelled = false;
-    const previewAsset: PreviewAsset = {
-      id: assetId,
-      url: assetUrl,
-      type: assetType,
-      isFavorite: assetIsFavorite,
-    };
+    const previewAsset: PreviewAsset = { id: assetId, url: assetUrl, type: assetType, isFavorite: assetIsFavorite };
     setDetails(null);
     setMetadataError(false);
     setActionError(null);
     setPromptCopied(false);
     setCopyError(false);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
     setLoading(true);
 
     fetch(`/api/assets/${encodeURIComponent(assetId)}`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = (await response.json()) as { asset?: AssetDetails };
-        if (data.asset) return data.asset;
-        throw new Error("Asset details were not returned.");
+        if (!data.asset) throw new Error("Asset details were not returned.");
+        return data.asset;
       })
       .then((data) => {
         if (!cancelled) setDetails({ ...previewAsset, ...data, url: data.url || previewAsset.url });
@@ -266,28 +293,23 @@ export function AssetPreviewDialog({
         if (!cancelled) setLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [assetId, assetUrl, assetType, assetIsFavorite]);
 
   useEffect(() => {
     if (!assetId) return;
-    const previouslyFocused = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (event.defaultPrevented) return;
         event.preventDefault();
         onClose();
         return;
       }
       if (event.key !== "Tab") return;
       const dialog = document.getElementById(titleId)?.closest('[role="dialog"]');
-      const focusable = dialog?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
+      const focusable = dialog?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
       if (!focusable?.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -317,13 +339,7 @@ export function AssetPreviewDialog({
   const tool = serviceLabel(displayed.feature);
   const actualModel = displayed.modelUsed;
   const selectedModel = displayed.selectedModel;
-  // Prefer the winner recorded by the worker. The selected model is shown only
-  // as a fallback and is explicitly labelled as not necessarily the winner.
-  const provider = actualModel
-    ? providerForModel(actualModel)
-    : selectedModel
-      ? providerForModel(selectedModel)
-      : null;
+  const provider = actualModel ? providerForModel(actualModel) : selectedModel ? providerForModel(selectedModel) : null;
   const description = displayed.description?.trim() ?? "";
   const sourceBadgeLabel = loading
     ? "Loading details…"
@@ -340,8 +356,40 @@ export function AssetPreviewDialog({
         ? "Uploaded by you"
         : "Service information unavailable";
 
+  const handleZoom = (next: number) => {
+    const value = Math.min(4, Math.max(1, Number(next.toFixed(2))));
+    setZoom(value);
+    if (value === 1) setPan({ x: 0, y: 0 });
+  };
+
+  const handleImagePointerDown = (event: ReactPointerEvent<HTMLImageElement>) => {
+    if (zoom <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStartRef.current = { x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+  };
+
+  const handleImagePointerMove = (event: ReactPointerEvent<HTMLImageElement>) => {
+    if (!dragStartRef.current || zoom <= 1) return;
+    setPan({
+      x: dragStartRef.current.panX + event.clientX - dragStartRef.current.x,
+      y: dragStartRef.current.panY + event.clientY - dragStartRef.current.y,
+    });
+  };
+
+  const handleImagePointerUp = (event: ReactPointerEvent<HTMLImageElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    dragStartRef.current = null;
+  };
+
+  const handleWheelZoom = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (displayed.type === "image" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      handleZoom(zoom + (event.deltaY < 0 ? 0.15 : -0.15));
+    }
+  };
+
   const toggleFavorite = async () => {
-    if (favoriteBusy) return;
+    if (favoriteBusy || deleteBusy) return;
     const nextFavorite = !Boolean(displayed.isFavorite);
     setFavoriteBusy(true);
     setActionError(null);
@@ -362,220 +410,183 @@ export function AssetPreviewDialog({
   };
 
   const handleDownload = async () => {
-    if (downloading) return;
+    if (downloading || deleteBusy) return;
     setDownloading(true);
+    setActionError(null);
     try {
       await saveResult(displayed.url, displayed.type);
+    } catch {
+      setActionError("Could not prepare the download. Please try again.");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (deleteBusy || favoriteBusy) return;
+    const confirmed = window.confirm("Move this asset to Trash? You can restore it later from the Trash page.");
+    if (!confirmed) return;
+    setDeleteBusy(true);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/assets/${encodeURIComponent(displayed.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isTrashed: true }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      onChanged();
+      onClose();
+    } catch {
+      setActionError("Could not move this asset to Trash. Please try again.");
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
   const handleCopyDescription = async () => {
     if (!description) return;
     setCopyError(false);
-    try {
-      await navigator.clipboard.writeText(description);
+    const success = await copyToClipboard(description);
+    if (success) {
       setPromptCopied(true);
       window.setTimeout(() => setPromptCopied(false), 1800);
-    } catch {
+    } else {
       setCopyError(true);
     }
   };
 
   return (
     <div
-      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm sm:p-5"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/75 p-2 backdrop-blur-sm sm:p-4 lg:p-5"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative flex max-h-[94dvh] w-full max-w-[1480px] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl lg:flex-row"
+        className="relative flex h-[min(94dvh,920px)] max-h-[94dvh] w-full max-w-[1480px] flex-col overflow-hidden rounded-2xl border border-border/80 bg-background shadow-2xl lg:flex-row"
       >
-        <div className="relative flex min-h-[36vh] flex-1 items-center justify-center overflow-hidden bg-neutral-950 p-3 sm:min-h-[48vh] lg:min-h-0">
+        <div
+          className="relative flex h-[34dvh] min-h-[220px] shrink-0 items-center justify-center overflow-hidden bg-neutral-950 lg:h-auto lg:min-h-0 lg:flex-1"
+          onWheel={handleWheelZoom}
+        >
           {displayed.type === "image" ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={displayed.url}
               alt={tool ? `${tool} result` : "Asset preview"}
-              className="max-h-[70dvh] w-full object-contain lg:max-h-[88dvh]"
+              draggable={false}
+              onPointerDown={handleImagePointerDown}
+              onPointerMove={handleImagePointerMove}
+              onPointerUp={handleImagePointerUp}
+              onPointerCancel={handleImagePointerUp}
+              onDoubleClick={() => handleZoom(zoom === 1 ? 2 : 1)}
+              className={cn("max-h-full max-w-full select-none object-contain transition-transform duration-100", zoom > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in")}
+              style={{ transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`, transformOrigin: "center center", touchAction: zoom > 1 ? "none" : "auto" }}
             />
           ) : displayed.type === "video" ? (
-            <video src={displayed.url} controls playsInline className="max-h-[70dvh] w-full object-contain lg:max-h-[88dvh]" />
+            <video src={displayed.url} controls playsInline className="max-h-full w-full object-contain" />
           ) : displayed.type === "audio" ? (
             <div className="w-full max-w-xl rounded-xl border border-white/15 bg-white/5 p-6 text-white">
-              <div className="mb-4 flex items-center gap-3"><Sparkles className="h-6 w-6" /><span className="font-medium">Audio preview</span></div>
+              <div className="mb-4 flex items-center gap-3"><Sparkles className="h-6 w-6" aria-hidden="true" /><span className="font-medium">Audio preview</span></div>
               <audio src={displayed.url} controls className="w-full" />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 text-white/80">
-              <ImageIcon className="h-12 w-12" />
+              <ImageIcon className="h-12 w-12" aria-hidden="true" />
               <p className="text-sm">Preview for this 3D file is not available here.</p>
             </div>
           )}
+
           <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-            <Badge variant="secondary" className="capitalize">{displayed.type === "3d_model" ? "3D model" : displayed.type}</Badge>
-            <Badge variant="outline" className="border-white/20 bg-black/45 text-white">
-              {sourceBadgeLabel}
-            </Badge>
+            <Badge variant="secondary" className="border border-white/10 bg-black/45 capitalize text-white shadow-sm backdrop-blur-md">{displayed.type === "3d_model" ? "3D model" : displayed.type}</Badge>
+            <Badge variant="outline" className="border-white/20 bg-black/45 text-white shadow-sm backdrop-blur-md">{sourceBadgeLabel}</Badge>
           </div>
+
+          {displayed.type === "image" && (
+            <div className="absolute right-3 top-3 flex items-center gap-0.5 rounded-xl border border-white/15 bg-black/55 p-1 text-white shadow-lg backdrop-blur-md" aria-label="Image zoom controls">
+              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-white hover:bg-white/15 hover:text-white" aria-label="Zoom out" title="Zoom out" onClick={() => handleZoom(zoom - 0.25)} disabled={zoom <= 1}>
+                <ZoomOut className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <span className="min-w-[46px] text-center font-mono text-[11px] tabular-nums">{Math.round(zoom * 100)}%</span>
+              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-white hover:bg-white/15 hover:text-white" aria-label="Zoom in" title="Zoom in" onClick={() => handleZoom(zoom + 0.25)} disabled={zoom >= 4}>
+                <ZoomIn className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <span className="mx-0.5 h-5 w-px bg-white/15" />
+              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 rounded-lg text-white hover:bg-white/15 hover:text-white" aria-label="Fit image to view" title="Fit image" onClick={() => handleZoom(1)} disabled={zoom === 1 && pan.x === 0 && pan.y === 0}>
+                <Scan className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          )}
+          {displayed.type === "image" && zoom > 1 && <p className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-black/55 px-3 py-1.5 text-[11px] text-white/85 backdrop-blur-md">Drag to inspect details · Ctrl/⌘ + scroll to zoom</p>}
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col overflow-y-auto border-t lg:w-[340px] lg:border-l lg:border-t-0 xl:w-[370px]">
-          <header className="flex items-start justify-between gap-3 border-b px-5 py-4">
+        <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden border-t lg:w-[370px] lg:flex-none lg:border-l lg:border-t-0 xl:w-[400px]">
+          <header className="flex shrink-0 items-start justify-between gap-3 px-4 pb-3 pt-4 sm:px-5">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Asset details</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Asset workspace</p>
               <h2 id={titleId} className="mt-1 truncate text-base font-semibold tracking-tight">{tool ?? (displayed.source === "generated" ? "Generated asset" : "Uploaded source")}</h2>
               <p className="mt-1 text-xs text-muted-foreground">ID · {displayed.id.slice(0, 8)}</p>
             </div>
-            <Button ref={closeButtonRef} type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={onClose} aria-label="Close image preview">
-              <X className="h-4 w-4" />
+            <Button ref={closeButtonRef} type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-lg" onClick={onClose} aria-label="Close asset preview">
+              <X className="h-4 w-4" aria-hidden="true" />
             </Button>
           </header>
 
-          <div className="flex flex-col gap-5 p-5">
-            {loading && (
-              <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading provenance…
-              </p>
-            )}
-            {metadataError && (
-              <p role="status" className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                The media is available, but its full generation details could not be loaded.
-              </p>
-            )}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="flex flex-col gap-5 p-4 sm:p-5">
+              {loading && <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Loading provenance…</p>}
+              {metadataError && <p role="status" className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">The media is available, but its full generation details could not be loaded.</p>}
 
-            <section className="flex flex-col gap-3" aria-label="Creation information">
-              <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><WandSparkles className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-muted-foreground">Service used</p>
-                  <p className="mt-0.5 text-sm font-medium">{tool ?? serviceFallback}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {displayed.source === "generated"
-                      ? "Read from the saved generation record."
-                      : displayed.source === "upload"
-                        ? "This file has no linked AI generation record."
-                        : "The provenance record has not been loaded or is unavailable."}
-                  </p>
+              <section className="flex flex-col gap-3" aria-label="Creation information">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><WandSparkles className="h-4 w-4" aria-hidden="true" /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground">Service used</p>
+                    <p className="mt-0.5 text-sm font-medium">{tool ?? serviceFallback}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{displayed.source === "generated" ? "Read from the saved generation record." : displayed.source === "upload" ? "This file has no linked AI generation record." : "The provenance record has not been loaded or is unavailable."}</p>
+                  </div>
                 </div>
-              </div>
-
-              <div className="h-px bg-border" />
-
-              <div className="flex items-start gap-3">
-                {provider ? (
-                  <ProviderMark provider={provider} />
-                ) : (
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><Sparkles className="h-4 w-4" /></span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-muted-foreground">AI model used</p>
-                  {actualModel ? (
-                    <>
-                      <p className="mt-0.5 break-words text-sm font-medium">{modelLabel(actualModel)}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{provider?.name ?? "Provider not identified"}</p>
-                    </>
-                  ) : selectedModel ? (
-                    <>
-                      <p className="mt-0.5 break-words text-sm font-medium">{modelLabel(selectedModel)}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Selected model · actual fallback model not recorded</p>
-                    </>
-                  ) : (
-                    <p className="mt-0.5 text-sm font-medium">{displayed.source === "generated" ? "Model not recorded" : displayed.source === "upload" ? "Not AI-generated" : "Model information unavailable"}</p>
-                  )}
-                  {provider && <p className="mt-2 text-[10px] leading-4 text-muted-foreground">Provider mark shown from the recorded model family.</p>}
+                <div className="h-px bg-border" />
+                <div className="flex items-start gap-3">
+                  {provider ? <ProviderMark provider={provider} /> : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><Sparkles className="h-4 w-4" aria-hidden="true" /></span>}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground">AI model used</p>
+                    {actualModel ? <><p className="mt-0.5 break-words text-sm font-medium">{modelLabel(actualModel)}</p><p className="mt-1 text-xs text-muted-foreground">{provider?.name ?? "Provider not identified"}</p></> : selectedModel ? <><p className="mt-0.5 break-words text-sm font-medium">{modelLabel(selectedModel)}</p><p className="mt-1 text-xs text-muted-foreground">Selected model · actual fallback model not recorded</p></> : <p className="mt-0.5 text-sm font-medium">{displayed.source === "generated" ? "Model not recorded" : displayed.source === "upload" ? "Not AI-generated" : "Model information unavailable"}</p>}
+                    {provider && <p className="mt-2 text-[10px] leading-4 text-muted-foreground">Provider label inferred from the recorded model family.</p>}
+                  </div>
                 </div>
-              </div>
-
-              <div className="h-px bg-border" />
-
-              <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><CalendarClock className="h-4 w-4" /></span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-muted-foreground">Created / uploaded</p>
-                  <p className="mt-0.5 text-sm font-medium">{createdAt ?? (loading ? "Loading timestamp…" : "Timestamp unavailable")}</p>
-                  {displayed.generationCreatedAt && displayed.generationCreatedAt !== displayed.createdAt && (
-                    <p className="mt-1 text-xs text-muted-foreground">Generation started · {formatTimestamp(displayed.generationCreatedAt) ?? "Timestamp unavailable"}</p>
-                  )}
+                <div className="h-px bg-border" />
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><CalendarClock className="h-4 w-4" aria-hidden="true" /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground">Created / uploaded</p>
+                    <p className="mt-0.5 text-sm font-medium">{createdAt ?? (loading ? "Loading timestamp…" : "Timestamp unavailable")}</p>
+                    {displayed.generationCreatedAt && displayed.generationCreatedAt !== displayed.createdAt && <p className="mt-1 text-xs text-muted-foreground">Generation started · {formatTimestamp(displayed.generationCreatedAt) ?? "Timestamp unavailable"}</p>}
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <section className="rounded-xl border bg-muted/20 p-3.5" aria-label="Saved description prompt">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Description / Prompt</p>
-                  <p className="mt-1 text-xs text-muted-foreground">The text saved in the Description field for this task.</p>
+              <section className="rounded-xl border bg-muted/20 p-3.5" aria-label="Saved description prompt">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Description / Prompt</p><p className="mt-1 text-xs text-muted-foreground">The text saved in the Description field for this task.</p></div>
+                  {description && <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 px-2.5" onClick={() => void handleCopyDescription()}>{promptCopied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}{promptCopied ? "Copied" : "Copy"}</Button>}
                 </div>
-                {description && (
-                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0 gap-1.5 px-2.5" onClick={() => void handleCopyDescription()}>
-                    {promptCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    {promptCopied ? "Copied" : "Copy"}
-                  </Button>
-                )}
-              </div>
-              <div className="mt-3 max-h-44 overflow-y-auto rounded-lg border bg-background px-3 py-2.5 text-sm leading-6">
-                {description ? (
-                  <p className="whitespace-pre-wrap break-words">{description}</p>
-                ) : (
-                  <p className="text-muted-foreground">
-                    {loading
-                      ? "Loading saved description…"
-                      : displayed.source === "generated"
-                        ? "No description was saved with this generation."
-                        : "This source was uploaded manually; it has no linked generation description."}
-                  </p>
-                )}
-              </div>
-              {copyError && <p role="status" className="mt-2 text-xs text-destructive">Could not copy. Please select the text and copy it manually.</p>}
-            </section>
-
-            {actionError && <p role="alert" className="rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive">{actionError}</p>}
-
-            <div className="sticky bottom-0 mt-auto flex flex-wrap items-center gap-2 border-t bg-background pt-4">
-              {displayed.type !== "3d_model" && (
-                <Button type="button" className="h-10 flex-1 gap-2" onClick={() => void handleDownload()} disabled={downloading}>
-                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  {downloading ? "Preparing…" : `Download ${displayed.type === "video" ? "video" : displayed.type === "audio" ? "audio" : "image"}`}
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant={displayed.isFavorite ? "secondary" : "outline"}
-                className="h-10 gap-2"
-                onClick={() => void toggleFavorite()}
-                disabled={favoriteBusy}
-                aria-pressed={Boolean(displayed.isFavorite)}
-              >
-                {favoriteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Star className={cn("h-4 w-4", displayed.isFavorite && "fill-current text-primary")} />}
-                {displayed.isFavorite ? "Favorited" : "Favorite"}
-              </Button>
-              {createServices.length > 0 && (displayed.type === "image" || displayed.type === "video") && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="outline" className="h-10 gap-2">
-                      <WandSparkles className="h-4 w-4" /> Create <ChevronDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-[min(60vh,420px)] overflow-y-auto">
-                    {createServices.map(([label, route]) => {
-                      const separator = route.includes("?") ? "&" : "?";
-                      return (
-                        <DropdownMenuItem key={route} asChild>
-                          <Link href={`${route}${separator}assetId=${encodeURIComponent(displayed.id)}`}>{label}</Link>
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+                <div className="mt-3 max-h-44 overflow-y-auto rounded-lg border bg-background px-3 py-2.5 text-sm leading-6">{description ? <p className="whitespace-pre-wrap break-words select-text">{description}</p> : <p className="text-muted-foreground">{loading ? "Loading saved description…" : displayed.source === "generated" ? "No description was saved with this generation." : "This source was uploaded manually; it has no linked generation description."}</p>}</div>
+                {copyError && <p role="status" className="mt-2 text-xs text-destructive">Could not copy. Please select the text and copy it manually.</p>}
+              </section>
             </div>
           </div>
+
+          {actionError && <p role="alert" className="mx-4 mt-2 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs text-destructive sm:mx-5">{actionError}</p>}
+
+          <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t bg-background px-3 py-3 sm:px-4">
+            {displayed.type !== "3d_model" && <Button type="button" className="h-9 flex-1 gap-1.5 rounded-lg px-2.5 text-xs" onClick={() => void handleDownload()} disabled={downloading || deleteBusy}>{downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Download className="h-3.5 w-3.5" aria-hidden="true" />}{downloading ? "Preparing…" : "Download"}</Button>}
+            <Button type="button" variant={displayed.isFavorite ? "secondary" : "outline"} className="h-9 gap-1.5 rounded-lg px-2.5 text-xs" onClick={() => void toggleFavorite()} disabled={favoriteBusy || deleteBusy} aria-pressed={Boolean(displayed.isFavorite)}>{favoriteBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Star className={cn("h-3.5 w-3.5", displayed.isFavorite && "fill-current text-primary")} aria-hidden="true" />}{displayed.isFavorite ? "Saved" : "Favorite"}</Button>
+            {createServices.length > 0 && (displayed.type === "image" || displayed.type === "video") && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" className="h-9 gap-1 rounded-lg px-2.5 text-xs"><WandSparkles className="h-3.5 w-3.5" aria-hidden="true" />Create<ChevronDown className="h-3 w-3" aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="max-h-[min(60vh,420px)] overflow-y-auto">{createServices.map(([label, route]) => { const separator = route.includes("?") ? "&" : "?"; return <DropdownMenuItem key={route} asChild><Link href={`${route}${separator}assetId=${encodeURIComponent(displayed.id)}`}>{label}</Link></DropdownMenuItem>; })}</DropdownMenuContent></DropdownMenu>}
+            <Button type="button" variant="outline" className="h-9 gap-1.5 rounded-lg border-destructive/30 px-2.5 text-xs text-destructive hover:bg-destructive/5 hover:text-destructive" onClick={() => void handleDelete()} disabled={deleteBusy || favoriteBusy} aria-label="Delete asset" title="Move to Trash">{deleteBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />}<span>Delete</span></Button>
+          </footer>
         </aside>
       </section>
     </div>

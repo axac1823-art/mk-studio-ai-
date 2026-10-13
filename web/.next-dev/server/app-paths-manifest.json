@@ -1,8 +1,1 @@
-{
-  "/page": "app/page.js",
-  "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/projects/route": "app/api/projects/route.js",
-  "/api/assets/route": "app/api/assets/route.js",
-  "/app/projects/page": "app/app/projects/page.js"
-}
+{}

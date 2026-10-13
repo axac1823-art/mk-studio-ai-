@@ -324,7 +324,6 @@ export function AssetLibraryToolbar({
                   })}
                 </div>
               </FilterSection>
-
               <div className="border-t border-border/70 pt-4">
                 <button type="button" aria-expanded={moreFiltersOpen} onClick={() => setMoreFiltersOpen((value) => !value)} className="flex items-center gap-1 rounded-md py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   More filters <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", moreFiltersOpen && "rotate-180")} />
