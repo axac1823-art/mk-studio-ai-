@@ -6,9 +6,13 @@ referenceUrls, quality, aspectRatio, resolution, quantity, ids de presets,
 creditCost). Sortie : un asset par image produite (fichier dans storage +
 ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 """
+import base64
+import mimetypes
+
 import db
 import storage
 from catalog import MODEL_CATALOG
+from providers import is_provider_configured
 from prompts import add_image_reference_map, build_feature_prompt
 from workflows.common import (
     complete_job,
@@ -18,6 +22,22 @@ from workflows.common import (
     store_output,
 )
 from workflows.engine import execute_with_fallback, order_candidates
+
+
+def _image_reference_to_data_uri(value: str) -> str:
+    """Read a local /storage file and turn it into a provider-ready data URI."""
+    path_value = value
+    if value.startswith("http://") or value.startswith("https://"):
+        from urllib.parse import urlparse
+        parsed = urlparse(value)
+        if parsed.path.startswith("/storage/") and parsed.hostname in {"localhost", "127.0.0.1"}:
+            path_value = parsed.path
+    if not path_value.startswith("/storage/"):
+        return value
+    file_path = storage.resolve(path_value)
+    mime = mimetypes.guess_type(file_path.name)[0] or "image/png"
+    encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
 
 
 def run(job: dict) -> None:
@@ -32,12 +52,50 @@ def run(job: dict) -> None:
             prompt = build_feature_prompt(feature, input_)
             prompt = add_image_reference_map(prompt, input_)
             req = {**input_, "prompt": prompt}
+            # References are stored as worker asset URLs to keep large image data out of the jobs row.
+            # Convert local worker assets to inline data URIs immediately before provider adapters consume them.
+            reference_urls = req.get("referenceUrls")
+            if isinstance(reference_urls, list):
+                req["referenceUrls"] = [
+                    _image_reference_to_data_uri(url) if isinstance(url, str) else url
+                    for url in reference_urls
+                ]
+            style_reference = req.get("styleReferenceUrl")
+            if isinstance(style_reference, str) and style_reference:
+                req["styleReferenceUrl"] = _image_reference_to_data_uri(style_reference)
             if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
                 # Les assets choisis dans la galerie sont des URLs du stockage
                 # worker. Normaliser en data URI pour Magic Hour, remove.bg et
                 # Gemini, qui n'acceptent pas tous une URL LAN privée.
                 req["imageUrl"] = storage.image_data_uri_if_local(req["imageUrl"])
             feature_candidates = MODEL_CATALOG[feature]
+            if feature == "text_to_image":
+                content_count = len(input_.get("referenceUrls") or [])
+                has_style_reference = bool(input_.get("styleReferenceUrl"))
+                input_count = content_count + (1 if has_style_reference else 0)
+                feature_candidates = [
+                    candidate for candidate in feature_candidates
+                    if candidate.max_references >= input_count
+                    and (not has_style_reference or candidate.supports_style_reference)
+                ]
+                # Real Auto: only configured providers are candidates. The normal
+                # quality/cost ranking still applies to the providers that are ready.
+                selected_model = input_.get("model")
+                if not selected_model or selected_model == "auto":
+                    feature_candidates = [
+                        candidate for candidate in feature_candidates
+                        if is_provider_configured(candidate.provider)
+                    ]
+                if not feature_candidates:
+                    if has_style_reference:
+                        raise ValueError(
+                            "No configured Text-to-Image provider supports the selected Style and content inputs. "
+                            "Configure a supported provider (for example OpenAI GPT Image 1 or Google Gemini 2.5 Flash Image), "
+                            "reduce the number of images, or remove Style."
+                        )
+                    raise ValueError(
+                        "No configured Text-to-Image provider supports the selected image inputs. Configure a provider or remove references."
+                    )
             if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.

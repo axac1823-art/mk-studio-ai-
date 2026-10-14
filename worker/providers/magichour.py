@@ -109,10 +109,30 @@ def _poll_project(kind: str, project_id: str, timeout_ms: int) -> str:
     )
 
 
+def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
+    """Génération text-to-image pure via Magic Hour /v1/ai-image-generator."""
+    job = post_json(
+        f"{BASE_URL}/v1/ai-image-generator",
+        _headers(),
+        {
+            "name": "renderstudio-image",
+            "model": model_id,
+            "image_count": 1,
+            "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
+            "resolution": "auto",
+            "style": {"prompt": str(input_.get("prompt") or "")},
+        },
+    )
+    job_id = job.get("id")
+    if not job_id:
+        raise ProviderError("magichour: no image id in submit response")
+    return _poll_project("image", job_id, timeout_ms)
+
+
 def _run_image_edit(model_id: str, input_: dict, timeout_ms: int) -> str:
     images = input_.get("images")
-    if not isinstance(images, list):
-        images = []
+    if not isinstance(images, list) or len(images) == 0:
+        return _run_image_generator(model_id, input_, timeout_ms)
     with ThreadPoolExecutor(max_workers=max(1, len(images))) as pool:
         file_paths = list(pool.map(_ensure_file_path, images))
     job = post_json(
@@ -122,7 +142,7 @@ def _run_image_edit(model_id: str, input_: dict, timeout_ms: int) -> str:
             "model": model_id,
             "image_count": 1,
             "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
-            "resolution": str(input_.get("resolution") or "auto"),
+            "resolution": "auto",
             "style": {"prompt": str(input_.get("prompt") or "")},
             "assets": {"image_file_paths": file_paths},
         },

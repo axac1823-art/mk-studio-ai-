@@ -14,13 +14,20 @@ import type { AspectRatio, Feature, QualityTier, Resolution } from "@/lib/ai/typ
 import { requireAuth } from "@/lib/auth";
 import { computeCost, getBalance } from "@/lib/credits";
 import {
+  getAsset,
   getDefaultProject,
   getProject,
   insertJob,
   insertSourceAsset,
   markJobFailed,
 } from "@/lib/db/queries";
-import { MAX_QUANTITY, MAX_REFERENCES, SCENE_DETAILS_MAX } from "@/lib/presets";
+import {
+  MAX_QUANTITY,
+  MAX_REFERENCES,
+  MAX_REFERENCE_SIZE_BYTES,
+  MAX_TOTAL_REFERENCE_SIZE_BYTES,
+  SCENE_DETAILS_MAX,
+} from "@/lib/presets";
 import {
   WorkerNotConfiguredError,
   isWorkerConfigured,
@@ -48,7 +55,7 @@ const SUPPORTED_FEATURES: Feature[] = [
 ];
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
-const MAX_REFERENCE_SIZE = 5 * 1024 * 1024;
+const MAX_REFERENCE_SIZE = MAX_REFERENCE_SIZE_BYTES;
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
 const QUALITY_TIERS: QualityTier[] = ["standard", "pro"];
@@ -122,6 +129,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This feature is not available yet." }, { status: 400 });
   }
 
+  const { dbUser: user } = await requireAuth();
+
   const image = form.get("image");
   const imageUrlField = form.get("imageUrl");
   const hasImageUrl =
@@ -136,28 +145,111 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const referenceFiles = form
-    .getAll("reference")
-    .filter((value): value is File => value instanceof File && value.size > 0);
-  if (referenceFiles.length > MAX_REFERENCES) {
+  const rawReferenceMetadata = form
+    .getAll("referenceMeta")
+    .filter((value): value is string => typeof value === "string");
+  const referenceItems: Array<{
+    tag: string;
+    file?: File;
+    assetId?: string;
+    storagePath?: string;
+  }> = [];
+
+  if (rawReferenceMetadata.length > 0) {
+    for (let position = 0; position < rawReferenceMetadata.length; position += 1) {
+      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown };
+      try {
+        metadata = JSON.parse(rawReferenceMetadata[position]) as typeof metadata;
+      } catch {
+        return NextResponse.json({ error: "Invalid reference metadata." }, { status: 400 });
+      }
+      const tag = typeof metadata.tag === "string" ? metadata.tag : "";
+      const itemIndex = typeof metadata.index === "number" && Number.isInteger(metadata.index)
+        ? metadata.index
+        : position;
+      if (itemIndex < 0 || itemIndex >= MAX_REFERENCES) {
+        return NextResponse.json({ error: "Invalid image input index." }, { status: 400 });
+      }
+
+      if (metadata.source === "upload") {
+        const file = form.get(`referenceFile_${itemIndex}`);
+        if (!(file instanceof File)) {
+          return NextResponse.json({ error: "An image input is missing its file." }, { status: 400 });
+        }
+        referenceItems.push({ tag, file });
+      } else if (metadata.source === "asset" && typeof metadata.assetId === "string") {
+        const asset = await getAsset(user.id, metadata.assetId);
+        if (!asset || asset.is_trashed || asset.type !== "image") {
+          return NextResponse.json({ error: "One of the selected project images is unavailable." }, { status: 400 });
+        }
+        referenceItems.push({ tag, assetId: metadata.assetId, storagePath: asset.storage_path });
+      } else {
+        return NextResponse.json({ error: "Invalid image input source." }, { status: 400 });
+      }
+    }
+  } else {
+    // Backwards-compatible parser for existing studio tools using form field reference.
+    const legacyFiles = form
+      .getAll("reference")
+      .filter((value): value is File => value instanceof File && value.size > 0);
+    const submittedTags = form.getAll("referenceTag").filter((value): value is string => typeof value === "string");
+    if (submittedTags.length > 0 && submittedTags.length !== legacyFiles.length) {
+      return NextResponse.json({ error: "Reference labels do not match the attached images." }, { status: 400 });
+    }
+    legacyFiles.forEach((file, index) => {
+      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, file });
+    });
+  }
+
+  // Style is deliberately a separate input; it is not silently treated as @img content.
+  let styleReferenceItem: { file?: File; assetId?: string; storagePath?: string } | null = null;
+  const rawStyleReferenceMeta = form.get("styleReferenceMeta");
+  if (typeof rawStyleReferenceMeta === "string") {
+    let metadata: { source?: unknown; assetId?: unknown };
+    try {
+      metadata = JSON.parse(rawStyleReferenceMeta) as typeof metadata;
+    } catch {
+      return NextResponse.json({ error: "Invalid style reference metadata." }, { status: 400 });
+    }
+    if (metadata.source === "upload") {
+      const file = form.get("styleReferenceFile");
+      if (!(file instanceof File)) {
+        return NextResponse.json({ error: "The style reference image is missing its file." }, { status: 400 });
+      }
+      styleReferenceItem = { file };
+    } else if (metadata.source === "asset" && typeof metadata.assetId === "string") {
+      const asset = await getAsset(user.id, metadata.assetId);
+      if (!asset || asset.is_trashed || asset.type !== "image") {
+        return NextResponse.json({ error: "The selected style image is unavailable." }, { status: 400 });
+      }
+      styleReferenceItem = { assetId: metadata.assetId, storagePath: asset.storage_path };
+    } else {
+      return NextResponse.json({ error: "Invalid style reference source." }, { status: 400 });
+    }
+  }
+
+  if (referenceItems.length + (styleReferenceItem ? 1 : 0) > MAX_REFERENCES) {
+    return NextResponse.json({ error: `Too many image inputs (${MAX_REFERENCES} max including Style).` }, { status: 400 });
+  }
+  const referenceFiles = referenceItems.flatMap((item) => item.file ? [item.file] : []);
+  const styleReferenceFile = styleReferenceItem?.file;
+  if (referenceFiles.some((file) => !validImageFile(file, MAX_REFERENCE_SIZE))
+    || (styleReferenceFile && !validImageFile(styleReferenceFile, MAX_REFERENCE_SIZE))) {
     return NextResponse.json(
-      { error: `Too many reference images (${MAX_REFERENCES} max).` },
+      { error: "Invalid image input (PNG, JPEG or WebP, 100 MB max each)." },
       { status: 400 }
     );
   }
-  if (referenceFiles.some((file) => !validImageFile(file, MAX_REFERENCE_SIZE))) {
+  const totalReferenceBytes = referenceFiles.reduce((total, file) => total + file.size, 0) + (styleReferenceFile?.size ?? 0);
+  if (totalReferenceBytes > MAX_TOTAL_REFERENCE_SIZE_BYTES) {
     return NextResponse.json(
-      { error: "Invalid reference image (PNG, JPEG or WebP, 5 MB max each)." },
+      { error: "Uploaded content and style images exceed the 500 MB combined limit. Remove an image or upload smaller files." },
       { status: 400 }
     );
   }
-  const submittedReferenceTags = form.getAll("referenceTag").filter((value): value is string => typeof value === "string");
-  if (submittedReferenceTags.length > 0 && submittedReferenceTags.length !== referenceFiles.length) {
-    return NextResponse.json({ error: "Reference labels do not match the attached images." }, { status: 400 });
-  }
-  const referenceTags = referenceFiles.map((_, index) => submittedReferenceTags[index] ?? `@img${index + 1}`);
+  const referenceTags = referenceItems.map((item) => item.tag);
   if (referenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(referenceTags).size !== referenceTags.length) {
-    return NextResponse.json({ error: "Invalid or repeated reference labels." }, { status: 400 });
+    return NextResponse.json({ error: "Invalid or repeated image input labels." }, { status: 400 });
   }
 
   const rawQuality = form.get("quality");
@@ -189,7 +281,6 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Projet cible : sélection studio, sinon le projet par défaut ---
-  const { dbUser: user } = await requireAuth();
   const projectIdField = optionalString(form, "projectId");
   const project = projectIdField
     ? await getProject(user.id, projectIdField)
@@ -232,9 +323,43 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  const referenceUrls = await Promise.all(
-    referenceFiles.map(async (file) => asDataUri(Buffer.from(await file.arrayBuffer()), file.type))
-  );
+  // Store content references and Style separately. Style must never occupy the @img1 slot.
+  const referenceUrls: string[] = [];
+  let styleReferenceUrl: string | null = null;
+  try {
+    for (const reference of referenceItems) {
+      if (reference.storagePath) {
+        referenceUrls.push(reference.storagePath);
+        continue;
+      }
+      if (!reference.file) {
+        return NextResponse.json({ error: "An image input could not be read." }, { status: 400 });
+      }
+      const buffer = Buffer.from(await reference.file.arrayBuffer());
+      const storagePath = await uploadSource(buffer, reference.file.type);
+      try {
+        await insertSourceAsset({ userId: user.id, projectId: project.id, type: "image", storagePath });
+      } catch {
+        // Asset-library indexing is optional; the generation input remains valid.
+      }
+      referenceUrls.push(storagePath);
+    }
+
+    if (styleReferenceItem?.storagePath) {
+      styleReferenceUrl = styleReferenceItem.storagePath;
+    } else if (styleReferenceItem?.file) {
+      const buffer = Buffer.from(await styleReferenceItem.file.arrayBuffer());
+      const storagePath = await uploadSource(buffer, styleReferenceItem.file.type);
+      try {
+        await insertSourceAsset({ userId: user.id, projectId: project.id, type: "image", storagePath });
+      } catch {
+        // Style input stays available even if optional asset-library indexing fails.
+      }
+      styleReferenceUrl = storagePath;
+    }
+  } catch {
+    return NextResponse.json({ error: "One or more images could not be stored. Try fewer or smaller files." }, { status: 502 });
+  }
 
   // --- Création du job + démarrage côté worker ---
   const jobId = await insertJob({
@@ -246,6 +371,7 @@ export async function POST(req: NextRequest) {
       imageUrl,
       referenceUrls,
       referenceTags,
+      styleReferenceUrl: styleReferenceUrl ?? undefined,
       quality,
       aspectRatio,
       resolution,

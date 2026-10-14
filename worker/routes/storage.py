@@ -20,7 +20,7 @@ ALLOWED_TYPES = {
     "audio/x-m4a": "m4a",
     "audio/mp4": "m4a",
 }
-MAX_IMAGE_SIZE = 10 * 1024 * 1024
+MAX_IMAGE_SIZE = 100 * 1024 * 1024
 MAX_VIDEO_SIZE = 100 * 1024 * 1024
 MAX_AUDIO_SIZE = 20 * 1024 * 1024
 

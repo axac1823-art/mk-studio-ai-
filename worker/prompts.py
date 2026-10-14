@@ -434,28 +434,45 @@ def _join(parts: list[str | None]) -> str:
 
 
 def add_image_reference_map(prompt: str, fields: dict) -> str:
-    """Associe les tags visibles dans Description à l'ordre des images envoyées."""
+    """Describe independent visual inputs without assigning Style the subject role."""
     references = fields.get("referenceUrls") or []
-    reference_tags = fields.get("referenceTags") or [f"@img{index + 1}" for index in range(len(references))]
-    lines = [
-        f"{reference_tags[index]} is supplemental reference image {index + 1} in the order attached."
-        for index in range(min(len(references), len(reference_tags)))
-    ]
-    if not lines:
+    tags = fields.get("referenceTags") or [f"@img{index + 1}" for index in range(len(references))]
+    has_style = bool(fields.get("styleReferenceUrl"))
+    if not references and not has_style:
         return prompt
-    source_note = (
-        " The optional source image is the untagged base input."
-        if fields.get("feature") == "text_to_image" and fields.get("imageUrl")
-        else ""
-    )
-    return (
-        prompt
-        + "\n\nREFERENCE TAG MAP: The attached reference images are supplied in the same order as this map."
-        + source_note
-        + " When the user's description mentions a tag, use that exact corresponding image as its visual reference. "
-        + "Do not substitute another reference or confuse a tagged reference with the main source image.\n"
-        + "\n".join(lines)
-    )
+
+    lines: list[str] = []
+    if has_style:
+        lines.append(
+            "The separate Style/Filter image is input image 1 and is named @style. It is an aesthetic reference only, "
+            "not the subject image and not a composition to copy. Match its actual visual signature faithfully: overall "
+            "luminance, exposure, highlight roll-off, shadow depth, contrast curve, saturation, palette, color temperature, "
+            "texture character, material response, grain, edge treatment and rendering medium."
+        )
+    for index, tag in enumerate(tags[:len(references)]):
+        provider_index = index + (2 if has_style else 1)
+        lines.append(
+            f"{tag} is content/reference image {provider_index}; use its subject or details only as directed by the user's prompt."
+        )
+
+    if fields.get("feature") == "text_to_image" and has_style:
+        guidance = (
+            "HIGHEST-PRIORITY STYLE TRANSFER: @style must control the final image's visual treatment. Keep the requested subject, "
+            "objects and scene from the written prompt and @img content references, but make the result look as though it was "
+            "created with the same art direction as @style. Do not copy @style's subject, objects, architecture or layout unless asked. "
+            "Do not brighten, warm, whiten, increase exposure, soften shadows, boost saturation, add gloss, or convert the result to "
+            "generic photorealistic / high-key architectural imagery unless those traits are visibly present in @style. If @style is dark, "
+            "muted, low-key, cool, monochrome, matte, grainy, painterly, graphic, cinematic or high-contrast, preserve that character. "
+            "Do not insert any unrequested default lighting or color-grade."
+        )
+    elif fields.get("feature") == "text_to_image":
+        guidance = (
+            "CONTENT REFERENCE RULE: the @img labels point to content images, not hidden fixed roles. Follow the user's prompt to decide "
+            "what to retain or borrow. Do not impose a default daylight, high-key, warm, glossy or bright visual style; follow the user's description."
+        )
+    else:
+        guidance = "REFERENCE INPUT RULE: the @img labels identify their corresponding content/reference images."
+    return prompt + "\n\n" + guidance + "\n" + "\n".join(lines)
 
 
 def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:
@@ -872,37 +889,39 @@ OUTPUT:
 - Clean, natural, anti-aliased edges without visible cutout artifacts."""
 
 
-def build_text_to_image_prompt(scene_details=None) -> str:
-    """Image Generator autonome : text-to-image architectural."""
-    return _join(
-        [
+def build_text_to_image_prompt(scene_details=None, has_style_reference=False) -> str:
+    """Text-to-image prompt with no baked-in bright/daylight aesthetic."""
+    parts = [
+        (
+            "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
+            "subject, composition, camera, materials, palette, lighting, time of day, mood and visual medium. Do not assume an "
+            "unrequested style or lighting setup."
+        ),
+        (
+            "Maintain internal visual consistency: believable proportions where relevant, coherent perspective, consistent object "
+            "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
+        ),
+    ]
+    if has_style_reference:
+        parts.extend([
             (
-                "You are a senior architectural visualization director, architect and architectural photographer. "
-                "Generate a premium photorealistic architectural image from the user's description, with the design treated as if it were a real, buildable project."
+                "A dedicated Style/Filter reference is attached. Its visual appearance takes priority over generic image-quality defaults. "
+                "Reproduce its actual tonal range, brightness, contrast, shadow density, highlight behavior, saturation, palette, color cast, "
+                "surface finish, texture, edge quality and art direction. The result may be dark, subdued, cool, low-key, matte, stylized or "
+                "illustrative when that is what the reference shows."
             ),
             (
-                "Prioritize architectural coherence: believable structure, realistic proportions, correct human scale, logical circulation, "
-                "credible openings, buildable junctions, coherent floor and roof relationships, and consistent material transitions."
+                "Do not automatically make the image bright, airy, warm, sunlit, glossy, clean-white, saturated or conventionally photorealistic. "
+                "Do not add soft natural daylight, golden-hour light, ambient glow, glossy reflections or lifted shadows unless the Style image "
+                "or user's written prompt calls for them."
             ),
-            (
-                "Use sophisticated contemporary archviz language with physically based materials, realistic roughness, subtle imperfections, "
-                "accurate reflections, natural indirect illumination, contact shadows, atmospheric depth and controlled highlights."
-            ),
-            (
-                "Compose the image like professional architecture photography: intentional focal hierarchy, disciplined perspective, clean verticals, "
-                "natural lens rendering, balanced exposure and publication-quality detail."
-            ),
-            (
-                "Avoid generic AI architecture: no impossible cantilevers, random windows, disconnected stairs, floating elements, excessive ornament, "
-                "repeated furniture, malformed vegetation, inconsistent scale, surreal materials, fake reflections, excessive HDR or oversaturated colors."
-            ),
-            (
-                "Where the user's description leaves minor details unspecified, resolve them conservatively and consistently with the stated architectural concept; "
-                "do not contradict explicit dimensions, materials, program or style instructions."
-            ),
-            _sanitize_scene_details(scene_details),
-        ]
-    )
+        ])
+    else:
+        parts.append(
+            "Let the user's prompt decide the lighting and mood. Do not add default daylight, high-key exposure, warm color grading, glossy materials or artificial glow when they were not requested."
+        )
+    parts.append(_sanitize_scene_details(scene_details))
+    return _join(parts)
 
 
 def build_feature_prompt(feature: str, fields: dict) -> str:
@@ -933,7 +952,10 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
     if feature == "background_remover":
         return build_background_remover_prompt()
     if feature == "text_to_image":
-        return build_text_to_image_prompt(scene_details=details)
+        return add_image_reference_map(
+            build_text_to_image_prompt(scene_details=details, has_style_reference=bool(fields.get("styleReferenceUrl"))),
+            fields,
+        )
     return build_print_render_prompt(
         scene_details=details,
         scene_type_id=fields.get("sceneTypeId"),

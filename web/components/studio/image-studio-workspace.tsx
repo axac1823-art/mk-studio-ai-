@@ -461,12 +461,12 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
   const activeImageCost = !costsConfig
     ? 0
     : computeDisplayCost(costsConfig, {
-        feature: tab,
-        quality,
-        resolution,
-        quantity,
-        selectedModel: selectedModel || undefined,
-      });
+      feature: tab,
+      quality,
+      resolution,
+      quantity,
+      selectedModel: selectedModel || undefined,
+    });
 
   const imageAutoCost = useMemo(() => {
     if (!costsConfig) return 0;
@@ -502,13 +502,13 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
 
   const upscaleCost = costsConfig
     ? computeDisplayCost(costsConfig, {
-        feature: "upscale",
-        quality,
-        resolution: "1K",
-        quantity: 1,
-        upscaleFactor,
-        selectedModel: selectedUpscaleModel || undefined,
-      })
+      feature: "upscale",
+      quality,
+      resolution: "1K",
+      quantity: 1,
+      upscaleFactor,
+      selectedModel: selectedUpscaleModel || undefined,
+    })
     : 0;
 
 
@@ -652,38 +652,38 @@ export function ImageStudioWorkspace({ feature, showTabs = false }: ImageStudioW
                 />
               ) : (
                 <>
-                <ImageFeaturePanel
-                  previewUrl={selectedSourceAsset?.url ?? simpleTabs[tab].previewUrl}
-                  onFileSelected={(selected) => {
-                    setSelectedSourceAsset(null);
-                    updateSimpleTab(tab, {
-                      file: selected,
-                      previewUrl: URL.createObjectURL(selected),
-                    });
-                    setError(null);
-                  }}
-                  uploadOptional={tab === "text_to_image"}
-                  uploadLabel={tab === "text_to_image" ? "Source image (optional)" : "Source"}
-                  uploadTitle={uploadCopy.title}
-                  uploadDescription={uploadCopy.description}
-                  uploadAriaLabel={uploadCopy.ariaLabel}
-                  options={SIMPLE_TAB_CONFIG[tab].options}
-                  optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
-                  optionId={simpleTabs[tab].optionId}
-                  onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
-                  sceneDetails={simpleTabs[tab].sceneDetails}
-                  onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
-                  referenceTags={tab === "text_to_image"
-                    ? references.map((reference) => reference.tag)
-                    : []}
-                />
-                {tab === "text_to_image" && (
-                  <ReferencesPanel
-                    references={references}
-                    onAdd={handleAddReferences}
-                    onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
+                  <ImageFeaturePanel
+                    previewUrl={selectedSourceAsset?.url ?? simpleTabs[tab].previewUrl}
+                    onFileSelected={(selected) => {
+                      setSelectedSourceAsset(null);
+                      updateSimpleTab(tab, {
+                        file: selected,
+                        previewUrl: URL.createObjectURL(selected),
+                      });
+                      setError(null);
+                    }}
+                    uploadOptional={tab === "text_to_image"}
+                    uploadLabel={tab === "text_to_image" ? "Source image (optional)" : "Source"}
+                    uploadTitle={uploadCopy.title}
+                    uploadDescription={uploadCopy.description}
+                    uploadAriaLabel={uploadCopy.ariaLabel}
+                    options={SIMPLE_TAB_CONFIG[tab].options}
+                    optionsLabel={SIMPLE_TAB_CONFIG[tab].optionsLabel}
+                    optionId={simpleTabs[tab].optionId}
+                    onOptionChange={(id) => updateSimpleTab(tab, { optionId: id })}
+                    sceneDetails={simpleTabs[tab].sceneDetails}
+                    onSceneDetailsChange={(value) => updateSimpleTab(tab, { sceneDetails: value })}
+                    referenceTags={tab === "text_to_image"
+                      ? references.map((reference) => reference.tag)
+                      : []}
                   />
-                )}
+                  {tab === "text_to_image" && (
+                    <ReferencesPanel
+                      references={references}
+                      onAdd={handleAddReferences}
+                      onRemove={(id) => setReferences((current) => current.filter((ref) => ref.id !== id))}
+                    />
+                  )}
                 </>
               )}
             </CardContent>

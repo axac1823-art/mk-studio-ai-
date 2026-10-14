@@ -34,7 +34,7 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
       (cost_per_generation croissant), puis l'ordre du catalogue en
       tie-break. Les candidats hors tier arrivent après (fallback).
     """
-    if selected_key:
+    if selected_key and selected_key != "auto":
         return [c for c in candidates if c.key == selected_key]
 
     indexed = list(enumerate(candidates))
