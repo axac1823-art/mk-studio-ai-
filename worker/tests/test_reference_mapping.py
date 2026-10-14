@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from prompts import add_image_reference_map
+from prompts import add_image_reference_map, build_text_to_image_prompt
 from workflows.video import _reference_map
 
 
@@ -19,8 +19,8 @@ def test_image_description_tags_map_to_reference_order():
     )
 
     assert "Use @img2 for the facade material" in prompt
-    assert "@img1 is supplemental reference image 1" in prompt
-    assert "@img2 is supplemental reference image 2" in prompt
+    assert "@img1 is content/reference image 1" in prompt
+    assert "@img2 is content/reference image 2" in prompt
 
 
 def test_image_generator_source_is_separate_from_tagged_references():
@@ -34,8 +34,8 @@ def test_image_generator_source_is_separate_from_tagged_references():
         },
     )
 
-    assert "optional source image is the untagged base input" in prompt
-    assert "@img1 is supplemental reference image 1" in prompt
+    assert "CONTENT REFERENCE RULE" in prompt
+    assert "@img1 is content/reference image 1" in prompt
 
 
 def test_video_tags_are_preserved_and_explained_for_provider_prompt():
@@ -50,3 +50,37 @@ def test_video_tags_are_preserved_and_explained_for_provider_prompt():
     assert "@img2" in prompt
     assert "@img2 is the attached image" in mapped
     assert "@vid1 is the attached video" in mapped
+
+def test_image2_style_filters_are_text_only_and_preserve_subject():
+    prompt = build_text_to_image_prompt(
+        scene_details="A compact two-storey house beside an olive grove.",
+        style_filters=["inkprint", "dark"],
+    )
+    assert "#inkprint, #dark" in prompt
+    assert "carved confident contour lines" in prompt
+    assert "low-key treatment" in prompt
+    assert "not source images" in prompt
+    assert "backgrounds, overlays, or separate layers" in prompt
+
+
+def test_image2_mock_filter_is_rough_concept_not_presentation_mockup():
+    prompt = build_text_to_image_prompt(
+        scene_details="A small courtyard house with a shaded loggia.",
+        style_filters=["mock"],
+    )
+    assert "#mock" in prompt
+    assert "early-stage rough concept draft" in prompt
+    assert "not as a polished presentation mockup" in prompt
+    assert "without redesigning the architecture" in prompt
+    assert "device frame, poster, presentation board" in prompt
+
+
+def test_unknown_image2_style_filter_ids_are_ignored():
+    prompt = build_text_to_image_prompt(
+        scene_details="A simple white massing model.",
+        style_filters=["mockup", "not-a-real-filter"],
+    )
+    assert "#mockup" not in prompt
+    assert "not-a-real-filter" not in prompt
+    assert "Apply these text-only visual style filters" not in prompt
+
