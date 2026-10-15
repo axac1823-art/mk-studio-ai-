@@ -962,30 +962,38 @@ export function Image2Workspace() {
   const hasEnoughCredits =
     !costsConfig || balance === null || balance >= activeCost;
   const selectedOutputUrls = result.status === "done" ? result.outputUrls : [];
-  // Durable gallery content comes from /api/assets. The currently selected
-  // result is rendered in its dedicated "Just created" group above; keeping it
-  // out of this list prevents duplicate tiles and lets saved groups survive reloads.
-  const creationItems = useMemo<CreationFeedItem[]>(() => assets
-    .filter((asset) => asset.type === "image")
-    .map((asset) => ({
-      id: asset.id,
-      url: asset.url,
-      name: "Project image",
-      kind: asset.generationId || asset.feature ? "generated" : "project",
-      assetId: asset.id,
-      createdAt: asset.createdAt,
-      feature: asset.feature,
-      isFavorite: asset.isFavorite,
-      generationId: asset.generationId ?? null,
-      generationPrompt: asset.generationPrompt ?? null,
-      generationAspectRatio: asset.generationAspectRatio ?? null,
-      generationQuality: asset.generationQuality ?? null,
-      generationResolution: asset.generationResolution ?? null,
-      generationSelectedModel: asset.generationSelectedModel ?? null,
-      generationModelUsed: asset.generationModelUsed ?? null,
-      generationCreatedAt: asset.generationCreatedAt ?? null,
-    })),
-  [assets]);
+  // Keep images currently attached as content references in the input panel,
+  // not in the Creations gallery alongside generated results.
+  const creationItems = useMemo<CreationFeedItem[]>(() => {
+    const inputAssetIds = new Set(
+      references
+        .map((reference) => reference.assetId)
+        .filter((assetId): assetId is string => Boolean(assetId)),
+    );
+
+    return assets
+      .filter(
+        (asset) => asset.type === "image" && !inputAssetIds.has(asset.id),
+      )
+      .map((asset) => ({
+        id: asset.id,
+        url: asset.url,
+        name: "Project image",
+        kind: asset.generationId || asset.feature ? "generated" : "project",
+        assetId: asset.id,
+        createdAt: asset.createdAt,
+        feature: asset.feature,
+        isFavorite: asset.isFavorite,
+        generationId: asset.generationId ?? null,
+        generationPrompt: asset.generationPrompt ?? null,
+        generationAspectRatio: asset.generationAspectRatio ?? null,
+        generationQuality: asset.generationQuality ?? null,
+        generationResolution: asset.generationResolution ?? null,
+        generationSelectedModel: asset.generationSelectedModel ?? null,
+        generationModelUsed: asset.generationModelUsed ?? null,
+        generationCreatedAt: asset.generationCreatedAt ?? null,
+      }));
+  }, [assets, references]);
   const filteredCreationItems = useMemo(() => {
     const query = feedSearch.trim().toLowerCase();
     return creationItems.filter((item) => {
