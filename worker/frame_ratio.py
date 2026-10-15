@@ -82,15 +82,16 @@ def check_delivered_ratio(width: int, height: int, requested: str | None) -> boo
     """Validate output dimensions without modifying them.
 
     Some providers document dimension grids that approximate the requested
-    ratio by a few percent. A 3% tolerance accepts those supported outputs but
-    rejects materially different frames (for example 3:2 returned for 16:9).
+    ratio by a few percent (for example Magic Hour's 640x384 for 16:9 is ~6.25%).
+    A 7% tolerance accepts those supported outputs but rejects materially
+    different frames (for example 3:2 returned for 16:9 is ~15.6%).
     """
     target = _RATIO_VALUES.get(requested or "")
     if target is None:
         return True
 
     actual = width / height
-    matches = abs(actual - target) / target <= 0.03
+    matches = abs(actual - target) / target <= 0.07
     if not matches:
         logger.warning(
             "Image2 frame mismatch: requested %s, provider returned %dx%d (ratio %.4f)",
