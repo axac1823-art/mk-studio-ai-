@@ -911,66 +911,32 @@ IMAGE2_STYLE_FILTER_PROMPTS: dict[str, str] = {
     "cyberpunk": "Apply a restrained cyberpunk treatment through controlled cyan-and-magenta color, selective neon-like accents, cinematic contrast, cooler shadow colors, and edge reflections only where materials support them. Preserve the current scene, subject, architecture, object count, camera, and setting. Do not add neon signs, holograms, vehicles, rain, wet pavement, sci-fi buildings, or a new city background unless requested.",
 }
 
+# The provider API sets the requested frame. These short hints guide composition only;
+# they do not ask the model to crop an existing image to achieve the target ratio.
+_FRAME_NAMES: dict[str, str] = {
+    "1:1": "a square 1:1 frame",
+    "16:9": "a widescreen 16:9 landscape frame",
+    "9:16": "a vertical 9:16 portrait frame",
+    "4:3": "a 4:3 landscape frame",
+    "3:4": "a 3:4 portrait frame",
+    "3:2": "a 3:2 landscape photographic frame",
+    "2:3": "a 2:3 portrait photographic frame",
+    "21:9": "an ultra-wide 21:9 cinematic frame",
+}
+_FRAME_COMMON = (
+    "Compose the scene naturally for the requested frame. Fill the frame edge to edge; "
+    "do not add borders, letterboxing, blank margins, or padding. Keep the main subject "
+    "complete and undistorted."
+)
 IMAGE2_FRAME_SIZE_PROMPTS: dict[str, str] = {
     "auto": (
-        "Choose the most appropriate aspect ratio for the existing image "
-        "based on its original composition and subject orientation. "
-        "Preserve the complete main subject whenever possible. "
-        "Avoid unnecessary cropping, stretching, or distortion."
+        "Use the frame chosen by the image provider's native Auto setting. "
+        + _FRAME_COMMON
     ),
-
-    "1:1": (
-        "Output in a square 1:1 aspect ratio. "
-        "Fit the existing composition naturally within a square frame. "
-        "Preserve the subject's proportions. Crop only excess peripheral "
-        "content when necessary; never stretch or distort the image."
-    ),
-
-    "3:2": (
-        "Output in a 3:2 aspect ratio, suitable for standard landscape "
-        "photography. Preserve the original subject, proportions, and "
-        "composition. Adjust peripheral framing only as necessary. "
-        "Never stretch or distort the image."
-    ),
-
-    "2:3": (
-        "Output in a 2:3 aspect ratio, suitable for portrait photography. "
-        "Preserve the subject's proportions and important details. "
-        "Adjust peripheral framing only as necessary. "
-        "Never stretch or distort the image."
-    ),
-
-    "4:3": (
-        "Output in a 4:3 aspect ratio. Preserve the existing subject and "
-        "composition while fitting the image naturally within the frame. "
-        "Avoid unnecessary cropping and never stretch or distort the image."
-    ),
-
-    "3:4": (
-        "Output in a 3:4 portrait aspect ratio. Preserve the existing "
-        "subject and its proportions. Adjust the framing naturally while "
-        "keeping important details visible. Never stretch or distort the image."
-    ),
-
-    "16:9": (
-        "Output in a widescreen 16:9 aspect ratio. Preserve the original "
-        "subject and composition. Adjust peripheral framing only as necessary "
-        "to achieve the target ratio. Never stretch or distort the image."
-    ),
-
-    "9:16": (
-        "Output in a vertical 9:16 aspect ratio. Preserve the original "
-        "subject and its proportions. Keep important details visible and "
-        "adjust peripheral framing only as necessary. Never stretch or "
-        "distort the image."
-    ),
-
-    "21:9": (
-        "Output in an ultra-wide 21:9 aspect ratio. Preserve the original "
-        "subject and proportions. Fit the composition naturally into the "
-        "wide frame, adjusting peripheral framing only as necessary. "
-        "Never stretch or distort the image."
-    ),
+    **{
+        ratio: f"Compose the image for {name}. " + _FRAME_COMMON
+        for ratio, name in _FRAME_NAMES.items()
+    },
 }
 def build_text_to_image_prompt(
     scene_details=None,

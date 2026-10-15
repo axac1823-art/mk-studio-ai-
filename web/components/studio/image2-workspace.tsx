@@ -254,6 +254,7 @@ type Image2ModelOption = ModelOption & {
   maxReferences?: number;
   tiers?: string[];
   resolutions?: string[];
+  frameRatios?: string[];
   costPerGeneration?: number;
   service?: string;
 };
@@ -922,12 +923,24 @@ export function Image2Workspace() {
         : best,
     );
   }, [compatibleConfiguredModels]);
+  // Auto offers the union of frames from configured compatible models.
+  // A missing capability declaration is not treated as support.
+  const supportedFrames = useMemo<Set<string> | null>(() => {
+    if (modelOptions.length === 0) return null;
+    const source = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
+    return new Set(source.flatMap((model) => model.frameRatios ?? []));
+  }, [modelOptions.length, selectedModelOption, compatibleConfiguredModels]);
+  const frameSupported = useCallback(
+    (ratio: Image2AspectRatio) => supportedFrames === null || supportedFrames.has(ratio),
+    [supportedFrames],
+  );
   const selectedModelCanHandleImages = selectedModelOption
     ? isCompatibleWithSelectedInputs(selectedModelOption)
     : !selectedModel;
   const canGenerate =
     prompt.trim().length > 0 &&
     selectedModelCanHandleImages &&
+    frameSupported(aspectRatio) &&
     (Boolean(selectedModel) ||
       modelOptions.length === 0 ||
       compatibleConfiguredModels.length > 0);
@@ -1057,6 +1070,13 @@ export function Image2Workspace() {
       return;
     }
 
+    if (!frameSupported(aspectRatio)) {
+      const supported = Array.from(supportedFrames ?? []).join(", ") || "none";
+      setError(
+        `No compatible configured model can generate ${aspectRatio} natively. Supported frames: ${supported}.`,
+      );
+      return;
+    }
     setError(null);
     setLastGenerationMeta({
       prompt: prompt.trim(),
@@ -1122,6 +1142,8 @@ export function Image2Workspace() {
     isBusy,
     selectedModelOption,
     resolvedAutoModel,
+    frameSupported,
+    supportedFrames,
     references,
     selectedStyleFilters,
     imageInputCount,
@@ -1898,6 +1920,12 @@ export function Image2Workspace() {
                     <button
                       key={ratio}
                       type="button"
+                      disabled={!frameSupported(ratio)}
+                      title={
+                        frameSupported(ratio)
+                          ? undefined
+                          : "Not available natively with the selected model"
+                      }
                       onClick={() => {
                         setAspectRatio(ratio);
                         setAspectPickerOpen(false);
@@ -1907,6 +1935,8 @@ export function Image2Workspace() {
                         ratio === aspectRatio
                           ? "bg-[#aaa7ff]/15 text-[#d1cfff]"
                           : "text-[#d4d4db] hover:bg-white/[0.06]",
+                        !frameSupported(ratio) &&
+                          "cursor-not-allowed opacity-35 hover:bg-transparent",
                       )}
                     >
                       <span>
@@ -3053,6 +3083,11 @@ export function Image2Workspace() {
                           {model.description && (
                             <span className="mt-1.5 block line-clamp-3 text-[10px] leading-4 text-[#858892]">
                               {model.description}
+                            </span>
+                          )}
+                          {model.frameRatios && (
+                            <span className="mt-1 block text-[9px] leading-4 text-[#858892]">
+                              Supported frames: {model.frameRatios.join(" · ")}
                             </span>
                           )}
                           {!fitsReferences && (

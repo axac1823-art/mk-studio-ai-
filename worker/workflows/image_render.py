@@ -7,13 +7,12 @@ creditCost). Sortie : un asset par image produite (fichier dans storage +
 ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 """
 import base64
-import io
-import math
 import mimetypes
 
 import db
 import storage
 from PIL import Image
+from frame_ratio import check_delivered_ratio, filter_by_frame
 from catalog import MODEL_CATALOG
 from providers import is_provider_configured
 from prompts import add_image_reference_map, build_feature_prompt
@@ -43,64 +42,6 @@ def _image_reference_to_data_uri(value: str) -> str:
     return f"data:{mime};base64,{encoded}"
 
 
-def _infer_aspect_ratio(value: str | None) -> str:
-    """Infer the nearest supported frame from a reference image; default to 4:3."""
-    if not isinstance(value, str) or not value:
-        return "4:3"
-    try:
-        if value.startswith("data:") and "," in value:
-            import base64 as _base64
-            payload = value.split(",", 1)[1]
-            with Image.open(io.BytesIO(_base64.b64decode(payload))) as image:
-                source_ratio = image.width / image.height
-        else:
-            path_value = value
-            if value.startswith("http://") or value.startswith("https://"):
-                from urllib.parse import urlparse
-                parsed = urlparse(value)
-                path_value = parsed.path if parsed.path.startswith("/storage/") else ""
-            if not path_value.startswith("/storage/"):
-                return "4:3"
-            with Image.open(storage.resolve(path_value)) as image:
-                source_ratio = image.width / image.height
-        ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4}
-        return min(ratios, key=lambda key: abs(math.log(source_ratio / ratios[key])))
-    except Exception:
-        return "4:3"
-
-
-def _crop_stored_image_to_ratio(storage_path: str, aspect_ratio: str) -> None:
-    """Center-crop stored image pixels to the chosen ratio without upscaling."""
-    ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4}
-    target_ratio = ratios.get(aspect_ratio)
-    if target_ratio is None:
-        return
-    path = storage.resolve(storage_path)
-    with Image.open(path) as original:
-        image = original.copy()
-        image_format = original.format or "PNG"
-    current_ratio = image.width / image.height
-    if abs(current_ratio - target_ratio) < 0.002:
-        return
-    if current_ratio > target_ratio:
-        crop_width = max(1, min(image.width, round(image.height * target_ratio)))
-        left = (image.width - crop_width) // 2
-        image = image.crop((left, 0, left + crop_width, image.height))
-    else:
-        crop_height = max(1, min(image.height, round(image.width / target_ratio)))
-        top = (image.height - crop_height) // 2
-        image = image.crop((0, top, image.width, top + crop_height))
-    options = {"format": image_format}
-    if image_format.upper() in {"JPEG", "JPG"}:
-        if image.mode not in {"RGB", "L"}:
-            image = image.convert("RGB")
-        options["quality"] = 95
-        options["optimize"] = True
-    elif image_format.upper() == "WEBP":
-        options["quality"] = 95
-    image.save(path, **options)
-
-
 def run(job: dict) -> None:
     """Exécute le job image : prompt serveur -> candidats (filtré par modèle
     sélectionné si fourni) -> stockage des sorties -> assets + completion.
@@ -124,17 +65,6 @@ def run(job: dict) -> None:
             style_reference = req.get("styleReferenceUrl")
             if isinstance(style_reference, str) and style_reference:
                 req["styleReferenceUrl"] = _image_reference_to_data_uri(style_reference)
-            if feature == "text_to_image":
-                requested_ratio = input_.get("aspectRatio") or "4:3"
-                if requested_ratio == "auto":
-                    source_for_ratio = req.get("imageUrl")
-                    if not source_for_ratio:
-                        references_for_ratio = req.get("referenceUrls") or []
-                        source_for_ratio = references_for_ratio[0] if references_for_ratio else None
-                    req["resolvedAspectRatio"] = _infer_aspect_ratio(source_for_ratio)
-                else:
-                    req["resolvedAspectRatio"] = requested_ratio
-
             if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
                 # Les assets choisis dans la galerie sont des URLs du stockage
                 # worker. Normaliser en data URI pour Magic Hour, remove.bg et
@@ -168,6 +98,12 @@ def run(job: dict) -> None:
                     raise ValueError(
                         "No configured Text-to-Image provider supports the selected image inputs. Configure a provider or remove references."
                     )
+            if feature == "text_to_image":
+                feature_candidates = filter_by_frame(
+                    feature_candidates,
+                    input_.get("aspectRatio"),
+                    input_.get("model"),
+                )
             if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
@@ -175,9 +111,36 @@ def run(job: dict) -> None:
             candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
             outcome = execute_with_fallback(feature, candidates, req)
 
+            # Store and validate all outputs before creating asset rows. Never crop a
+            # successful provider result just to make its ratio match the selector.
+            stored_paths: list[str] = []
+            try:
+                for url in outcome["output_urls"]:
+                    path, _ext = store_output(url)
+                    stored_paths.append(path)
+                    requested_ratio = input_.get("aspectRatio") or "1:1"
+                    if feature == "text_to_image" and requested_ratio != "auto":
+                        with Image.open(storage.resolve(path)) as delivered:
+                            matches = check_delivered_ratio(
+                                delivered.width,
+                                delivered.height,
+                                requested_ratio,
+                            )
+                        if not matches:
+                            raise ValueError(
+                                f"The provider returned a frame different from the requested {requested_ratio}. "
+                                "The output was not saved; choose another compatible model and retry."
+                            )
+            except Exception:
+                for stored_path in stored_paths:
+                    try:
+                        storage.resolve(stored_path).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                raise
+
             result_asset_id = None
-            for url in outcome["output_urls"]:
-                path, _ext = store_output(url)
+            for path in stored_paths:
                 asset_id = insert_asset(conn, job, "image", path)
                 result_asset_id = result_asset_id or asset_id
 
