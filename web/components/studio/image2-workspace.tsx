@@ -883,22 +883,27 @@ export function Image2Workspace() {
     () => modelOptions.filter(isCompatibleWithSelectedInputs),
     [modelOptions, isCompatibleWithSelectedInputs],
   );
+  // Keep Auto settings consistent with models that support the selected frame.
+  const frameCompatibleModels = useMemo(
+    () => compatibleConfiguredModels.filter((model) => model.frameRatios?.includes(aspectRatio)),
+    [compatibleConfiguredModels, aspectRatio],
+  );
   // Show only settings genuinely exposed by the selected model. Auto uses the
   // intersection across configured models that can handle the selected inputs.
   const availableQualityTiers = useMemo(() => {
-    const capabilityModels = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
+    const capabilityModels = selectedModelOption ? [selectedModelOption] : frameCompatibleModels;
     if (capabilityModels.length === 0) return [QUALITY_TIERS[0]];
     const supportedIds = new Set(capabilityModels.flatMap((model) => model.tiers ?? ["standard"]));
     const supported = QUALITY_TIERS.filter((tier) => supportedIds.has(tier.id));
     return supported.length > 0 ? supported : [QUALITY_TIERS[0]];
-  }, [selectedModelOption, compatibleConfiguredModels]);
+  }, [selectedModelOption, frameCompatibleModels]);
   const availableResolutions = useMemo<Resolution[]>(() => {
-    const capabilityModels = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
+    const capabilityModels = selectedModelOption ? [selectedModelOption] : frameCompatibleModels;
     if (capabilityModels.length === 0) return ["1K"];
     return RESOLUTIONS.filter((value) =>
       capabilityModels.every((model) => (model.resolutions ?? ["1K"]).includes(value)),
     );
-  }, [selectedModelOption, compatibleConfiguredModels]);
+  }, [selectedModelOption, frameCompatibleModels]);
 
   useEffect(() => {
     if (!availableQualityTiers.some((tier) => tier.id === quality)) {
@@ -911,18 +916,19 @@ export function Image2Workspace() {
       setResolution(availableResolutions[0] ?? "1K");
     }
   }, [availableResolutions, resolution]);
-  // Résolution locale du mode Auto : le serveur choisit le candidat
-  // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
-  // catalogue en tie-break). On reproduit cette logique ici pour afficher
-  // le modèle résolu dans le bouton « Auto ».
+  // Preview the worker's Auto order using the current frame and quality tier.
   const resolvedAutoModel = useMemo<Image2ModelOption | null>(() => {
-    if (compatibleConfiguredModels.length === 0) return null;
-    return compatibleConfiguredModels.reduce((best, m) =>
-      (m.costPerGeneration ?? Infinity) < (best.costPerGeneration ?? Infinity)
-        ? m
+    if (frameCompatibleModels.length === 0) return null;
+    const matchingTier = frameCompatibleModels.filter((model) =>
+      (model.tiers ?? ["standard"]).includes(quality),
+    );
+    const candidates = matchingTier.length > 0 ? matchingTier : frameCompatibleModels;
+    return candidates.reduce((best, model) =>
+      (model.costPerGeneration ?? Infinity) < (best.costPerGeneration ?? Infinity)
+        ? model
         : best,
     );
-  }, [compatibleConfiguredModels]);
+  }, [frameCompatibleModels, quality]);
   // Auto offers the union of frames from configured compatible models.
   // A missing capability declaration is not treated as support.
   const supportedFrames = useMemo<Set<string> | null>(() => {
