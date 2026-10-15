@@ -47,6 +47,14 @@ def test_bfl_frame_dimensions_are_native_and_valid():
         assert (payload["width"], payload["height"]) == (width, height)
 
 
+def test_bfl_reference_uses_documented_api_field():
+    request = _request("4:3")
+    request["referenceUrls"] = ["data:image/png;base64,ZmFrZQ=="]
+    payload = bfl_text_to_image_input(request)
+    assert payload["image_prompt"] == "ZmFrZQ=="
+    assert "input_image" not in payload
+
+
 def test_bfl_does_not_guess_auto_dimensions():
     try:
         bfl_text_to_image_input(_request("auto"))
