@@ -944,24 +944,30 @@ def build_text_to_image_prompt(
     style_filters=None,
     aspect_ratio=None,
 ) -> str:
-    """Subject-first text-to-image prompt with optional text-only style filters and aspect ratio framing."""
-    parts = [
+    """Build a sectioned, subject-first prompt that keeps explicit user requirements salient."""
+    user_description = _sanitize_scene_details(scene_details)
+    sections = [
         (
-            "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
-            "subject, composition, camera, materials, palette, lighting, time of day, mood and visual medium. Do not assume an "
-            "unrequested style or lighting setup."
+            "TASK: Generate one coherent image of the scene requested by the user. "
+            "The user's scene specification below is the source of truth for the subject and its contents."
         ),
         (
-            "Maintain internal visual consistency: believable proportions where relevant, coherent perspective, consistent object "
-            "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
+            "FIDELITY RULES: Include every explicitly requested object and meaningful detail. "
+            "Preserve stated quantities, colors, materials, locations, directions, relative sizes and relationships. "
+            "Do not omit, replace, duplicate, merge, hide, or invent scene objects. Do not add decorative elements "
+            "that the user did not request. Keep each requested object recognizable and visible; avoid unnecessary "
+            "occlusion. If a stylistic choice conflicts with an explicit scene requirement, the scene requirement wins."
+        ),
+        "USER'S EXACT SCENE SPECIFICATION:\n" + (user_description or "(No scene description supplied.)"),
+        (
+            "VISUAL COHERENCE: Use believable proportions where relevant, coherent perspective, consistent object identity, "
+            "intentional detail hierarchy and clean rendering appropriate to the user's requested medium. "
+            "Do not impose an unrequested style, lighting setup, camera angle, or color grade."
         ),
     ]
-    user_description = _sanitize_scene_details(scene_details)
-    if user_description:
-        parts.append(user_description)
 
     if aspect_ratio and aspect_ratio in IMAGE2_FRAME_SIZE_PROMPTS:
-        parts.append(IMAGE2_FRAME_SIZE_PROMPTS[aspect_ratio])
+        sections.append("OUTPUT FRAME:\n" + IMAGE2_FRAME_SIZE_PROMPTS[aspect_ratio])
 
     selected_filters: list[str] = []
     if isinstance(style_filters, (list, tuple)):
@@ -970,30 +976,35 @@ def build_text_to_image_prompt(
                 selected_filters.append(value)
 
     if selected_filters:
-        parts.append("Apply these text-only visual style filters after interpreting the user's subject: " + ", ".join(f"#{item}" for item in selected_filters) + ".")
-        parts.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
-        parts.append(
-            "Style filters modify rendering technique, linework, texture, color treatment, shading and finish only. They are not source images, "
-            "subjects, objects, scene descriptions, backgrounds, overlays, or separate layers. Preserve the user's requested subject, composition, "
-            "object count, architectural geometry and setting. If selected styles conflict, prioritize the first selected style and keep the image readable."
+        sections.append(
+            "STYLE-ONLY MODIFIERS (apply after resolving the required scene; never change its contents): "
+            + ", ".join(f"#{item}" for item in selected_filters)
+            + "."
+        )
+        sections.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
+        sections.append(
+            "Style filters may change rendering technique, linework, texture, color treatment, shading and finish only. "
+            "They must not change the requested subject, object inventory, object count, composition, architectural geometry "
+            "or setting. If filters conflict, prioritize the first selected style while preserving every scene requirement."
         )
     elif has_style_reference:
-        # Backward compatibility for older clients that still submit a separate style image.
-        parts.extend([
+        sections.extend([
             (
-                "A separate Style reference image is attached. Treat it only as an aesthetic guide and preserve its tonal range, contrast, palette, "
-                "texture and rendering medium without copying its subject or composition unless requested."
+                "STYLE REFERENCE: Use the separate Style image only as an aesthetic guide. Match its tonal range, contrast, "
+                "palette, texture and rendering medium without copying its subject or composition unless the user asks."
             ),
             (
-                "Do not automatically brighten, warm, whiten, add gloss or force a photorealistic architectural look when the reference does not show those traits."
+                "Do not automatically brighten, warm, whiten, add gloss or force a photorealistic architectural look when "
+                "the Style image does not show those traits."
             ),
         ])
     else:
-        parts.append(
-            "Let the user's prompt decide the lighting and mood. Do not add default daylight, high-key exposure, warm color grading, glossy materials or artificial glow when they were not requested."
+        sections.append(
+            "LIGHTING AND MOOD: Follow the user's exact description. Do not add default daylight, high-key exposure, "
+            "warm color grading, glossy materials or artificial glow unless requested."
         )
-    return _join(parts)
 
+    return "\n\n".join(section for section in sections if section)
 
 def build_feature_prompt(feature: str, fields: dict) -> str:
     """Dispatch par feature — l'`option_id` générique porte le preset de la fonction."""
