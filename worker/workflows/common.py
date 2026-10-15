@@ -43,6 +43,29 @@ def _client_failure_message(err: Exception) -> str:
     if not combined.strip():
         return "No AI model is available for this feature. Configure a provider and try again."
 
+    # Preserve actionable Image2 frame errors instead of mislabeling them as provider configuration failures.
+    if any(
+        marker in combined
+        for marker in (
+            "no compatible configured model can generate",
+            "cannot generate a ",
+            "the selected model is not compatible with the chosen image inputs",
+        )
+    ):
+        return "No configured model supports this Image2 frame and input combination. Choose a supported frame or a compatible model."
+
+    if any(
+        marker in combined
+        for marker in (
+            "provider returned a frame different from the requested",
+            "image2 frame mismatch",
+        )
+    ):
+        return "The image provider returned dimensions different from the selected frame. The image was not cropped; retry with a model that supports this frame."
+
+    if "failed (422)" in combined or "failed (400)" in combined or "validation error" in combined:
+        return "The AI provider rejected the request parameters. Check whether this model supports the selected frame and attached reference images."
+
     if any(
         marker in combined
         for marker in (
