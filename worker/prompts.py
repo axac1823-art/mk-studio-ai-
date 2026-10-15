@@ -944,7 +944,7 @@ def build_text_to_image_prompt(
     style_filters=None,
     aspect_ratio=None,
 ) -> str:
-    """Build a sectioned, subject-first prompt that keeps explicit user requirements salient."""
+    """Build a sectioned, subject-first prompt that keeps user requirements salient."""
     user_description = _sanitize_scene_details(scene_details)
     sections = [
         (
@@ -984,6 +984,7 @@ def build_text_to_image_prompt(
         sections.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
         sections.append(
             "Style filters may change rendering technique, linework, texture, color treatment, shading and finish only. "
+            "They are not source images, subjects, objects, scene descriptions, backgrounds, overlays, or separate layers. "
             "They must not change the requested subject, object inventory, object count, composition, architectural geometry "
             "or setting. If filters conflict, prioritize the first selected style while preserving every scene requirement."
         )
