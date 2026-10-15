@@ -938,8 +938,6 @@ IMAGE2_FRAME_SIZE_PROMPTS: dict[str, str] = {
         for ratio, name in _FRAME_NAMES.items()
     },
 }
-
-
 def build_text_to_image_prompt(
     scene_details=None,
     has_style_reference=False,

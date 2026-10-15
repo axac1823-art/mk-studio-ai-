@@ -1083,6 +1083,7 @@ export function Image2Workspace() {
       );
       return;
     }
+
     setError(null);
     setLastGenerationMeta({
       prompt: prompt.trim(),
