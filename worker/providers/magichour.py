@@ -110,18 +110,25 @@ def _poll_project(kind: str, project_id: str, timeout_ms: int) -> str:
 
 
 def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
-    """Génération text-to-image pure via Magic Hour /v1/ai-image-generator."""
+    """Génération text-to-image via Magic Hour /v1/ai-image-generator (avec ou sans références)."""
+    payload: dict = {
+        "name": "renderstudio-image",
+        "model": model_id,
+        "image_count": 1,
+        "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
+        "resolution": "auto",
+        "style": {"prompt": str(input_.get("prompt") or "")},
+    }
+    images = input_.get("images")
+    if isinstance(images, list) and images:
+        with ThreadPoolExecutor(max_workers=max(1, len(images))) as pool:
+            file_paths = list(pool.map(_ensure_file_path, images))
+        payload["assets"] = {"image_file_paths": file_paths}
+
     job = post_json(
         f"{BASE_URL}/v1/ai-image-generator",
         _headers(),
-        {
-            "name": "renderstudio-image",
-            "model": model_id,
-            "image_count": 1,
-            "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
-            "resolution": "auto",
-            "style": {"prompt": str(input_.get("prompt") or "")},
-        },
+        payload,
     )
     job_id = job.get("id")
     if not job_id:
@@ -229,8 +236,9 @@ def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
             count = max(1, int(input_.get("quantity") or 1))
         except (TypeError, ValueError):
             count = 1
+        runner = _run_image_generator if input_.get("is_text_to_image") else _run_image_edit
         with ThreadPoolExecutor(max_workers=count) as pool:
-            urls = list(pool.map(lambda _: _run_image_edit(model_id, input_, timeout_ms), range(count)))
+            urls = list(pool.map(lambda _: runner(model_id, input_, timeout_ms), range(count)))
         return {"images": [{"url": url} for url in urls]}
     if input_.get("audioUrl"):
         return _run_lip_sync(model_id, input_, timeout_ms)
