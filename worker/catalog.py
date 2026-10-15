@@ -363,7 +363,9 @@ def bfl_text_to_image_input(req: dict) -> dict:
         references = req.get("referenceUrls") or []
         image = references[0] if references else None
     if image:
-        payload["input_image"] = to_base64_or_url(image)
+        # BFL FLUX.1 Dev / FLUX 1.1 Pro use `image_prompt` for a reference
+        # image. `input_image` is not a valid field for these endpoints.
+        payload["image_prompt"] = to_base64_or_url(image)
     return payload
 
 
