@@ -34,6 +34,15 @@ export interface DbAsset {
   is_trashed: boolean;
   trashed_at: string | null;
   created_at: string;
+  // Joined from the durable jobs.input JSON for generation-aware gallery groups.
+  generation_feature?: string | null;
+  generation_prompt?: string | null;
+  generation_aspect_ratio?: string | null;
+  generation_quality?: string | null;
+  generation_resolution?: string | null;
+  generation_selected_model?: string | null;
+  generation_model_used?: string | null;
+  generation_created_at?: string | null;
 }
 
 export interface DbJob {
@@ -340,10 +349,20 @@ export async function listAssets(
   } = {}
 ): Promise<DbAsset[]> {
   return sql<DbAsset[]>`
-    SELECT * FROM assets
-    WHERE user_id = ${userId}
-      AND (${filters.projectId ?? null}::uuid IS NULL OR project_id = ${filters.projectId ?? null}::uuid)
-      AND (${filters.type ?? null}::text IS NULL OR type = ${filters.type ?? null})
+    SELECT assets.*,
+      (SELECT j.input->>'feature' FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_feature,
+      (SELECT COALESCE(NULLIF(j.input->>'sceneDetails', ''), NULLIF(j.input->>'description', ''), NULLIF(j.input->>'prompt', ''))
+        FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_prompt,
+      (SELECT j.input->>'aspectRatio' FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_aspect_ratio,
+      (SELECT j.input->>'quality' FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_quality,
+      (SELECT j.input->>'resolution' FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_resolution,
+      (SELECT NULLIF(j.input->>'model', '') FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_selected_model,
+      (SELECT j.model_used FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_model_used,
+      (SELECT j.created_at FROM jobs j WHERE j.id = assets.generation_id LIMIT 1) AS generation_created_at
+    FROM assets
+    WHERE assets.user_id = ${userId}
+      AND (${filters.projectId ?? null}::uuid IS NULL OR assets.project_id = ${filters.projectId ?? null}::uuid)
+      AND (${filters.type ?? null}::text IS NULL OR assets.type = ${filters.type ?? null})
       AND (${filters.feature ?? null}::text IS NULL OR EXISTS (
         SELECT 1 FROM jobs j
         WHERE j.id = assets.generation_id
@@ -359,11 +378,11 @@ export async function listAssets(
         SELECT 1 FROM video_jobs v
         WHERE v.id = assets.video_job_id AND v.mode = ${filters.feature ?? null}
       )))
-      AND (${filters.favorite ?? null}::boolean IS NULL OR is_favorite = ${filters.favorite ?? null})
-      AND is_trashed = ${filters.trashed ?? false}
-      AND (${!filters.uploadsOnly}::boolean OR (generation_id IS NULL AND video_job_id IS NULL))
-      AND (${!filters.generatedOnly}::boolean OR (generation_id IS NOT NULL OR video_job_id IS NOT NULL))
-    ORDER BY created_at DESC`;
+      AND (${filters.favorite ?? null}::boolean IS NULL OR assets.is_favorite = ${filters.favorite ?? null})
+      AND assets.is_trashed = ${filters.trashed ?? false}
+      AND (${!filters.uploadsOnly}::boolean OR (assets.generation_id IS NULL AND assets.video_job_id IS NULL))
+      AND (${!filters.generatedOnly}::boolean OR (assets.generation_id IS NOT NULL OR assets.video_job_id IS NOT NULL))
+    ORDER BY assets.created_at DESC`;
 }
 
 /** Bascule favori / corbeille (trashed_at géré ici — restore remet à NULL). */

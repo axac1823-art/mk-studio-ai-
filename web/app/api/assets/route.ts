@@ -47,6 +47,14 @@ export async function GET(req: NextRequest) {
       isFavorite: asset.is_favorite,
       generationId: asset.generation_id,
       createdAt: asset.created_at,
+      feature: asset.generation_feature ?? undefined,
+      generationPrompt: asset.generation_prompt ?? null,
+      generationAspectRatio: asset.generation_aspect_ratio ?? null,
+      generationQuality: asset.generation_quality ?? null,
+      generationResolution: asset.generation_resolution ?? null,
+      generationSelectedModel: asset.generation_selected_model ?? null,
+      generationModelUsed: asset.generation_model_used ?? null,
+      generationCreatedAt: asset.generation_created_at ?? null,
     })),
   });
 }

@@ -911,9 +911,74 @@ IMAGE2_STYLE_FILTER_PROMPTS: dict[str, str] = {
     "cyberpunk": "Apply a restrained cyberpunk treatment through controlled cyan-and-magenta color, selective neon-like accents, cinematic contrast, cooler shadow colors, and edge reflections only where materials support them. Preserve the current scene, subject, architecture, object count, camera, and setting. Do not add neon signs, holograms, vehicles, rain, wet pavement, sci-fi buildings, or a new city background unless requested.",
 }
 
+IMAGE2_FRAME_SIZE_PROMPTS: dict[str, str] = {
+    "auto": (
+        "Choose the most appropriate aspect ratio for the existing image "
+        "based on its original composition and subject orientation. "
+        "Preserve the complete main subject whenever possible. "
+        "Avoid unnecessary cropping, stretching, or distortion."
+    ),
 
-def build_text_to_image_prompt(scene_details=None, has_style_reference=False, style_filters=None) -> str:
-    """Subject-first text-to-image prompt with optional text-only style filters."""
+    "1:1": (
+        "Output in a square 1:1 aspect ratio. "
+        "Fit the existing composition naturally within a square frame. "
+        "Preserve the subject's proportions. Crop only excess peripheral "
+        "content when necessary; never stretch or distort the image."
+    ),
+
+    "3:2": (
+        "Output in a 3:2 aspect ratio, suitable for standard landscape "
+        "photography. Preserve the original subject, proportions, and "
+        "composition. Adjust peripheral framing only as necessary. "
+        "Never stretch or distort the image."
+    ),
+
+    "2:3": (
+        "Output in a 2:3 aspect ratio, suitable for portrait photography. "
+        "Preserve the subject's proportions and important details. "
+        "Adjust peripheral framing only as necessary. "
+        "Never stretch or distort the image."
+    ),
+
+    "4:3": (
+        "Output in a 4:3 aspect ratio. Preserve the existing subject and "
+        "composition while fitting the image naturally within the frame. "
+        "Avoid unnecessary cropping and never stretch or distort the image."
+    ),
+
+    "3:4": (
+        "Output in a 3:4 portrait aspect ratio. Preserve the existing "
+        "subject and its proportions. Adjust the framing naturally while "
+        "keeping important details visible. Never stretch or distort the image."
+    ),
+
+    "16:9": (
+        "Output in a widescreen 16:9 aspect ratio. Preserve the original "
+        "subject and composition. Adjust peripheral framing only as necessary "
+        "to achieve the target ratio. Never stretch or distort the image."
+    ),
+
+    "9:16": (
+        "Output in a vertical 9:16 aspect ratio. Preserve the original "
+        "subject and its proportions. Keep important details visible and "
+        "adjust peripheral framing only as necessary. Never stretch or "
+        "distort the image."
+    ),
+
+    "21:9": (
+        "Output in an ultra-wide 21:9 aspect ratio. Preserve the original "
+        "subject and proportions. Fit the composition naturally into the "
+        "wide frame, adjusting peripheral framing only as necessary. "
+        "Never stretch or distort the image."
+    ),
+}
+def build_text_to_image_prompt(
+    scene_details=None,
+    has_style_reference=False,
+    style_filters=None,
+    aspect_ratio=None,
+) -> str:
+    """Subject-first text-to-image prompt with optional text-only style filters and aspect ratio framing."""
     parts = [
         (
             "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
@@ -928,6 +993,9 @@ def build_text_to_image_prompt(scene_details=None, has_style_reference=False, st
     user_description = _sanitize_scene_details(scene_details)
     if user_description:
         parts.append(user_description)
+
+    if aspect_ratio and aspect_ratio in IMAGE2_FRAME_SIZE_PROMPTS:
+        parts.append(IMAGE2_FRAME_SIZE_PROMPTS[aspect_ratio])
 
     selected_filters: list[str] = []
     if isinstance(style_filters, (list, tuple)):
@@ -989,9 +1057,11 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
     if feature == "background_remover":
         return build_background_remover_prompt()
     if feature == "text_to_image":
-        return add_image_reference_map(
-            build_text_to_image_prompt(scene_details=details, has_style_reference=bool(fields.get("styleReferenceUrl")), style_filters=fields.get("styleFilters")),
-            fields,
+        return build_text_to_image_prompt(
+            scene_details=details,
+            has_style_reference=bool(fields.get("styleReferenceUrl")),
+            style_filters=fields.get("styleFilters"),
+            aspect_ratio=fields.get("aspectRatio"),
         )
     return build_print_render_prompt(
         scene_details=details,

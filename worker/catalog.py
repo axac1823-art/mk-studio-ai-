@@ -55,6 +55,9 @@ class Candidate:
     supports_image_to_3d: bool = False
     # True only for adapters that pass images as multimodal context, not as the image being edited.
     supports_style_reference: bool = False
+    # Current text-to-image adapters expose approximately 1K output only.
+    # Do not advertise 2K/4K until an adapter really requests those sizes.
+    resolutions: tuple[str, ...] = ("1K",)
 
 
 # --- Helpers d'exposition des modèles disponibles ---
@@ -82,6 +85,7 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "provider": c.provider,
             "maxReferences": c.max_references,
             "supportsStyleReference": c.supports_style_reference,
+            "resolutions": c.resolutions,
             "configured": is_provider_configured(c.provider),
             "tiers": c.tiers,
             "supportsTextToVideo": c.supports_text_to_video,
@@ -247,10 +251,12 @@ def magichour_text_to_image_input(req: dict) -> dict:
     """Magic Hour image generation/editing : gère à la fois le text-to-image
     pur et les générations avec images de référence / Style."""
     ratio = (
-        "16:9"
-        if req["aspectRatio"] in ("16:9", "4:3")
+        "auto"
+        if req["aspectRatio"] == "auto"
+        else "16:9"
+        if req["aspectRatio"] in ("16:9", "4:3", "3:2", "21:9")
         else "9:16"
-        if req["aspectRatio"] in ("9:16", "3:4")
+        if req["aspectRatio"] in ("9:16", "3:4", "2:3")
         else "1:1"
     )
     images: list[str] = []
@@ -336,9 +342,22 @@ def google_background_removal_input(req: dict) -> dict:
 
 
 def bfl_text_to_image_input(req: dict) -> dict:
-    """BFL text-to-image with one optional image reference."""
+    """BFL text-to-image: pass actual dimensions so the selected frame is honored."""
+    ratio = req.get("resolvedAspectRatio") if req.get("aspectRatio") == "auto" else req.get("aspectRatio")
+    width, height = {
+        "1:1": (1024, 1024),
+        "16:9": (1024, 576),
+        "9:16": (576, 1024),
+        "4:3": (1024, 768),
+        "3:4": (768, 1024),
+        "3:2": (1024, 683),
+        "2:3": (683, 1024),
+        "21:9": (1024, 439),
+    }.get(ratio, (1024, 768))
     payload: dict = {
         "prompt": req["prompt"],
+        "width": width,
+        "height": height,
         "output_format": "jpeg",
         "safety_tolerance": 2,
         "quantity": req["quantity"],
@@ -355,10 +374,12 @@ def bfl_text_to_image_input(req: dict) -> dict:
 def openai_text_to_image_input(req: dict) -> dict:
     """OpenAI image generation/edit with a dedicated Style input when supplied."""
     size = (
-        "1536x1024"
-        if req["aspectRatio"] in ("16:9", "4:3")
+        "auto"
+        if req["aspectRatio"] == "auto"
+        else "1536x1024"
+        if req["aspectRatio"] in ("16:9", "4:3", "3:2", "21:9")
         else "1024x1536"
-        if req["aspectRatio"] in ("9:16", "3:4")
+        if req["aspectRatio"] in ("9:16", "3:4", "2:3")
         else "1024x1024"
     )
     images: list[str] = []
@@ -375,17 +396,20 @@ def openai_text_to_image_input(req: dict) -> dict:
     }
 
 def google_text_to_image_input(req: dict) -> dict:
-    """Google multimodal generation: keep Style explicit and ahead of content references."""
+    """Google multimodal generation: preserve Style order and pass a native ratio when selected."""
     images: list[str] = []
     style_image = req.get("styleReferenceUrl")
     if isinstance(style_image, str) and style_image:
         images.append(style_image)
     images.extend(req.get("referenceUrls") or [])
-    return {
+    payload = {
         "prompt": req["prompt"],
         "images": images,
         "quantity": req["quantity"],
     }
+    if req.get("aspectRatio") not in (None, "auto"):
+        payload["aspectRatio"] = req["aspectRatio"]
+    return payload
 
 
 # --- LE CATALOGUE ---
