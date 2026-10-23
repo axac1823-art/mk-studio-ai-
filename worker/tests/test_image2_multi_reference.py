@@ -48,6 +48,14 @@ def test_base_image_edit_prompt_maps_base_canvas_before_secondary_references():
     assert "USER'S EXACT EDIT INSTRUCTION:\nKeep the building unchanged and add the tree from @img3." in prompt
 
 
+def test_image2_base_edit_preserves_selected_style_filter():
+    prompt = build_image2_edit_prompt("Keep the building the same.", ["dark"])
+    assert "Keep the building the same." in prompt
+    assert "#dark" in prompt
+    assert "deliberate dark, low-key treatment" in prompt
+    assert "Preserve every unrequested part of the base canvas." in prompt
+
+
 def test_openai_edit_auto_ratio_does_not_force_square_output():
     payload = openai_edit_input({
         "prompt": "preserve the input framing",
