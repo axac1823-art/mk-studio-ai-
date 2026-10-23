@@ -514,14 +514,23 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
             "a referenced image merely because more than two images are attached. Do not force an "
             "unmentioned attachment into the scene or invent a role for it."
         )
-        guidance.append(
-            "BACKGROUND / BASE IMAGE: only when DESCRIPTION identifies an attachment as the "
-            "background, base, or canvas, treat that specific image as the destination scene. Preserve "
-            "its visible setting, viewpoint, framing, horizon, and all areas not requested to change, "
-            "as closely as the selected model permits. Do not replace it with a newly invented scene. "
-            "Take from other images only the elements DESCRIPTION asks to transfer; do not bring their "
-            "unrequested backgrounds or unrelated objects into the destination."
-        )
+        if has_base:
+            guidance.append(
+                "EXPLICIT BASE IMAGE: the user has marked input image 1 as the destination canvas. "
+                "Treat it as the base even when the edit description does not repeat its @img tag. "
+                "Preserve its visible setting, viewpoint, framing, horizon, and every area not requested "
+                "to change. Do not replace it with a newly invented scene. Use secondary images only for "
+                "the elements the user explicitly asks to transfer."
+            )
+        else:
+            guidance.append(
+                "BACKGROUND / BASE IMAGE: only when DESCRIPTION identifies an attachment as the "
+                "background, base, or canvas, treat that specific image as the destination scene. Preserve "
+                "its visible setting, viewpoint, framing, horizon, and all areas not requested to change, "
+                "as closely as the selected model permits. Do not replace it with a newly invented scene. "
+                "Take from other images only the elements DESCRIPTION asks to transfer; do not bring their "
+                "unrequested backgrounds or unrelated objects into the destination."
+            )
         guidance.append(
             "VISUAL IDENTITY: when DESCRIPTION asks to use the actual house, tree, product, person, "
             "or other object shown in an attachment, preserve its recognizable identity and distinguishing "
