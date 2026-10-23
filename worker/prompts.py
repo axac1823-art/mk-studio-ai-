@@ -463,15 +463,23 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         used_tags.add(tag)
 
     has_style = bool(fields.get("styleReferenceUrl"))
-    if not references and not has_style:
+    base_tag = fields.get("baseImageTag")
+    has_base = bool(base_tag and fields.get("imageUrl"))
+    if not references and not has_style and not has_base:
         return prompt
 
-    # This map is generated from the complete input list; no two-image shortcut.
+    # This map follows the adapter input order: base canvas first, then secondary references.
     manifest: list[str] = [
         "ATTACHED IMAGE MAP (complete; preserve this exact attachment order):"
     ]
     provider_index = 1
-    if has_style:
+    if has_base:
+        manifest.append(
+            f"Input image 1 is {base_tag}, the PRIMARY BASE/CANVAS image to edit. "
+            "It is the destination scene, not a loose inspiration reference."
+        )
+        provider_index = 2
+    elif has_style:
         manifest.append(
             "Input image 1 is @style, the separately designated style-reference image. "
             "It is not a content image unless DESCRIPTION explicitly says otherwise."
@@ -484,6 +492,14 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         )
 
     guidance: list[str] = []
+    if has_base:
+        guidance.append(
+            "PRIMARY BASE IMAGE IS AUTHORITATIVE: edit the exact base/canvas image identified above. "
+            "Preserve its existing setting, camera viewpoint, perspective, framing, architecture, geometry, "
+            "lighting, objects, and recognizable identity wherever the user did not explicitly request a change. "
+            "Do not replace the canvas with a newly generated scene or treat it as merely a style reference. "
+            "Use secondary @img references only for the specific elements the user asks to borrow or transfer."
+        )
     if fields.get("feature") == "text_to_image":
         guidance.append(
             "DESCRIPTION IS THE AUTHORITY: preserve the user's scene and follow every explicit "
@@ -1074,7 +1090,33 @@ def build_text_to_image_prompt(
 
     return "\n\n".join(section for section in sections if section)
 
-def build_feature_prompt(feature: str, fields: dict) -> str:
+def build_image2_edit_prompt(scene_details=None) -> str:
+    """Prompt generaliste pour editer Image2 sur une image de base explicite."""
+    details = _sanitize_scene_details(scene_details)
+    return "\n\n".join(
+        [
+            (
+                "TASK: Edit the provided primary/base image. Do not create an unrelated image from scratch. "
+                "The base image is the destination canvas and the main source of truth for the existing scene."
+            ),
+            (
+                "PRESERVE BY DEFAULT: keep the original subject identity, scene layout, camera viewpoint, "
+                "perspective, framing, background, geometry, colors, materials, lighting, and all unmentioned "
+                "objects as close to the source as the model allows. Change only what the user's instruction "
+                "explicitly asks to add, remove, move, or transform. Do not redesign or replace unrelated areas."
+            ),
+            (
+                "SECONDARY REFERENCES: use attached @img references only in the roles specified by the user. "
+                "When transferring an actual object, preserve its recognizable form and distinctive details; "
+                "integrate it into the base scene with coherent scale, perspective, occlusion, lighting, and contact shadows. "
+                "Do not copy unrelated backgrounds or objects from secondary references."
+            ),
+            "USER'S EXACT EDIT INSTRUCTION:\n" + (details or "(No edit instruction supplied.)"),
+        ]
+    )
+
+
+def build_feature_prompt(feature: str, fields: dict):
     """Dispatch par feature — l'`option_id` générique porte le preset de la fonction."""
     option_id = fields.get("optionId")
     details = fields.get("sceneDetails")
