@@ -116,6 +116,20 @@ def run(job: dict) -> None:
                 # Gemini, qui n'acceptent pas tous une URL LAN privée.
                 req["imageUrl"] = storage.image_data_uri_if_local(req["imageUrl"])
             feature_candidates = MODEL_CATALOG[routing_feature]
+            if base_image_edit:
+                # Magic Hour's edit adapter maps "auto" to 1:1, so omit it
+                # until its edit endpoint can preserve the source frame natively.
+                feature_candidates = [
+                    candidate for candidate in feature_candidates
+                    if candidate.provider != "magichour"
+                ]
+                selected_model = input_.get("model")
+                if selected_model and selected_model != "auto" and not any(
+                    candidate.key == selected_model for candidate in feature_candidates
+                ):
+                    raise ValueError(
+                        "The selected model cannot preserve the base image framing. Choose a compatible edit model."
+                    )
             if feature == "text_to_image" and not base_image_edit:
                 content_count = len(input_.get("referenceUrls") or [])
                 has_style_reference = bool(input_.get("styleReferenceUrl"))
