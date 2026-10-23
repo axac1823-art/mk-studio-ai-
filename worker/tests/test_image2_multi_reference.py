@@ -7,11 +7,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from catalog import (
     TEXT_TO_IMAGE_CANDIDATES,
     bfl_text_to_image_input,
+    openai_edit_input,
     google_text_to_image_input,
     magichour_text_to_image_input,
     openai_text_to_image_input,
 )
-from prompts import add_image_reference_map, build_text_to_image_prompt
+from prompts import add_image_reference_map, build_image2_edit_prompt, build_text_to_image_prompt
 import providers.magichour as magichour_provider
 import providers.openai as openai_provider
 
@@ -28,6 +29,35 @@ def test_reference_manifest_maps_every_attachment_not_just_the_first_two():
         assert f"{tag} is content/reference image {index}" in prompt
     assert "including the third and later images" in prompt
     assert description in prompt
+
+
+def test_base_image_edit_prompt_maps_base_canvas_before_secondary_references():
+    prompt = add_image_reference_map(
+        build_image2_edit_prompt("Keep the building unchanged and add the tree from @img3."),
+        {
+            "feature": "text_to_image",
+            "imageUrl": "base-canvas",
+            "baseImageTag": "@img1",
+            "referenceUrls": ["tree-reference"],
+            "referenceTags": ["@img3"],
+        },
+    )
+    assert "@img1, the PRIMARY BASE/CANVAS image to edit" in prompt
+    assert "@img3 is content/reference image 1 (provider input image 2" in prompt
+    assert "PRIMARY BASE IMAGE IS AUTHORITATIVE" in prompt
+    assert "USER'S EXACT EDIT INSTRUCTION:\nKeep the building unchanged and add the tree from @img3." in prompt
+
+
+def test_openai_edit_auto_ratio_does_not_force_square_output():
+    payload = openai_edit_input({
+        "prompt": "preserve the input framing",
+        "imageUrl": "data:image/png;base64,YQ==",
+        "referenceUrls": [],
+        "aspectRatio": "auto",
+        "quality": "standard",
+        "quantity": 1,
+    })
+    assert payload["size"] == "auto"
 
 
 def test_reference_map_preserves_gapped_ui_tags_after_removal():
@@ -111,7 +141,7 @@ def test_magichour_uses_editor_for_attached_images_and_generator_without_images(
     )
 
     edited = magichour_provider.generate(
-        "flux-2-klein", {"images": ["img1", "img2", "img3"], "is_text_to_image": True, "quantity": 1}, 1000
+        "flux-2-klein", {"images": ["img1", "img2", "img3"], "quantity": 1}, 1000
     )
     generated = magichour_provider.generate(
         "flux-2-klein", {"images": [], "is_text_to_image": True, "quantity": 1}, 1000
