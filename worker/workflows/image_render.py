@@ -91,7 +91,7 @@ def run(job: dict) -> None:
         mark_processing(conn, job["id"])
         try:
             prompt = (
-                build_image2_edit_prompt(input_.get("sceneDetails"))
+                build_image2_edit_prompt(input_.get("sceneDetails"), input_.get("styleFilters"))
                 if base_image_edit
                 else build_feature_prompt(feature, input_)
             )
