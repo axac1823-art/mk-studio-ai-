@@ -203,11 +203,14 @@ def runway_video_input(req: dict) -> dict:
 
 def openai_edit_input(req: dict) -> dict:
     """OpenAI GPT Image : tailles au plus proche (3 tailles seulement)."""
+    ratio = req.get("aspectRatio") or "auto"
     size = (
-        "1536x1024"
-        if req["aspectRatio"] in ("16:9", "4:3")
+        "auto"
+        if ratio == "auto"
+        else "1536x1024"
+        if ratio in ("16:9", "4:3")
         else "1024x1536"
-        if req["aspectRatio"] in ("9:16", "3:4")
+        if ratio in ("9:16", "3:4")
         else "1024x1024"
     )
     return {

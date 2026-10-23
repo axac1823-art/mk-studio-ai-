@@ -171,6 +171,7 @@ export async function POST(req: NextRequest) {
     .filter((value): value is string => typeof value === "string");
   const referenceItems: Array<{
     tag: string;
+    role?: "base" | "reference";
     file?: File;
     assetId?: string;
     storagePath?: string;
@@ -178,11 +179,18 @@ export async function POST(req: NextRequest) {
 
   if (rawReferenceMetadata.length > 0) {
     for (let position = 0; position < rawReferenceMetadata.length; position += 1) {
-      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown };
+      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown; role?: unknown };
       try {
         metadata = JSON.parse(rawReferenceMetadata[position]) as typeof metadata;
       } catch {
         return NextResponse.json({ error: "Invalid reference metadata." }, { status: 400 });
+      }
+      if (metadata.role !== undefined && metadata.role !== "base" && metadata.role !== "reference") {
+        return NextResponse.json({ error: "Invalid image input role." }, { status: 400 });
+      }
+      const role: "base" | "reference" = metadata.role === "base" ? "base" : "reference";
+      if (role === "base" && feature !== "text_to_image") {
+        return NextResponse.json({ error: "A base image can only be selected in Image2." }, { status: 400 });
       }
       const tag = typeof metadata.tag === "string" ? metadata.tag : "";
       const itemIndex = typeof metadata.index === "number" && Number.isInteger(metadata.index)
@@ -197,13 +205,13 @@ export async function POST(req: NextRequest) {
         if (!(file instanceof File)) {
           return NextResponse.json({ error: "An image input is missing its file." }, { status: 400 });
         }
-        referenceItems.push({ tag, file });
+        referenceItems.push({ tag, role, file });
       } else if (metadata.source === "asset" && typeof metadata.assetId === "string") {
         const asset = await getAsset(user.id, metadata.assetId);
         if (!asset || asset.is_trashed || asset.type !== "image") {
           return NextResponse.json({ error: "One of the selected project images is unavailable." }, { status: 400 });
         }
-        referenceItems.push({ tag, assetId: metadata.assetId, storagePath: asset.storage_path });
+        referenceItems.push({ tag, role, assetId: metadata.assetId, storagePath: asset.storage_path });
       } else {
         return NextResponse.json({ error: "Invalid image input source." }, { status: 400 });
       }
@@ -220,6 +228,14 @@ export async function POST(req: NextRequest) {
     legacyFiles.forEach((file, index) => {
       referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, file });
     });
+  }
+
+  const baseReferenceItems = referenceItems.filter((item) => item.role === "base");
+  if (baseReferenceItems.length > 1) {
+    return NextResponse.json({ error: "Select only one base image for an Image2 edit." }, { status: 400 });
+  }
+  if (baseReferenceItems.length > 0 && (hasImageUrl || validImageFile(image, MAX_PRIMARY_SIZE))) {
+    return NextResponse.json({ error: "Image2 accepts one base image at a time. Remove the separate primary image input." }, { status: 400 });
   }
 
   // Style is deliberately a separate input; it is not silently treated as @img content.
@@ -249,6 +265,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (baseReferenceItems.length > 0 && styleReferenceItem) {
+    return NextResponse.json({ error: "Remove the separate Style image to edit a base image. Use other images as content references." }, { status: 400 });
+  }
+
   if (referenceItems.length + (styleReferenceItem ? 1 : 0) > MAX_REFERENCES) {
     return NextResponse.json({ error: `Too many image inputs (${MAX_REFERENCES} max including Style).` }, { status: 400 });
   }
@@ -268,8 +288,9 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  const referenceTags = referenceItems.map((item) => item.tag);
-  if (referenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(referenceTags).size !== referenceTags.length) {
+  const allReferenceTags = referenceItems.map((item) => item.tag);
+  const referenceTags = referenceItems.filter((item) => item.role !== "base").map((item) => item.tag);
+  if (allReferenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(allReferenceTags).size !== allReferenceTags.length) {
     return NextResponse.json({ error: "Invalid or repeated image input labels." }, { status: 400 });
   }
 
@@ -296,7 +317,7 @@ export async function POST(req: NextRequest) {
 
   const sceneDetails = optionalString(form, "sceneDetails")?.slice(0, SCENE_DETAILS_MAX);
   const describedReferenceTags = sceneDetails?.match(/@img[1-9]\d*/g) ?? [];
-  if (describedReferenceTags.some((tag) => !referenceTags.includes(tag))) {
+  if (describedReferenceTags.some((tag) => !allReferenceTags.includes(tag))) {
     return NextResponse.json({ error: "Description refers to an image tag that is not attached. Update the description or add that reference." }, { status: 400 });
   }
   const model = optionalString(form, "model"); // choix utilisateur (optionnel)
@@ -348,11 +369,33 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  // Store content references and Style separately. Style must never occupy the @img1 slot.
+  // Store the base canvas separately from secondary content references.
+  // Style must never occupy the @imgN content-reference slots.
   const referenceUrls: string[] = [];
+  let baseImageTag: string | undefined;
   let styleReferenceUrl: string | null = null;
   try {
     for (const reference of referenceItems) {
+      if (reference.role === "base") {
+        if (reference.storagePath) {
+          imageUrl = reference.storagePath;
+          baseImageTag = reference.tag;
+          continue;
+        }
+        if (!reference.file) {
+          return NextResponse.json({ error: "The base image could not be read." }, { status: 400 });
+        }
+        const buffer = Buffer.from(await reference.file.arrayBuffer());
+        const storagePath = await uploadSource(buffer, reference.file.type);
+        try {
+          await insertSourceAsset({ userId: user.id, projectId: project.id, type: "image", storagePath });
+        } catch {
+          // Asset-library indexing is optional; the generation input remains valid.
+        }
+        imageUrl = storagePath;
+        baseImageTag = reference.tag;
+        continue;
+      }
       if (reference.storagePath) {
         referenceUrls.push(reference.storagePath);
         continue;
@@ -394,6 +437,7 @@ export async function POST(req: NextRequest) {
     jobInput: {
       feature,
       imageUrl,
+      baseImageTag,
       referenceUrls,
       referenceTags,
       styleReferenceUrl: styleReferenceUrl ?? undefined,
