@@ -434,45 +434,112 @@ def _join(parts: list[str | None]) -> str:
 
 
 def add_image_reference_map(prompt: str, fields: dict) -> str:
-    """Describe independent visual inputs without assigning Style the subject role."""
+    """Associe TOUTES les pièces jointes à leur ordre d'entrée, sans rôle par défaut.
+
+    Le rôle d'une image (fond, sujet à transférer, détail ou référence de style)
+    est dicté par DESCRIPTION ; le code ne choisit jamais de thème ou de scène.
+    """
     references = fields.get("referenceUrls") or []
-    tags = fields.get("referenceTags") or [f"@img{index + 1}" for index in range(len(references))]
+    if not isinstance(references, (list, tuple)):
+        references = []
+
+    raw_tags = fields.get("referenceTags") or []
+    if not isinstance(raw_tags, (list, tuple)):
+        raw_tags = []
+
+    # Keep UI-generated labels (they may have gaps after removing a reference).
+    # Create a deterministic label only for a missing/malformed tag.
+    tags: list[str] = []
+    used_tags: set[str] = set()
+    for index in range(len(references)):
+        tag = raw_tags[index] if index < len(raw_tags) else None
+        if not isinstance(tag, str) or not tag.startswith("@img") or tag in used_tags:
+            tag = f"@img{index + 1}"
+            suffix = index + 1
+            while tag in used_tags:
+                suffix += 1
+                tag = f"@img{suffix}"
+        tags.append(tag)
+        used_tags.add(tag)
+
     has_style = bool(fields.get("styleReferenceUrl"))
     if not references and not has_style:
         return prompt
 
-    lines: list[str] = []
+    # This map is generated from the complete input list; no two-image shortcut.
+    manifest: list[str] = [
+        "ATTACHED IMAGE MAP (complete; preserve this exact attachment order):"
+    ]
+    provider_index = 1
     if has_style:
-        lines.append(
-            "The separate Style/Filter image is input image 1 and is named @style. It is an aesthetic reference only, "
-            "not the subject image and not a composition to copy. Match its actual visual signature faithfully: overall "
-            "luminance, exposure, highlight roll-off, shadow depth, contrast curve, saturation, palette, color temperature, "
-            "texture character, material response, grain, edge treatment and rendering medium."
+        manifest.append(
+            "Input image 1 is @style, the separately designated style-reference image. "
+            "It is not a content image unless DESCRIPTION explicitly says otherwise."
         )
-    for index, tag in enumerate(tags[:len(references)]):
-        provider_index = index + (2 if has_style else 1)
-        lines.append(
-            f"{tag} is content/reference image {provider_index}; use its subject or details only as directed by the user's prompt."
+        provider_index = 2
+    for index, tag in enumerate(tags):
+        manifest.append(
+            f"{tag} is content/reference image {index + 1} (provider input image "
+            f"{provider_index + index}, attachment {index + 1} in the user's original attachment order)."
         )
 
-    if fields.get("feature") == "text_to_image" and has_style:
-        guidance = (
-            "HIGHEST-PRIORITY STYLE TRANSFER: @style must control the final image's visual treatment. Keep the requested subject, "
-            "objects and scene from the written prompt and @img content references, but make the result look as though it was "
-            "created with the same art direction as @style. Do not copy @style's subject, objects, architecture or layout unless asked. "
-            "Do not brighten, warm, whiten, increase exposure, soften shadows, boost saturation, add gloss, or convert the result to "
-            "generic photorealistic / high-key architectural imagery unless those traits are visibly present in @style. If @style is dark, "
-            "muted, low-key, cool, monochrome, matte, grainy, painterly, graphic, cinematic or high-contrast, preserve that character. "
-            "Do not insert any unrequested default lighting or color-grade."
+    guidance: list[str] = []
+    if fields.get("feature") == "text_to_image":
+        guidance.append(
+            "DESCRIPTION IS THE AUTHORITY: preserve the user's scene and follow every explicit "
+            "object, quantity, location, relationship, placement, material, direction, background, "
+            "and exclusion. Do not add an unrequested style, room type, interior/exterior scene, "
+            "lighting setup, season, camera angle, color grade, furniture, landscaping, or background."
         )
-    elif fields.get("feature") == "text_to_image":
-        guidance = (
-            "CONTENT REFERENCE RULE: the @img labels point to content images, not hidden fixed roles. Follow the user's prompt to decide "
-            "what to retain or borrow. Do not impose a default daylight, high-key, warm, glossy or bright visual style; follow the user's description."
+        guidance.append(
+            "CONTENT REFERENCE RULE: resolve any @imgN label or clear reference to an "
+            "attachment using the complete ATTACHED IMAGE MAP above. Apply the user's instructions "
+            "to every image they mention, including the third and later images. Do not silently ignore "
+            "a referenced image merely because more than two images are attached. Do not force an "
+            "unmentioned attachment into the scene or invent a role for it."
         )
-    else:
-        guidance = "REFERENCE INPUT RULE: the @img labels identify their corresponding content/reference images."
-    return prompt + "\n\n" + guidance + "\n" + "\n".join(lines)
+        guidance.append(
+            "BACKGROUND / BASE IMAGE: only when DESCRIPTION identifies an attachment as the "
+            "background, base, or canvas, treat that specific image as the destination scene. Preserve "
+            "its visible setting, viewpoint, framing, horizon, and all areas not requested to change, "
+            "as closely as the selected model permits. Do not replace it with a newly invented scene. "
+            "Take from other images only the elements DESCRIPTION asks to transfer; do not bring their "
+            "unrequested backgrounds or unrelated objects into the destination."
+        )
+        guidance.append(
+            "VISUAL IDENTITY: when DESCRIPTION asks to use the actual house, tree, product, person, "
+            "or other object shown in an attachment, preserve its recognizable identity and distinguishing "
+            "features rather than substituting a generic lookalike. Keep its visible shape, proportions, "
+            "silhouette, colors, materials, and important details to the degree the chosen model permits. "
+            "Do not assume that 'inspired by' means an exact object transfer unless DESCRIPTION asks for it."
+        )
+        guidance.append(
+            "OBJECT TRANSFER: when DESCRIPTION asks to move an object from one attachment into "
+            "another scene, use the object from the identified source image rather than a generic "
+            "lookalike. Place it at the specified location and scale, with perspective, lighting, occlusion, "
+            "and contact shadows consistent with the destination. Do not modify unrelated parts of the destination scene."
+        )
+        guidance.append(
+            "NO DEFAULT THEME: the code supplies no default scene or visual theme. Follow the user's "
+            "DESCRIPTION and explicitly selected filters only; if a role or aesthetic is not specified, "
+            "do not invent one. If the intended source/background is ambiguous, do not pretend the role "
+            "was specified."
+        )
+
+    if has_style:
+        guidance.append(
+            "STYLE REFERENCE: use @style for the visual treatment explicitly requested by the user, "
+            "such as palette, contrast, texture, or rendering medium. Do not copy its subject, objects, "
+            "architecture, or composition unless DESCRIPTION asks for that. If DESCRIPTION assigns "
+            "@style another role, follow that explicit instruction instead."
+        )
+    elif fields.get("feature") != "text_to_image":
+        guidance.append(
+            "REFERENCE INPUT RULE: the @img labels identify the attached images in the map above. "
+            "Follow DESCRIPTION for the role of each image."
+        )
+
+    return prompt + "\n\n" + "\n".join(manifest + guidance)
 
 
 def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:

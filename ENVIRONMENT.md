@@ -85,3 +85,4 @@ WORKER_API_KEY=                   # même secret que dans /web/.env.local
   réservées au serveur ; elles ne doivent jamais être lues par du code client.
 - Les fichiers `.env` et `.env.local` sont listés dans `.gitignore` et ne
   doivent jamais être commités.
+  # SIte URL http://192.168.1.4:3000/

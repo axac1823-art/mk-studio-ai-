@@ -7,6 +7,7 @@ creditCost). Sortie : un asset par image produite (fichier dans storage +
 ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 """
 import base64
+import logging
 import mimetypes
 
 import db
@@ -25,6 +26,8 @@ from workflows.common import (
 )
 from workflows.engine import execute_with_fallback, order_candidates
 
+log = logging.getLogger("workflows.image_render")
+
 
 def _image_reference_to_data_uri(value: str) -> str:
     """Read a local /storage file and turn it into a provider-ready data URI."""
@@ -40,6 +43,33 @@ def _image_reference_to_data_uri(value: str) -> str:
     mime = mimetypes.guess_type(file_path.name)[0] or "image/png"
     encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
     return f"data:{mime};base64,{encoded}"
+
+
+def _stage_text_to_image_outputs(output_urls: list[str], requested_ratio: str) -> list[str]:
+    """Télécharge et valide les sorties avant de déclarer un modèle gagnant.
+
+    Une image au mauvais ratio invalide la tentative complète afin que le
+    moteur puisse essayer le prochain candidat Auto.
+    """
+    paths: list[str] = []
+    try:
+        for url in output_urls:
+            path, _ext = store_output(url)
+            paths.append(path)
+            with Image.open(storage.resolve(path)) as delivered:
+                width, height = delivered.width, delivered.height
+            if not check_delivered_ratio(width, height, requested_ratio):
+                raise ValueError(
+                    f"frame mismatch: requested {requested_ratio}, returned {width}x{height}"
+                )
+        return paths
+    except Exception:
+        for path in paths:
+            try:
+                storage.resolve(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
 def run(job: dict) -> None:
@@ -109,35 +139,28 @@ def run(job: dict) -> None:
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
                 feature_candidates = [candidate for candidate in feature_candidates if candidate.max_references > 0]
             candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
-            outcome = execute_with_fallback(feature, candidates, req)
+            requested_ratio = input_.get("aspectRatio") or "auto"
 
-            # Store and validate all outputs before creating asset rows. Never crop a
-            # successful provider result just to make its ratio match the selector.
-            stored_paths: list[str] = []
-            try:
-                for url in outcome["output_urls"]:
-                    path, _ext = store_output(url)
-                    stored_paths.append(path)
-                    requested_ratio = input_.get("aspectRatio") or "1:1"
-                    if feature == "text_to_image" and requested_ratio != "auto":
-                        with Image.open(storage.resolve(path)) as delivered:
-                            matches = check_delivered_ratio(
-                                delivered.width,
-                                delivered.height,
-                                requested_ratio,
-                            )
-                        if not matches:
-                            raise ValueError(
-                                f"The provider returned a frame different from the requested {requested_ratio}. "
-                                "The output was not saved; choose another compatible model and retry."
-                            )
-            except Exception:
-                for stored_path in stored_paths:
-                    try:
-                        storage.resolve(stored_path).unlink(missing_ok=True)
-                    except OSError:
-                        pass
-                raise
+            def validate_text_to_image(candidate, output_urls):
+                try:
+                    return _stage_text_to_image_outputs(output_urls, requested_ratio)
+                except ValueError as err:
+                    if str(err).startswith("frame mismatch:"):
+                        log.warning("Image2 candidate %s returned an incompatible frame: %s", candidate.key, err)
+                    raise ValueError(f"{candidate.key}: {err}") from err
+
+            outcome = execute_with_fallback(
+                feature,
+                candidates,
+                req,
+                output_validator=(validate_text_to_image if feature == "text_to_image" and requested_ratio != "auto" else None),
+            )
+
+            # Image2's outputs are already downloaded and validated inside
+            # candidate fallback; other image features keep the normal path.
+            stored_paths: list[str] = outcome.get("validated_output") or []
+            if not stored_paths:
+                stored_paths = [store_output(url)[0] for url in outcome["output_urls"]]
 
             result_asset_id = None
             for path in stored_paths:

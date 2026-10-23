@@ -13,7 +13,6 @@ import {
   Check,
   ChevronDown,
   Download,
-  FolderOpen,
   Images,
   ImagePlus,
   Loader2,
@@ -33,6 +32,7 @@ import {
   Mic,
   Box,
   Layers3,
+  
 } from "lucide-react";
 
 import type { ModelOption } from "@/components/studio/generation-controls";
@@ -465,14 +465,13 @@ export function Image2Workspace() {
   const [promptGuideOpen, setPromptGuideOpen] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [feedTab, setFeedTab] = useState<
-    "Creations" | "My templates" | "Academy"
+    "Creations" | "My templates" 
   >("Creations");
   const [feedSearchOpen, setFeedSearchOpen] = useState(false);
   const [feedSearch, setFeedSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [feedFilter, setFeedFilter] = useState<
-    "all" | "generated" | "project" | "favorites"
-  >("all");
+"all" | "generated" | "favorites"  >("all");
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [feedColumns, setFeedColumns] = useState<2 | 3 | 4>(3);
 
@@ -962,38 +961,29 @@ export function Image2Workspace() {
   const hasEnoughCredits =
     !costsConfig || balance === null || balance >= activeCost;
   const selectedOutputUrls = result.status === "done" ? result.outputUrls : [];
-  // Keep images currently attached as content references in the input panel,
-  // not in the Creations gallery alongside generated results.
-  const creationItems = useMemo<CreationFeedItem[]>(() => {
-    const inputAssetIds = new Set(
-      references
-        .map((reference) => reference.assetId)
-        .filter((assetId): assetId is string => Boolean(assetId)),
-    );
-
-    return assets
-      .filter(
-        (asset) => asset.type === "image" && !inputAssetIds.has(asset.id),
-      )
-      .map((asset) => ({
-        id: asset.id,
-        url: asset.url,
-        name: "Project image",
-        kind: asset.generationId || asset.feature ? "generated" : "project",
-        assetId: asset.id,
-        createdAt: asset.createdAt,
-        feature: asset.feature,
-        isFavorite: asset.isFavorite,
-        generationId: asset.generationId ?? null,
-        generationPrompt: asset.generationPrompt ?? null,
-        generationAspectRatio: asset.generationAspectRatio ?? null,
-        generationQuality: asset.generationQuality ?? null,
-        generationResolution: asset.generationResolution ?? null,
-        generationSelectedModel: asset.generationSelectedModel ?? null,
-        generationModelUsed: asset.generationModelUsed ?? null,
-        generationCreatedAt: asset.generationCreatedAt ?? null,
-      }));
-  }, [assets, references]);
+  // Durable gallery content comes from /api/assets. The currently selected
+  // result is rendered in its dedicated "Just created" group above; keeping it
+  // out of this list prevents duplicate tiles and lets saved groups survive reloads.
+  const creationItems = useMemo<CreationFeedItem[]>(() => assets
+    .filter((asset) => asset.type === "image" && Boolean(asset.generationId))
+    .map((asset) => ({
+      id: asset.id,
+      url: asset.url,
+      name: "Project image",
+kind: "generated" as const,      assetId: asset.id,
+      createdAt: asset.createdAt,
+      feature: asset.feature,
+      isFavorite: asset.isFavorite,
+      generationId: asset.generationId ?? null,
+      generationPrompt: asset.generationPrompt ?? null,
+      generationAspectRatio: asset.generationAspectRatio ?? null,
+      generationQuality: asset.generationQuality ?? null,
+      generationResolution: asset.generationResolution ?? null,
+      generationSelectedModel: asset.generationSelectedModel ?? null,
+      generationModelUsed: asset.generationModelUsed ?? null,
+      generationCreatedAt: asset.generationCreatedAt ?? null,
+    })),
+  [assets]);
   const filteredCreationItems = useMemo(() => {
     const query = feedSearch.trim().toLowerCase();
     return creationItems.filter((item) => {
@@ -1005,7 +995,6 @@ export function Image2Workspace() {
       const matchesFilter =
         feedFilter === "all" ||
         (feedFilter === "generated" && item.kind === "generated") ||
-        (feedFilter === "project" && item.kind === "project") ||
         (feedFilter === "favorites" && item.isFavorite === true);
       return matchesQuery && matchesFilter;
     });
@@ -1652,24 +1641,7 @@ export function Image2Workspace() {
             )}
           </section>
 
-          {assets.length > 0 && (
-            <section
-              className="mt-5 space-y-2 border-t border-white/[0.07] pt-3"
-              aria-label="Project image library"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <FolderOpen className="h-3.5 w-3.5 text-[#8b8e98]" />
-                  <h2 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#91939e]">
-                    From this project
-                  </h2>
-                </div>
-                <span className="text-[9px] text-[#737680]">
-                  Add content references
-                </span>
-              </div>
-            </section>
-          )}
+
 
           <section className="mt-5 pb-4" aria-label="Image prompt">
             <div className="mb-2 flex min-h-5 items-center justify-between gap-2">
@@ -2139,7 +2111,7 @@ export function Image2Workspace() {
       >
         <div className="sticky top-0 z-40 flex min-h-[52px] flex-wrap items-center gap-2 border-b border-white/[0.07] bg-[#222328] px-3 py-2.5 md:px-4">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-            {(["Creations", "My templates", "Academy"] as const).map((tab) => (
+            {(["Creations", "My templates"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -2256,7 +2228,6 @@ export function Image2Workspace() {
                     [
                       { id: "all", label: "All images" },
                       { id: "generated", label: "Generated" },
-                      { id: "project", label: "Project images" },
                       { id: "favorites", label: "Favorites" },
                     ] as const
                   ).map((item) => (
@@ -2704,21 +2675,7 @@ export function Image2Workspace() {
                 Browse prompt starters
               </button>
             </div>
-          ) : (
-            <div className="flex min-h-[min(54vh,520px)] flex-col items-center justify-center px-5 py-12 text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.08] bg-[#292a30] text-[#888b96]">
-                <Sparkles className="h-5 w-5" />
-              </span>
-              <h2 className="mt-4 text-sm font-medium text-[#dedee5]">
-                Image generation workspace
-              </h2>
-              <p className="mt-2 max-w-sm text-xs leading-5 text-[#81848e]">
-                Explore a prompt guide, visual style filters and content
-                references, and the model selector. Academy content is not
-                connected to this experimental page.
-              </p>
-            </div>
-          )}
+          ) : null}
         </div>
       </section>
 

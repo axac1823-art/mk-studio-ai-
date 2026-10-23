@@ -68,6 +68,11 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
             "size": str(input_.get("size") or "auto"),
             "quality": str(input_.get("quality") or "auto"),
             "output_format": "jpeg",
+            **(
+                {"input_fidelity": "high"}
+                if model_id in {"gpt-image-1", "gpt-image-1.5"}
+                else {}
+            ),
         },
         files=files,
         timeout=300,

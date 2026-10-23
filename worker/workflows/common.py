@@ -32,7 +32,8 @@ _MIME_EXT = {
 
 
 def _client_failure_message(err: Exception) -> str:
-    """Translate provider errors accurately without falsely blaming quota in Auto mode."""
+    """Traduit les erreurs providers en messages actionnables sans exposer
+    les réponses brutes, URLs internes ou détails d'authentification."""
     if isinstance(err, ValueError):
         return str(err)
 
@@ -41,93 +42,79 @@ def _client_failure_message(err: Exception) -> str:
     else:
         errors = [str(err).lower()]
 
-    # Keep one error per attempted model. A single quota response must not
-    # classify an Auto run as quota-exhausted when the other models failed differently.
-    errors = [error for error in errors if error.strip()]
-    if not errors:
+    combined = "\n".join(errors)
+    if not combined.strip():
         return "No AI model is available for this feature. Configure a provider and try again."
 
-    def all_attempts_match(markers: tuple[str, ...]) -> bool:
-        return all(any(marker in error for marker in markers) for error in errors)
+    if "frame mismatch:" in combined:
+        return "No available model returned an image with the requested frame. Configure another compatible provider or select a different model, then retry."
 
-    def any_attempt_matches(markers: tuple[str, ...]) -> bool:
-        return any(any(marker in error for marker in markers) for error in errors)
-
-    quota_markers = (
-        "insufficient_quota",
-        "credit_balance_exhausted",
-        "exceeded your current quota",
-        "quota exceeded",
-        "no credits remaining",
-        "insufficient credits",
-        "insufficient_credits",
-    )
-    rate_limit_markers = ("failed (429)", "rate limit", "resource_exhausted")
-    auth_markers = (
-        "failed (401)",
-        "failed (403)",
-        "invalid api key",
-        "invalid_api_key",
-        "invalid_token",
-        "invalid_grant",
-        "token expired",
-        "expired token",
-        "key expired",
-        "api key not valid",
-        "unauthorized",
-        "permission_denied",
-    )
-    transient_markers = (
-        "failed (500)",
-        "failed (502)",
-        "failed (503)",
-        "failed (504)",
-        "timeout",
-        "timed out",
-        "connecterror",
-        "connect timeout",
-        "read timeout",
-        "network error",
-        "temporarily unavailable",
-        "connection error",
-        "service unavailable",
-    )
-    invalid_request_markers = (
-        "failed (400)",
-        "failed (422)",
-        "validation error",
-        "invalid argument",
-        "unsupported parameter",
-        "unknown parameter",
-        "invalid parameter",
-    )
-
-    if all_attempts_match(quota_markers):
+    if any(
+        marker in combined
+        for marker in (
+            "insufficient_quota",
+            "credit_balance_exhausted",
+            "exceeded your current quota",
+            "quota exceeded",
+            "no credits remaining",
+            "insufficient credits",
+            "insufficient_credits",
+        )
+    ):
         return "The AI provider has reached its quota or billing limit. Check its usage and billing, or try another available model."
 
-    if any_attempt_matches(quota_markers):
-        return (
-            "Image2 failed across multiple model attempts for different reasons. One provider reported a quota/billing limit, "
-            "but this does not mean all providers are out of quota. Check the worker logs for the error recorded for each model."
-        )
-
-    if all_attempts_match(rate_limit_markers):
+    if "failed (429)" in combined or "rate limit" in combined or "resource_exhausted" in combined:
         return "The AI provider rate limit was reached. Wait a moment, then try again."
 
-    if all_attempts_match(auth_markers):
+    if any(
+        marker in combined
+        for marker in (
+            "failed (401)",
+            "failed (403)",
+            "invalid api key",
+            "invalid_api_key",
+            "invalid_token",
+            "invalid_grant",
+            "token expired",
+            "expired token",
+            "key expired",
+            "api key not valid",
+            "unauthorized",
+            "permission_denied",
+        )
+    ):
         return "The AI provider API key is invalid, expired, or lacks access. Update the provider configuration."
 
-    not_configured_markers = ("not configured", "missing ", "no matching model", "no provider", "provider configured")
-    if all(any(marker in error for marker in not_configured_markers) for error in errors):
+    if errors and all(
+        any(
+            marker in error
+            for marker in ("not configured", "missing ", "no matching model", "no provider", "provider configured")
+        )
+        for error in errors
+    ):
         return "No configured AI provider is available for this feature. Add a valid provider API key to the worker and restart it."
 
-    if all_attempts_match(transient_markers):
+    if any(
+        marker in combined
+        for marker in (
+            "failed (500)",
+            "failed (502)",
+            "failed (503)",
+            "failed (504)",
+            "timeout",
+            "timed out",
+            "connecterror",
+            "connect timeout",
+            "read timeout",
+            "network error",
+            "temporarily unavailable",
+            "connection error",
+            "service unavailable",
+        )
+    ):
         return "The AI provider is temporarily unavailable. Please try again in a few minutes."
 
-    if all_attempts_match(invalid_request_markers):
-        return "The AI provider rejected the Image2 request parameters. Check the selected model, frame ratio, and reference images."
-
-    return "Generation failed because of an AI provider error. Check the worker logs for the per-model failure details."
+    return "Generation failed because of an AI provider error. Check the provider configuration and try again."
 
 
 def store_output(url: str) -> tuple[str, str]:

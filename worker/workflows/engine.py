@@ -48,7 +48,13 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
     return [candidate for _, candidate in sorted(indexed, key=rank)]
 
 
-def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, adapter_override=None) -> dict:
+def execute_with_fallback(
+    feature: str,
+    candidates: list[Candidate],
+    req: dict,
+    adapter_override=None,
+    output_validator=None,
+) -> dict:
     """Essaie les candidats dans l'ordre. Retourne
     {"winner": Candidate, "output_urls": [...], "attempts": [...]} ou lève
     AllModelsFailedError avec la trace complète.
@@ -79,10 +85,16 @@ def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, 
             output_urls = candidate.extract_output(data)
             if not output_urls:
                 raise ValueError("provider returned an empty output")
+            validated_output = output_validator(candidate, output_urls) if output_validator else None
             attempts.append(
                 {"candidateKey": candidate.key, "ok": True, "latencyMs": int((time.monotonic() - started) * 1000)}
             )
-            return {"winner": candidate, "output_urls": output_urls, "attempts": attempts}
+            return {
+                "winner": candidate,
+                "output_urls": output_urls,
+                "attempts": attempts,
+                "validated_output": validated_output,
+            }
         except Exception as err:  # noqa: BLE001 — toute erreur = fallback
             # L'erreur réelle reste dans la trace serveur, jamais chez le client.
             attempts.append(

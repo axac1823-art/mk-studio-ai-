@@ -364,7 +364,6 @@ def bfl_text_to_image_input(req: dict) -> dict:
         references = req.get("referenceUrls") or []
         image = references[0] if references else None
     if image:
-        # FLUX.1 Dev / FLUX 1.1 Pro document image_prompt for a reference image.
         payload["image_prompt"] = to_base64_or_url(image)
     return payload
 
@@ -615,8 +614,8 @@ THREED_CANDIDATES: list[Candidate] = [
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
     Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls, frame_ratios=ALL_FRAMES),
     Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls, frame_ratios=ALL_FRAMES),
-    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("auto", "1:1", "3:2", "2:3")),
-    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image with Style and content references", "google", "gemini-2.5-flash-image", 3, 3, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("auto", *ALL_FRAMES)),
+    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 14, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("auto", "1:1", "3:2", "2:3")),
+    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image with Style and content references", "google", "gemini-2.5-flash-image", 3, 3, 3, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("auto", *ALL_FRAMES)),
     # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
     # image de référence est fournie, car l'API Magic Hour exige une image
     # d'entrée.

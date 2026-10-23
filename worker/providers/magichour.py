@@ -236,7 +236,16 @@ def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
             count = max(1, int(input_.get("quantity") or 1))
         except (TypeError, ValueError):
             count = 1
-        runner = _run_image_generator if input_.get("is_text_to_image") else _run_image_edit
+        # Image2 uses the generator endpoint even when it includes reference
+        # images. The generator accepts assets and receives the requested
+        # frame; the editor endpoint has returned its default 640x448 frame
+        # for Image2 reference requests. Other image-edit features still use
+        # the editor endpoint.
+        runner = (
+            _run_image_generator
+            if input_.get("is_text_to_image")
+            else _run_image_edit
+        )
         with ThreadPoolExecutor(max_workers=count) as pool:
             urls = list(pool.map(lambda _: runner(model_id, input_, timeout_ms), range(count)))
         return {"images": [{"url": url} for url in urls]}
