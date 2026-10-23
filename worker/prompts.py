@@ -1090,31 +1090,48 @@ def build_text_to_image_prompt(
 
     return "\n\n".join(section for section in sections if section)
 
-def build_image2_edit_prompt(scene_details=None) -> str:
-    """Prompt generaliste pour editer Image2 sur une image de base explicite."""
+def build_image2_edit_prompt(scene_details=None, style_filters=None) -> str:
+    """Build a general Image2 edit prompt around a primary base image."""
     details = _sanitize_scene_details(scene_details)
-    return "\n\n".join(
-        [
-            (
-                "TASK: Edit the provided primary/base image. Do not create an unrelated image from scratch. "
-                "The base image is the destination canvas and the main source of truth for the existing scene."
-            ),
-            (
-                "PRESERVE BY DEFAULT: keep the original subject identity, scene layout, camera viewpoint, "
-                "perspective, framing, background, geometry, colors, materials, lighting, and all unmentioned "
-                "objects as close to the source as the model allows. Change only what the user's instruction "
-                "explicitly asks to add, remove, move, or transform. Do not redesign or replace unrelated areas."
-            ),
-            (
-                "SECONDARY REFERENCES: use attached @img references only in the roles specified by the user. "
-                "When transferring an actual object, preserve its recognizable form and distinctive details; "
-                "integrate it into the base scene with coherent scale, perspective, occlusion, lighting, and contact shadows. "
-                "Do not copy unrelated backgrounds or objects from secondary references."
-            ),
-            "USER'S EXACT EDIT INSTRUCTION:\n" + (details or "(No edit instruction supplied.)"),
-        ]
-    )
+    sections = [
+        (
+            "TASK: Edit the provided primary/base image. Do not create an unrelated image from scratch. "
+            "The base image is the destination canvas and the main source of truth for the existing scene."
+        ),
+        (
+            "PRESERVE BY DEFAULT: keep the original subject identity, scene layout, camera viewpoint, "
+            "perspective, framing, background, geometry, colors, materials, lighting, and all unmentioned "
+            "objects as close to the source as the model allows. Change only what the user's instruction "
+            "explicitly asks to add, remove, move, or transform. Do not redesign or replace unrelated areas."
+        ),
+        (
+            "SECONDARY REFERENCES: use attached @img references only in the roles specified by the user. "
+            "When transferring an actual object, preserve its recognizable form and distinctive details; "
+            "integrate it into the base scene with coherent scale, perspective, occlusion, lighting, and contact shadows. "
+            "Do not copy unrelated backgrounds or objects from secondary references."
+        ),
+        "USER'S EXACT EDIT INSTRUCTION:\n" + (details or "(No edit instruction supplied.)"),
+    ]
 
+    selected_filters: list[str] = []
+    if isinstance(style_filters, (list, tuple)):
+        for value in style_filters:
+            if isinstance(value, str) and value in IMAGE2_STYLE_FILTER_PROMPTS and value not in selected_filters:
+                selected_filters.append(value)
+    if selected_filters:
+        sections.append(
+            "STYLE-ONLY MODIFIERS (apply to the base image edit after resolving the requested change): "
+            + ", ".join(f"#{item}" for item in selected_filters)
+            + "."
+        )
+        sections.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
+        sections.append(
+            "Style filters may change rendering technique, linework, texture, color treatment, shading, and finish only. "
+            "They must not replace the base image, change the requested objects, redesign the scene, alter unmentioned "
+            "architecture or geometry, or invent a new background. Preserve every unrequested part of the base canvas."
+        )
+
+    return "\n\n".join(sections)
 
 def build_feature_prompt(feature: str, fields: dict):
     """Dispatch par feature — l'`option_id` générique porte le preset de la fonction."""
