@@ -16,7 +16,7 @@ from PIL import Image
 from frame_ratio import check_delivered_ratio, filter_by_frame
 from catalog import MODEL_CATALOG
 from providers import is_provider_configured
-from prompts import add_image_reference_map, build_feature_prompt
+from prompts import add_image_reference_map, build_feature_prompt, build_image2_edit_prompt
 from workflows.common import (
     complete_job,
     fail_job,
@@ -78,10 +78,23 @@ def run(job: dict) -> None:
     Aucune exception ne sort : toute erreur termine le job en 'failed'."""
     input_ = job["input"]
     feature = input_["feature"]
+    base_image_edit = (
+        feature == "text_to_image"
+        and bool(input_.get("baseImageTag"))
+        and isinstance(input_.get("imageUrl"), str)
+        and bool(input_.get("imageUrl"))
+    )
+    # Image2 base edits must go through the existing image-edit candidate catalogue.
+    # The persisted feature and credit charge stay text_to_image; only provider routing changes.
+    routing_feature = "print_render" if base_image_edit else feature
     with db.connect() as conn:
         mark_processing(conn, job["id"])
         try:
-            prompt = build_feature_prompt(feature, input_)
+            prompt = (
+                build_image2_edit_prompt(input_.get("sceneDetails"))
+                if base_image_edit
+                else build_feature_prompt(feature, input_)
+            )
             prompt = add_image_reference_map(prompt, input_)
             req = {**input_, "prompt": prompt}
             # References are stored as worker asset URLs to keep large image data out of the jobs row.
@@ -95,13 +108,15 @@ def run(job: dict) -> None:
             style_reference = req.get("styleReferenceUrl")
             if isinstance(style_reference, str) and style_reference:
                 req["styleReferenceUrl"] = _image_reference_to_data_uri(style_reference)
+            if base_image_edit and isinstance(req.get("imageUrl"), str):
+                req["imageUrl"] = _image_reference_to_data_uri(req["imageUrl"])
             if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
                 # Les assets choisis dans la galerie sont des URLs du stockage
                 # worker. Normaliser en data URI pour Magic Hour, remove.bg et
                 # Gemini, qui n'acceptent pas tous une URL LAN privée.
                 req["imageUrl"] = storage.image_data_uri_if_local(req["imageUrl"])
-            feature_candidates = MODEL_CATALOG[feature]
-            if feature == "text_to_image":
+            feature_candidates = MODEL_CATALOG[routing_feature]
+            if feature == "text_to_image" and not base_image_edit:
                 content_count = len(input_.get("referenceUrls") or [])
                 has_style_reference = bool(input_.get("styleReferenceUrl"))
                 input_count = content_count + (1 if has_style_reference else 0)
@@ -128,7 +143,7 @@ def run(job: dict) -> None:
                     raise ValueError(
                         "No configured Text-to-Image provider supports the selected image inputs. Configure a provider or remove references."
                     )
-            if feature == "text_to_image":
+            if feature == "text_to_image" and not base_image_edit:
                 feature_candidates = filter_by_frame(
                     feature_candidates,
                     input_.get("aspectRatio"),
@@ -138,6 +153,13 @@ def run(job: dict) -> None:
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
                 feature_candidates = [candidate for candidate in feature_candidates if candidate.max_references > 0]
+            if base_image_edit and (not input_.get("model") or input_.get("model") == "auto"):
+                feature_candidates = [
+                    candidate for candidate in feature_candidates
+                    if is_provider_configured(candidate.provider)
+                ]
+                if not feature_candidates:
+                    raise ValueError("No configured image-edit provider is available for this base image.")
             candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
             requested_ratio = input_.get("aspectRatio") or "auto"
 
@@ -150,10 +172,14 @@ def run(job: dict) -> None:
                     raise ValueError(f"{candidate.key}: {err}") from err
 
             outcome = execute_with_fallback(
-                feature,
+                routing_feature,
                 candidates,
                 req,
-                output_validator=(validate_text_to_image if feature == "text_to_image" and requested_ratio != "auto" else None),
+                output_validator=(
+                    validate_text_to_image
+                    if feature == "text_to_image" and not base_image_edit and requested_ratio != "auto"
+                    else None
+                ),
             )
 
             # Image2's outputs are already downloaded and validated inside
