@@ -422,6 +422,7 @@ export function Image2Workspace() {
   );
   const [assets, setAssets] = useState<WorkspaceAsset[]>([]);
   const [references, setReferences] = useState<ImageInput[]>([]);
+  const [baseReferenceId, setBaseReferenceId] = useState<string | null>(null);
   const [selectedStyleFilters, setSelectedStyleFilters] = useState<string[]>(
     [],
   );
@@ -624,13 +625,25 @@ export function Image2Workspace() {
     fetchCostsConfig()
       .then(setCostsConfig)
       .catch(() => setCostsConfig(null));
-    fetch("/api/models/text_to_image", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : []))
-      .then((data: Image2ModelOption[]) =>
-        setModelOptions(Array.isArray(data) ? data : []),
-      )
-      .catch(() => setModelOptions([]));
   }, [refreshBalance, refreshProjects]);
+
+  // Base-image edits use the image-edit catalogue; text-only generations use
+  // the text-to-image catalogue. Never silently route a base image as a loose reference.
+  useEffect(() => {
+    let cancelled = false;
+    const modelFeature = baseReferenceId ? "print_render" : "text_to_image";
+    fetch(`/api/models/${modelFeature}`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((data: Image2ModelOption[]) => {
+        if (!cancelled) setModelOptions(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setModelOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseReferenceId]);
 
   useEffect(() => {
     void refreshAssets(selectedProjectId);
@@ -646,6 +659,11 @@ export function Image2Workspace() {
         setReferences((current) =>
           current.filter((reference) => reference.assetId !== asset.id),
         );
+        if (baseReferenceId === existing.id) {
+          setBaseReferenceId(null);
+          setSelectedModel("");
+          setAspectRatio("auto");
+        }
         setPrompt((current) =>
           current.replaceAll(tag, "").replace(/[ \t]{2,}/g, " "),
         );
@@ -673,7 +691,7 @@ export function Image2Workspace() {
       setReferenceNotice(null);
       setError(null);
     },
-    [references],
+    [references, baseReferenceId],
   );
 
   useEffect(() => {
@@ -776,10 +794,15 @@ export function Image2Workspace() {
         );
       }
       setReferences((current) => current.filter((item) => item.id !== id));
+      if (baseReferenceId === id) {
+        setBaseReferenceId(null);
+        setSelectedModel("");
+        setAspectRatio("auto");
+      }
       setMention(null);
       setReferenceNotice(null);
     },
-    [references, revokeObjectUrl],
+    [references, revokeObjectUrl, baseReferenceId],
   );
 
   const addTagAtCursor = (tag: string) => {
@@ -872,7 +895,8 @@ export function Image2Workspace() {
     [stopPolling, refreshBalance, refreshAssets, selectedProjectId],
   );
 
-  const imageInputCount = references.length;
+  // For edit models, maxReferences counts only supporting images, not the base canvas.
+  const imageInputCount = Math.max(0, references.length - (baseReferenceId ? 1 : 0));
   const isCompatibleWithSelectedInputs = useCallback(
     (model: Image2ModelOption) =>
       model.configured && imageInputCount <= (model.maxReferences ?? 0),
@@ -884,8 +908,10 @@ export function Image2Workspace() {
   );
   // Keep Auto settings consistent with models that support the selected frame.
   const frameCompatibleModels = useMemo(
-    () => compatibleConfiguredModels.filter((model) => model.frameRatios?.includes(aspectRatio)),
-    [compatibleConfiguredModels, aspectRatio],
+    () => baseReferenceId
+      ? compatibleConfiguredModels
+      : compatibleConfiguredModels.filter((model) => model.frameRatios?.includes(aspectRatio)),
+    [compatibleConfiguredModels, aspectRatio, baseReferenceId],
   );
   // Show only settings genuinely exposed by the selected model. Auto uses the
   // intersection across configured models that can handle the selected inputs.
@@ -931,13 +957,15 @@ export function Image2Workspace() {
   // Auto offers the union of frames from configured compatible models.
   // A missing capability declaration is not treated as support.
   const supportedFrames = useMemo<Set<string> | null>(() => {
+    if (baseReferenceId) return new Set(["auto"]);
     if (modelOptions.length === 0) return null;
     const source = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
     return new Set(source.flatMap((model) => model.frameRatios ?? []));
-  }, [modelOptions.length, selectedModelOption, compatibleConfiguredModels]);
+  }, [modelOptions.length, selectedModelOption, compatibleConfiguredModels, baseReferenceId]);
   const frameSupported = useCallback(
-    (ratio: Image2AspectRatio) => supportedFrames === null || supportedFrames.has(ratio),
-    [supportedFrames],
+    (ratio: Image2AspectRatio) =>
+      baseReferenceId ? ratio === "auto" : supportedFrames === null || supportedFrames.has(ratio),
+    [supportedFrames, baseReferenceId],
   );
   const selectedModelCanHandleImages = selectedModelOption
     ? isCompatibleWithSelectedInputs(selectedModelOption)
@@ -1109,6 +1137,7 @@ kind: "generated" as const,      assetId: asset.id,
           source: reference.file ? "upload" : "asset",
           assetId: reference.assetId,
           tag: reference.tag,
+          role: reference.id === baseReferenceId ? "base" : "reference",
         }),
       );
       if (reference.file) form.append(`referenceFile_${index}`, reference.file);
@@ -1157,6 +1186,7 @@ kind: "generated" as const,      assetId: asset.id,
     quantity,
     selectedProjectId,
     selectedModel,
+    baseReferenceId,
     balance,
     stopAndPollJob,
   ]);
@@ -1207,6 +1237,9 @@ kind: "generated" as const,      assetId: asset.id,
         .replace(/[ \t]{2,}/g, " "),
     );
     setReferences([]);
+    setBaseReferenceId(null);
+    setSelectedModel("");
+    setAspectRatio("auto");
     setReferenceNotice(null);
     setMention(null);
     nextTagRef.current = 1;
@@ -1497,8 +1530,8 @@ kind: "generated" as const,      assetId: asset.id,
                 <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#91939e]">
                   References
                 </h2>
-                <p className="mt-0.5 text-[9px] text-[#757883]">
-                  Use @img1, @img2… in your prompt.
+                <p className="mt-0.5 text-[9px] leading-4 text-[#757883]">
+                  Use @img tags for references, or mark one image as the base to edit that image.
                 </p>
               </div>
               <span className="text-[9px] tabular-nums text-[#858792]">
@@ -1559,6 +1592,26 @@ kind: "generated" as const,      assetId: asset.id,
                         className="absolute bottom-1 left-1 z-10 rounded bg-black/70 px-1.5 py-1 text-[9px] font-medium text-white backdrop-blur hover:bg-black/90"
                       >
                         {reference.tag}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBaseReferenceId((current) => current === reference.id ? null : reference.id);
+                          setSelectedModel("");
+                          setAspectRatio("auto");
+                          setAspectPickerOpen(false);
+                          setError(null);
+                        }}
+                        aria-pressed={baseReferenceId === reference.id}
+                        title={baseReferenceId === reference.id ? "This is the base image being edited" : "Use this image as the base canvas"}
+                        className={cn(
+                          "absolute bottom-1 right-1 z-10 rounded px-1.5 py-1 text-[8px] font-semibold backdrop-blur transition-colors",
+                          baseReferenceId === reference.id
+                            ? "bg-[#aaa7ff] text-[#17171b]"
+                            : "bg-black/70 text-white hover:bg-black/90",
+                        )}
+                      >
+                        {baseReferenceId === reference.id ? "BASE" : "Use as base"}
                       </button>
                       <button
                         type="button"
@@ -1895,10 +1948,12 @@ kind: "generated" as const,      assetId: asset.id,
               <button
                 type="button"
                 onClick={() => setAspectPickerOpen((open) => !open)}
+                disabled={Boolean(baseReferenceId)}
+                title={baseReferenceId ? "Base-image editing preserves the source image framing." : undefined}
                 aria-expanded={aspectPickerOpen}
-                className="flex h-8 w-full items-center justify-center gap-1 rounded-lg bg-[#17181c] px-1.5 text-[10px] hover:bg-[#2b2c31]"
+                className="flex h-8 w-full items-center justify-center gap-1 rounded-lg bg-[#17181c] px-1.5 text-[10px] hover:bg-[#2b2c31] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {aspectRatio === "auto" ? "AUTO" : aspectRatio}
+                {baseReferenceId ? "KEEP" : aspectRatio === "auto" ? "AUTO" : aspectRatio}
                 <ChevronDown className="h-3 w-3 text-[#898b96]" />
               </button>
               {aspectPickerOpen && (
