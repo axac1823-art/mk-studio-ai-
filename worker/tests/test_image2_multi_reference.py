@@ -45,6 +45,8 @@ def test_base_image_edit_prompt_maps_base_canvas_before_secondary_references():
     assert "@img1, the PRIMARY BASE/CANVAS image to edit" in prompt
     assert "@img3 is content/reference image 1 (provider input image 2" in prompt
     assert "PRIMARY BASE IMAGE IS AUTHORITATIVE" in prompt
+    assert "EXPLICIT BASE IMAGE" in prompt
+    assert "BACKGROUND / BASE IMAGE: only when DESCRIPTION identifies" not in prompt
     assert "USER'S EXACT EDIT INSTRUCTION:\nKeep the building unchanged and add the tree from @img3." in prompt
 
 
