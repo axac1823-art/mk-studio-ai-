@@ -635,7 +635,15 @@ export function Image2Workspace() {
     fetch(`/api/models/${modelFeature}`, { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : []))
       .then((data: Image2ModelOption[]) => {
-        if (!cancelled) setModelOptions(Array.isArray(data) ? data : []);
+        if (cancelled) return;
+        const options = Array.isArray(data) ? data : [];
+        // Magic Hour's edit adapter forces a preset frame ratio even in Auto
+        // mode, so it cannot promise to preserve a base image's original framing.
+        setModelOptions(
+          baseReferenceId
+            ? options.filter((option) => option.provider?.toLowerCase() !== "magichour")
+            : options,
+        );
       })
       .catch(() => {
         if (!cancelled) setModelOptions([]);
