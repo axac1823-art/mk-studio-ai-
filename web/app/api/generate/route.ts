@@ -67,6 +67,8 @@ const IMAGE2_ADDITIONAL_ASPECT_RATIOS = ["3:2", "2:3", "21:9"];
 const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
 const QUALITY_TIERS: QualityTier[] = ["standard", "pro"];
 
+type ImageReferenceRole = "reference" | "background" | "exact_object";
+
 type CameraPromptState = {
   azimuth: number;
   elevation: number;
@@ -171,6 +173,7 @@ export async function POST(req: NextRequest) {
     .filter((value): value is string => typeof value === "string");
   const referenceItems: Array<{
     tag: string;
+    role: ImageReferenceRole;
     file?: File;
     assetId?: string;
     storagePath?: string;
@@ -178,7 +181,7 @@ export async function POST(req: NextRequest) {
 
   if (rawReferenceMetadata.length > 0) {
     for (let position = 0; position < rawReferenceMetadata.length; position += 1) {
-      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown };
+      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown; role?: unknown };
       try {
         metadata = JSON.parse(rawReferenceMetadata[position]) as typeof metadata;
       } catch {
@@ -191,19 +194,23 @@ export async function POST(req: NextRequest) {
       if (itemIndex < 0 || itemIndex >= MAX_REFERENCES) {
         return NextResponse.json({ error: "Invalid image input index." }, { status: 400 });
       }
+      let role: ImageReferenceRole;
+      if (metadata.role === undefined || metadata.role === "reference") role = "reference";
+      else if (metadata.role === "background" || metadata.role === "exact_object") role = metadata.role;
+      else return NextResponse.json({ error: "Invalid image reference role." }, { status: 400 });
 
       if (metadata.source === "upload") {
         const file = form.get(`referenceFile_${itemIndex}`);
         if (!(file instanceof File)) {
           return NextResponse.json({ error: "An image input is missing its file." }, { status: 400 });
         }
-        referenceItems.push({ tag, file });
+        referenceItems.push({ tag, role, file });
       } else if (metadata.source === "asset" && typeof metadata.assetId === "string") {
         const asset = await getAsset(user.id, metadata.assetId);
         if (!asset || asset.is_trashed || asset.type !== "image") {
           return NextResponse.json({ error: "One of the selected project images is unavailable." }, { status: 400 });
         }
-        referenceItems.push({ tag, assetId: metadata.assetId, storagePath: asset.storage_path });
+        referenceItems.push({ tag, role, assetId: metadata.assetId, storagePath: asset.storage_path });
       } else {
         return NextResponse.json({ error: "Invalid image input source." }, { status: 400 });
       }
@@ -218,7 +225,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Reference labels do not match the attached images." }, { status: 400 });
     }
     legacyFiles.forEach((file, index) => {
-      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, file });
+      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, role: "reference", file });
     });
   }
 
@@ -269,8 +276,12 @@ export async function POST(req: NextRequest) {
     );
   }
   const referenceTags = referenceItems.map((item) => item.tag);
+  const referenceRoles = referenceItems.map((item) => item.role);
   if (referenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(referenceTags).size !== referenceTags.length) {
     return NextResponse.json({ error: "Invalid or repeated image input labels." }, { status: 400 });
+  }
+  if (referenceRoles.filter((role) => role === "background").length > 1) {
+    return NextResponse.json({ error: "Choose only one base/background image." }, { status: 400 });
   }
 
   const rawQuality = form.get("quality");
@@ -396,6 +407,7 @@ export async function POST(req: NextRequest) {
       imageUrl,
       referenceUrls,
       referenceTags,
+      referenceRoles,
       styleReferenceUrl: styleReferenceUrl ?? undefined,
       quality,
       aspectRatio,
