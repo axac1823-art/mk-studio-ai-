@@ -134,7 +134,15 @@ def test_image2_auto_prefers_reference_fidelity_before_provider_cost():
     # attached images prefer the edit-capable high-fidelity model, then Gemini.
     assert normal_order[0].key == "magichour-flux-2-klein-text"
     assert [candidate.key for candidate in identity_order[:2]] == [
-        "gpt-image-1",
         "gemini-2.5-flash",
+        "gpt-image-1",
     ]
+
+    # A requested Pro tier still wins over a cheaper Standard-only adapter.
+    pro_identity_order = order_candidates(
+        TEXT_TO_IMAGE_CANDIDATES,
+        "pro",
+        prefer_reference_fidelity=True,
+    )
+    assert pro_identity_order[0].key == "gpt-image-1"
 
