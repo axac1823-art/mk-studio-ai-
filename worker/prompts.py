@@ -436,8 +436,9 @@ def _join(parts: list[str | None]) -> str:
 def add_image_reference_map(prompt: str, fields: dict) -> str:
     """Associe TOUTES les pièces jointes à leur ordre d'entrée, sans rôle par défaut.
 
-    Le rôle d'une image (fond, sujet à transférer, détail ou référence de style)
-    est dicté par DESCRIPTION ; le code ne choisit jamais de thème ou de scène.
+    Le rôle explicite vient de referenceRoles (Guide / Background / Exact object) ;
+    la DESCRIPTION précise le placement et l'opération. Sans rôle explicite, le code
+    ne choisit jamais de scène ni n'invente un usage pour une pièce jointe.
     """
     references = fields.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
