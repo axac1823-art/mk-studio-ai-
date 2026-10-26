@@ -12,6 +12,7 @@ from catalog import (
     openai_text_to_image_input,
 )
 from prompts import add_image_reference_map, build_text_to_image_prompt
+from workflows.engine import order_candidates
 import providers.magichour as magichour_provider
 import providers.openai as openai_provider
 
@@ -120,3 +121,20 @@ def test_magichour_uses_editor_for_attached_images_and_generator_without_images(
     assert calls == ["edit", "generate"]
     assert edited["images"][0]["url"] == "edit-output"
     assert generated["images"][0]["url"] == "generate-output"
+
+def test_image2_auto_prefers_reference_fidelity_before_provider_cost():
+    normal_order = order_candidates(TEXT_TO_IMAGE_CANDIDATES, "standard")
+    identity_order = order_candidates(
+        TEXT_TO_IMAGE_CANDIDATES,
+        "standard",
+        prefer_reference_fidelity=True,
+    )
+
+    # Keep the cheaper Magic Hour route for prompt-only generation, but with
+    # attached images prefer the edit-capable high-fidelity model, then Gemini.
+    assert normal_order[0].key == "magichour-flux-2-klein-text"
+    assert [candidate.key for candidate in identity_order[:2]] == [
+        "gpt-image-1",
+        "gemini-2.5-flash",
+    ]
+
