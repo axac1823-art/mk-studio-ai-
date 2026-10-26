@@ -57,8 +57,9 @@ class Candidate:
     # True only for adapters that pass images as multimodal context, not as the image being edited.
     supports_style_reference: bool = False
     # Relative preference when actual image identity matters. GPT Image uses the
-    # edit endpoint with high input fidelity; Gemini is the next-best multi-image
-    # option. This priority is applied only when a request contains references.
+    # edit endpoint with high input fidelity; Gemini is the first fallback for
+    # multi-image context. This is routing preference, not a pixel-exact guarantee,
+    # and is applied only when a request contains image references.
     reference_priority: int = 0
     # Current text-to-image adapters expose approximately 1K output only.
     # Do not advertise 2K/4K until an adapter really requests those sizes.
