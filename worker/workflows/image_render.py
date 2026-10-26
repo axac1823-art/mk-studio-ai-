@@ -144,7 +144,11 @@ def run(job: dict) -> None:
                 input_.get("model"),
                 prefer_reference_fidelity=(
                     feature == "text_to_image"
-                    and bool(input_.get("referenceUrls") or input_.get("styleReferenceUrl"))
+                    and isinstance(input_.get("referenceRoles"), list)
+                    and any(
+                        isinstance(role, str) and role in {"background", "exact_object"}
+                        for role in input_.get("referenceRoles", [])
+                    )
                 ),
             )
             requested_ratio = input_.get("aspectRatio") or "auto"
