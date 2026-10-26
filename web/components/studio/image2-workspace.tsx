@@ -1519,7 +1519,7 @@ kind: "generated" as const,      assetId: asset.id,
                   References
                 </h2>
                 <p className="mt-0.5 text-[9px] text-[#757883]">
-                  Assign each image a role to preserve its actual identity.
+                  Use @img tags in prompts; choose Base or Exact element to lock identity.
                 </p>
               </div>
               <span className="text-[9px] tabular-nums text-[#858792]">
