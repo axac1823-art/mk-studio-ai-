@@ -130,8 +130,9 @@ def test_image2_auto_prefers_reference_fidelity_before_provider_cost():
         prefer_reference_fidelity=True,
     )
 
-    # Keep the cheaper Magic Hour route for prompt-only generation, but with
-    # attached images prefer the edit-capable high-fidelity model, then Gemini.
+    # Keep the cheaper Magic Hour route for prompt-only generation. When an
+    # explicit identity role is requested, use Gemini for Standard before the
+    # higher-cost GPT edit route; the Pro tier still favors GPT Image.
     assert normal_order[0].key == "magichour-flux-2-klein-text"
     assert [candidate.key for candidate in identity_order[:2]] == [
         "gemini-2.5-flash",
