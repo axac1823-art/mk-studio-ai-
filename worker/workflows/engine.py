@@ -35,10 +35,12 @@ def order_candidates(
 
     - `selected_key` (choix utilisateur) retourne UNIQUEMENT ce candidat
       (pas de fallback silencieux).
-    - Mode "Auto" (`selected_key` vide) : parmi les candidats satisfaisant
-      le tier de qualité demandé, on choisit d'abord le MOINS CHER
-      (cost_per_generation croissant), puis l'ordre du catalogue en
-      tie-break. Les candidats hors tier arrivent après (fallback).
+    - Mode "Auto" (`selected_key` vide) : sans image de référence, le coût
+      reste prioritaire parmi les modèles du tier demandé. Pour Image2 avec
+      des références, `prefer_reference_fidelity` place d'abord les adaptateurs
+      déclarés les plus adaptés à la conservation de l'identité visuelle ; le
+      tier et le coût départagent ensuite les candidats comparables.
+    - Les candidats hors tier restent des solutions de repli.
     """
     if selected_key and selected_key != "auto":
         return [c for c in candidates if c.key == selected_key]
