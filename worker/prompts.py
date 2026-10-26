@@ -447,11 +447,19 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
     if not isinstance(raw_tags, (list, tuple)):
         raw_tags = []
 
+    raw_roles = fields.get("referenceRoles") or []
+    if not isinstance(raw_roles, (list, tuple)):
+        raw_roles = []
+
     # Keep UI-generated labels (they may have gaps after removing a reference).
     # Create a deterministic label only for a missing/malformed tag.
     tags: list[str] = []
+    roles: list[str] = []
     used_tags: set[str] = set()
     for index in range(len(references)):
+        raw_role = raw_roles[index] if index < len(raw_roles) else "reference"
+        role = raw_role if isinstance(raw_role, str) and raw_role in {"reference", "background", "exact_object"} else "reference"
+        roles.append(role)
         tag = raw_tags[index] if index < len(raw_tags) else None
         if not isinstance(tag, str) or not tag.startswith("@img") or tag in used_tags:
             tag = f"@img{index + 1}"
@@ -477,10 +485,16 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
             "It is not a content image unless DESCRIPTION explicitly says otherwise."
         )
         provider_index = 2
+    role_labels = {
+        "reference": "visual guide / reference",
+        "background": "BASE / BACKGROUND — preserve this actual scene",
+        "exact_object": "EXACT OBJECT SOURCE — reuse this actual item's identity",
+    }
     for index, tag in enumerate(tags):
         manifest.append(
             f"{tag} is content/reference image {index + 1} (provider input image "
-            f"{provider_index + index}, attachment {index + 1} in the user's original attachment order)."
+            f"{provider_index + index}, attachment {index + 1} in the user's original attachment order); "
+            f"user-assigned role: {role_labels[roles[index]]}."
         )
 
     guidance: list[str] = []
@@ -519,6 +533,27 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
             "lookalike. Place it at the specified location and scale, with perspective, lighting, occlusion, "
             "and contact shadows consistent with the destination. Do not modify unrelated parts of the destination scene."
         )
+        background_tags = [tag for tag, role in zip(tags, roles) if role == "background"]
+        exact_object_tags = [tag for tag, role in zip(tags, roles) if role == "exact_object"]
+        if background_tags:
+            guidance.append(
+                "USER-SELECTED BASE IMAGE LOCK (" + ", ".join(background_tags) + "): these are the "
+                "destination scene(s), not inspiration. Preserve the actual architecture, layout, viewpoint, "
+                "framing, horizon, object positions and all untouched regions from the selected base image. "
+                "Do not replace the scene with a different but similar room, building, garden, or background. "
+                "Only change the regions needed for the user's requested insertion or edit; keep everything "
+                "else as close to the original pixels as the selected image API allows."
+            )
+        if exact_object_tags:
+            guidance.append(
+                "EXACT OBJECT IDENTITY LOCK (" + ", ".join(exact_object_tags) + "): each designated "
+                "image contains the actual item that must be reused, not merely a category or style example. "
+                "Use that same item's distinctive silhouette, proportions, geometry, contours, openings, "
+                "component count, surface pattern, color placement, materials, hardware, markings and small "
+                "recognition details. Do not substitute a generic, redesigned, beautified or same-category "
+                "lookalike. Do not simplify away distinctive features or invent missing design details. "
+                "If perfect transfer conflicts with extra decoration, prioritize matching the submitted item."
+            )
         guidance.append(
             "NO DEFAULT THEME: the code supplies no default scene or visual theme. Follow the user's "
             "DESCRIPTION and explicitly selected filters only; if a role or aesthetic is not specified, "
