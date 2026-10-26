@@ -93,6 +93,7 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "provider": c.provider,
             "maxReferences": c.max_references,
             "supportsStyleReference": c.supports_style_reference,
+            "referencePriority": c.reference_priority,
             "resolutions": c.resolutions,
             "frameRatios": c.frame_ratios,
             "configured": is_provider_configured(c.provider),
