@@ -53,7 +53,7 @@ def order_candidates(
         if prefer_reference_fidelity:
             # Preserve actual submitted objects first; cost only breaks ties
             # between adapters with equivalent declared reference fidelity.
-            return (-candidate.reference_priority, tier_match, candidate.cost_per_generation, index)
+            return (tier_match, -candidate.reference_priority, candidate.cost_per_generation, index)
         # No references: retain the original cost-first Auto behavior.
         return (tier_match, candidate.cost_per_generation, index)
 
