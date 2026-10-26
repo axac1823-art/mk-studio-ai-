@@ -78,6 +78,11 @@ def run(job: dict) -> None:
     Aucune exception ne sort : toute erreur termine le job en 'failed'."""
     input_ = job["input"]
     feature = input_["feature"]
+    reference_roles = input_.get("referenceRoles") or []
+    identity_locked = feature == "text_to_image" and any(
+        isinstance(role, str) and role in {"background", "exact_object"}
+        for role in reference_roles
+    )
     with db.connect() as conn:
         mark_processing(conn, job["id"])
         try:
@@ -119,6 +124,11 @@ def run(job: dict) -> None:
                         if is_provider_configured(candidate.provider)
                     ]
                 if not feature_candidates:
+                    if identity_locked:
+                        raise ValueError(
+                            "Exact item/background mode has no configured model compatible with the selected "
+                            "image count and Style inputs. Use fewer references or choose a compatible configured model."
+                        )
                     if has_style_reference:
                         raise ValueError(
                             "No configured Text-to-Image provider supports the selected Style and content inputs. "
@@ -134,6 +144,18 @@ def run(job: dict) -> None:
                     input_.get("aspectRatio"),
                     input_.get("model"),
                 )
+                if identity_locked:
+                    # Exact roles must never silently fall back to a cheap model
+                    # that only treats the submitted item as inspiration.
+                    feature_candidates = [
+                        candidate for candidate in feature_candidates
+                        if candidate.reference_priority > 0
+                    ]
+                    if not feature_candidates:
+                        raise ValueError(
+                            "Exact item/background mode requires a compatible high-fidelity reference model. "
+                            "Choose Auto or GPT Image/Gemini, reduce the input count, or change the output frame."
+                        )
             if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
@@ -142,14 +164,7 @@ def run(job: dict) -> None:
                 feature_candidates,
                 input_.get("quality") or "standard",
                 input_.get("model"),
-                prefer_reference_fidelity=(
-                    feature == "text_to_image"
-                    and isinstance(input_.get("referenceRoles"), list)
-                    and any(
-                        isinstance(role, str) and role in {"background", "exact_object"}
-                        for role in input_.get("referenceRoles", [])
-                    )
-                ),
+                prefer_reference_fidelity=identity_locked,
             )
             requested_ratio = input_.get("aspectRatio") or "auto"
 
