@@ -56,6 +56,10 @@ class Candidate:
     supports_image_to_3d: bool = False
     # True only for adapters that pass images as multimodal context, not as the image being edited.
     supports_style_reference: bool = False
+    # Relative preference when actual image identity matters. GPT Image uses the
+    # edit endpoint with high input fidelity; Gemini is the next-best multi-image
+    # option. This priority is applied only when a request contains references.
+    reference_priority: int = 0
     # Current text-to-image adapters expose approximately 1K output only.
     # Do not advertise 2K/4K until an adapter really requests those sizes.
     resolutions: tuple[str, ...] = ("1K",)
@@ -614,8 +618,8 @@ THREED_CANDIDATES: list[Candidate] = [
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
     Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls, frame_ratios=ALL_FRAMES),
     Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls, frame_ratios=ALL_FRAMES),
-    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 14, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("auto", "1:1", "3:2", "2:3")),
-    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image with Style and content references", "google", "gemini-2.5-flash-image", 3, 3, 3, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("auto", *ALL_FRAMES)),
+    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 14, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True, reference_priority=2, frame_ratios=("auto", "1:1", "3:2", "2:3")),
+    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image with Style and content references", "google", "gemini-2.5-flash-image", 3, 3, 3, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, reference_priority=1, frame_ratios=("auto", *ALL_FRAMES)),
     # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
     # image de référence est fournie, car l'API Magic Hour exige une image
     # d'entrée.
