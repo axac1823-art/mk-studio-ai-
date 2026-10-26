@@ -138,7 +138,15 @@ def run(job: dict) -> None:
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
                 feature_candidates = [candidate for candidate in feature_candidates if candidate.max_references > 0]
-            candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
+            candidates = order_candidates(
+                feature_candidates,
+                input_.get("quality") or "standard",
+                input_.get("model"),
+                prefer_reference_fidelity=(
+                    feature == "text_to_image"
+                    and bool(input_.get("referenceUrls") or input_.get("styleReferenceUrl"))
+                ),
+            )
             requested_ratio = input_.get("aspectRatio") or "auto"
 
             def validate_text_to_image(candidate, output_urls):
