@@ -277,9 +277,12 @@ interface WorkspaceAsset {
   generationCreatedAt?: string | null;
 }
 
+type ReferenceRole = "reference" | "background" | "exact_object";
+
 interface ImageInput {
   id: string;
   tag: string;
+  role: ReferenceRole;
   name: string;
   previewUrl: string;
   file?: File;
@@ -664,6 +667,7 @@ export function Image2Workspace() {
         {
           id: generateUuid(),
           tag: `@img${nextTagRef.current++}`,
+          role: "reference",
           name: "Project image",
           previewUrl: asset.url,
           assetId: asset.id,
@@ -696,6 +700,7 @@ export function Image2Workspace() {
             {
               id: generateUuid(),
               tag: `@img${nextTagRef.current++}`,
+              role: "reference",
               name: "Project image",
               previewUrl: asset.url,
               assetId: asset.id,
@@ -751,6 +756,7 @@ export function Image2Workspace() {
         const additions = accepted.map((file) => ({
           id: generateUuid(),
           tag: `@img${nextTagRef.current++}`,
+          role: "reference",
           name: file.name,
           file,
           previewUrl: makeObjectUrl(file),
@@ -764,6 +770,20 @@ export function Image2Workspace() {
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
     [references, makeObjectUrl],
+  );
+
+  const updateReferenceRole = useCallback(
+    (id: string, role: ReferenceRole) => {
+      setReferences((current) => current.map((reference) => ({
+        ...reference,
+        role: reference.id === id
+          ? role
+          : role === "background" && reference.role === "background"
+            ? "reference"
+            : reference.role,
+      })));
+    },
+    [],
   );
 
   const removeReference = useCallback(
@@ -1109,6 +1129,7 @@ kind: "generated" as const,      assetId: asset.id,
           source: reference.file ? "upload" : "asset",
           assetId: reference.assetId,
           tag: reference.tag,
+          role: reference.role,
         }),
       );
       if (reference.file) form.append(`referenceFile_${index}`, reference.file);
@@ -1498,7 +1519,7 @@ kind: "generated" as const,      assetId: asset.id,
                   References
                 </h2>
                 <p className="mt-0.5 text-[9px] text-[#757883]">
-                  Use @img1, @img2… in your prompt.
+                  Assign each image a role to preserve its actual identity.
                 </p>
               </div>
               <span className="text-[9px] tabular-nums text-[#858792]">
@@ -1584,6 +1605,23 @@ kind: "generated" as const,      assetId: asset.id,
                     >
                       {reference.name}
                     </p>
+                    <select
+                      aria-label={`Role for ${reference.tag}`}
+                      title={
+                        reference.role === "background"
+                          ? "Base scene: preserve this background and composition"
+                          : reference.role === "exact_object"
+                            ? "Exact element: reuse this item's distinctive shape and details"
+                            : "Guide: use this image as a visual reference"
+                      }
+                      value={reference.role}
+                      onChange={(event) => updateReferenceRole(reference.id, event.target.value as ReferenceRole)}
+                      className="mt-1 w-full min-w-0 rounded border border-white/[0.10] bg-[#17181c] px-1 py-1 text-[8px] text-[#d6d5df] outline-none focus-visible:ring-1 focus-visible:ring-[#aaa7ff]"
+                    >
+                      <option value="reference">Guide</option>
+                      <option value="background">Base / background</option>
+                      <option value="exact_object">Exact element</option>
+                    </select>
                   </div>
                 ))}
                 {references.length < MAX_REFERENCE_IMAGES && (
