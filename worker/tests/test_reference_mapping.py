@@ -103,4 +103,23 @@ def test_image2_frame_size_prompts_are_included():
     )
     assert IMAGE2_FRAME_SIZE_PROMPTS["16:9"] in feature_prompt
 
+def test_image2_explicit_roles_lock_background_and_original_object_identity():
+    prompt = add_image_reference_map(
+        build_text_to_image_prompt(
+            scene_details="Place the exact chair from @img2 in the room shown in @img1."
+        ),
+        {
+            "feature": "text_to_image",
+            "referenceUrls": ["base-image", "chair-source"],
+            "referenceTags": ["@img1", "@img2"],
+            "referenceRoles": ["background", "exact_object"],
+        },
+    )
+
+    assert "@img1" in prompt and "BASE / BACKGROUND" in prompt
+    assert "@img2" in prompt and "EXACT OBJECT SOURCE" in prompt
+    assert "USER-SELECTED BASE IMAGE LOCK (@img1)" in prompt
+    assert "EXACT OBJECT IDENTITY LOCK (@img2)" in prompt
+    assert "Do not substitute a generic, redesigned" in prompt
+    assert "keep everything else as close to the original pixels" in prompt
 
