@@ -257,6 +257,7 @@ type Image2ModelOption = ModelOption & {
   frameRatios?: string[];
   costPerGeneration?: number;
   service?: string;
+  referencePriority?: number;
 };
 
 interface WorkspaceAsset {
@@ -893,6 +894,9 @@ export function Image2Workspace() {
   );
 
   const imageInputCount = references.length;
+  const identityLockedReferenceSelected = references.some(
+    (reference) => reference.role === "background" || reference.role === "exact_object",
+  );
   const isCompatibleWithSelectedInputs = useCallback(
     (model: Image2ModelOption) =>
       model.configured && imageInputCount <= (model.maxReferences ?? 0),
@@ -1080,6 +1084,16 @@ kind: "generated" as const,      assetId: asset.id,
     if (selectedModelOption && !selectedModelOption.configured) {
       setError(
         "The selected model is not configured on the worker. Choose another model or Auto.",
+      );
+      return;
+    }
+    if (
+      identityLockedReferenceSelected &&
+      selectedModelOption &&
+      (selectedModelOption.referencePriority ?? 0) <= 0
+    ) {
+      setError(
+        "This model is not configured for identity-preserving reference work. Choose Auto, GPT Image, or Gemini, or switch the image roles back to Guide.",
       );
       return;
     }
