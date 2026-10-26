@@ -24,7 +24,13 @@ class AllModelsFailedError(Exception):
         self.attempts = attempts
 
 
-def order_candidates(candidates: list[Candidate], quality: str, selected_key: str | None = None) -> list[Candidate]:
+def order_candidates(
+    candidates: list[Candidate],
+    quality: str,
+    selected_key: str | None = None,
+    *,
+    prefer_reference_fidelity: bool = False,
+) -> list[Candidate]:
     """Ordonne les candidats.
 
     - `selected_key` (choix utilisateur) retourne UNIQUEMENT ce candidat
@@ -42,7 +48,11 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
     def rank(item):
         index, candidate = item
         tier_match = 0 if quality in candidate.tiers else 1
-        # Auto : coût réel croissant, avec l'ordre catalogue en tie-break.
+        if prefer_reference_fidelity:
+            # Preserve actual submitted objects first; cost only breaks ties
+            # between adapters with equivalent declared reference fidelity.
+            return (-candidate.reference_priority, tier_match, candidate.cost_per_generation, index)
+        # No references: retain the original cost-first Auto behavior.
         return (tier_match, candidate.cost_per_generation, index)
 
     return [candidate for _, candidate in sorted(indexed, key=rank)]
