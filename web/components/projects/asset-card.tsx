@@ -58,6 +58,8 @@ interface AssetCardProps {
   /** Optional callback for permanent deletion from Trash. */
   onDelete?: (assetId: string) => void;
   layout?: "grid" | "list" | "square";
+  /** Opt in when the owning gallery needs original media proportions. */
+  preserveAspectRatio?: boolean;
   /** Selection is independent from opening the media preview. */
   selected?: boolean;
   selectionActive?: boolean;
@@ -113,6 +115,7 @@ export function AssetCard({
   onChanged,
   onDelete,
   layout = "grid",
+  preserveAspectRatio = false,
   selected = false,
   selectionActive = false,
   onSelect,
@@ -122,6 +125,7 @@ export function AssetCard({
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<PreviewAsset | null>(null);
+  const [mediaAspectRatio, setMediaAspectRatio] = useState<number | null>(null);
 
   const closePreview = useCallback(() => setPreviewAsset(null), []);
   const openPreview = useCallback(() => {
@@ -189,6 +193,9 @@ export function AssetCard({
   const isList = layout === "list";
   const isSquare = layout === "square";
   const services = asset.type === "video" ? VIDEO_SERVICES : IMAGE_SERVICES;
+  const rememberAspectRatio = (width: number, height: number) => {
+    if (width > 0 && height > 0) setMediaAspectRatio(width / height);
+  };
 
   // -------------------------------------------------------------------------
   // List layout — clean horizontal row, subtle bottom separator, no card box
@@ -469,6 +476,7 @@ export function AssetCard({
             "relative isolate min-w-0 overflow-hidden rounded-xl bg-muted/30",
             isSquare ? "aspect-square" : "aspect-[4/3]",
           )}
+          style={preserveAspectRatio && !isSquare && mediaAspectRatio ? { aspectRatio: String(mediaAspectRatio) } : undefined}
         >
           {asset.type === "audio" ? (
             /* Audio: compact placeholder with inline player */
@@ -514,6 +522,7 @@ export function AssetCard({
                     preload="metadata"
                     muted
                     playsInline
+                    onLoadedMetadata={preserveAspectRatio ? (event) => rememberAspectRatio(event.currentTarget.videoWidth, event.currentTarget.videoHeight) : undefined}
                     className="h-full w-full object-contain"
                   />
                   {/* Persistent play indicator */}
@@ -533,6 +542,7 @@ export function AssetCard({
                   alt=""
                   loading="lazy"
                   decoding="async"
+                  onLoad={preserveAspectRatio ? (event) => rememberAspectRatio(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight) : undefined}
                   className="h-full w-full object-contain"
                 />
               )}

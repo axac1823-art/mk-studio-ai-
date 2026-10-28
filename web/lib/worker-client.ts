@@ -92,6 +92,17 @@ export function startVideoUpscaleJob(jobId: string): Promise<void> {
   return postStartJob("/video/upscale", jobId);
 }
 
+export async function getVideoUpscaleProviders(): Promise<Array<{ key: string; configured: boolean; available?: boolean }> | null> {
+  try {
+    const res = await fetch(`${baseUrl()}/models`, { headers: workerHeaders(), cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { video_upscale?: Array<{ key: string; configured: boolean; available?: boolean }> };
+    return Array.isArray(data.video_upscale) ? data.video_upscale : null;
+  } catch {
+    return null;
+  }
+}
+
 export function startUpscaleJob(jobId: string): Promise<void> {
   return postStartJob("/upscale", jobId);
 }

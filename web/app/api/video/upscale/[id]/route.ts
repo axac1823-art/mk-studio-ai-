@@ -1,14 +1,16 @@
 // Polling du statut d'un job video_upscale.
 import { NextRequest, NextResponse } from "next/server";
 
-import { getJob, listAssetsForJob } from "@/lib/db/queries";
+import { getJobForUser, listAssetsForJob } from "@/lib/db/queries";
 import { publicUrl } from "@/lib/worker-client";
+import { requireAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const job = await getJob(params.id);
+  const { dbUser } = await requireAuth();
+  const job = await getJobForUser(params.id, dbUser.id);
   if (!job || job.type !== "video_upscale") {
     return NextResponse.json({ error: "Job not found." }, { status: 404 });
   }

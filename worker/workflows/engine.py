@@ -9,8 +9,7 @@ Deux responsabilités :
   l'utilisateur. Chaque tentative est tracée pour l'analytics interne.
 """
 import time
-
-from catalog import Candidate
+from catalog import Candidate, text_to_image_images
 from providers import PROVIDERS
 
 
@@ -48,7 +47,13 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
     return [candidate for _, candidate in sorted(indexed, key=rank)]
 
 
-def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, adapter_override=None) -> dict:
+def execute_with_fallback(
+    feature: str,
+    candidates: list[Candidate],
+    req: dict,
+    adapter_override=None,
+    output_validator=None,
+) -> dict:
     """Essaie les candidats dans l'ordre. Retourne
     {"winner": Candidate, "output_urls": [...], "attempts": [...]} ou lève
     AllModelsFailedError avec la trace complète.
@@ -61,9 +66,11 @@ def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, 
     for candidate in candidates:
         started = time.monotonic()
         try:
-            reference_count = len(req.get("referenceUrls", []))
-            if feature == "text_to_image" and req.get("imageUrl"):
-                reference_count += 1
+            if feature == "text_to_image":
+                # Count exactly the references passed to each Image2 adapter.
+                reference_count = len(text_to_image_images(req))
+            else:
+                reference_count = len(req.get("referenceUrls") or [])
             if reference_count > candidate.max_references:
                 raise ValueError(
                     f"candidate accepts {candidate.max_references} reference images; "
@@ -79,10 +86,16 @@ def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, 
             output_urls = candidate.extract_output(data)
             if not output_urls:
                 raise ValueError("provider returned an empty output")
+            validated_output = output_validator(candidate, output_urls) if output_validator else None
             attempts.append(
                 {"candidateKey": candidate.key, "ok": True, "latencyMs": int((time.monotonic() - started) * 1000)}
             )
-            return {"winner": candidate, "output_urls": output_urls, "attempts": attempts}
+            return {
+                "winner": candidate,
+                "output_urls": output_urls,
+                "attempts": attempts,
+                "validated_output": validated_output,
+            }
         except Exception as err:  # noqa: BLE001 — toute erreur = fallback
             # L'erreur réelle reste dans la trace serveur, jamais chez le client.
             attempts.append(

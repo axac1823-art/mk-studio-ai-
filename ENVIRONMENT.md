@@ -26,6 +26,8 @@ WORKER_PUBLIC_URL=http://127.0.0.1:8000
   pour appeler le worker (génération, upscaling, stockage).
 - `WORKER_PUBLIC_URL` : URL publique vue par le navigateur pour servir les
   fichiers stockés par le worker (`/storage/...`).
+  HitPaw Video Enhancer uploads the worker asset through HitPaw's signed
+  OSS endpoint; no public worker URL or tunnel is required.
 
 ## 2. `/worker/.env` — FastAPI worker (logique IA + clés providers)
 
@@ -46,8 +48,12 @@ MAGIC_HOUR_API_KEY=
 # Providers vidéo
 KLING_SECRET_KEY=
 RUNWAY_API_KEY=
+# Magnific Video Upscaler: RUNWAYML_API_SECRET is preferred; RUNWAY_API_KEY remains supported.
+RUNWAYML_API_SECRET=
 OPENAI_API_KEY=
 MAGIC_HOUR_API_KEY=
+# HitPaw API ? Video Enhancer
+HITPAW_API_KEY=
 
 # Audio / voix (ElevenLabs)
 ELEVENLABS_API_KEY=
@@ -85,3 +91,4 @@ WORKER_API_KEY=                   # même secret que dans /web/.env.local
   réservées au serveur ; elles ne doivent jamais être lues par du code client.
 - Les fichiers `.env` et `.env.local` sont listés dans `.gitignore` et ne
   doivent jamais être commités.
+  # SIte URL http://192.168.1.4:3000/

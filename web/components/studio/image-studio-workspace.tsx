@@ -95,7 +95,12 @@ const IMAGE_UPLOAD_COPY: Partial<Record<StudioTab, { title: string; description:
   variations: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image for variations" },
   image_extender: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to extend" },
   exterior_to_interior: { title: "Drop your render", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload your exterior render" },
-  text_to_image: { title: "Add a reference image", description: "Optional ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an optional reference image" },
+  text_to_image: {
+    title: "Upload the element to preserve",
+    description:
+      "Optional — use the exact object as an identity reference while Image2 creates a new scene around it.",
+    ariaLabel: "Upload the element whose identity should be preserved",
+  },
   background_remover: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image" },
   upscale: { title: "Drop an image", description: "or click to browse ? PNG, JPEG or WebP up to 10 MB", ariaLabel: "Upload an image to upscale" },
 };

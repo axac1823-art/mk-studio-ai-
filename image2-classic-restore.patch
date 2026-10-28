@@ -1,0 +1,393 @@
+From 77e21aa9e2e3b74edee72abe8453606dde6896a4 Mon Sep 17 00:00:00 2001
+From: claude <claude@example.com>
+Date: Tue, 27 Oct 2026 11:19:34 +0000
+Subject: [PATCH] Image2: restore classic (2026-10-15) prompt + reference
+ handling; keep strict mode behind IMAGE2_PROMPT_MODE=strict; add classic GPT
+ Image 1 / Gemini 2.5 Flash Image
+
+---
+ worker/catalog.py                        |  54 ++++++++
+ worker/prompts.py                        | 163 ++++++++++++++++++++++-
+ worker/tests/conftest.py                 |  23 ++++
+ worker/tests/test_image2_classic_mode.py |  46 +++++++
+ worker/workflows/image_render.py         |   7 +-
+ 5 files changed, 289 insertions(+), 4 deletions(-)
+ create mode 100644 worker/tests/conftest.py
+ create mode 100644 worker/tests/test_image2_classic_mode.py
+
+diff --git a/worker/catalog.py b/worker/catalog.py
+index 091e7f4..0fb4c14 100644
+--- a/worker/catalog.py
++++ b/worker/catalog.py
+@@ -471,6 +471,22 @@ def google_text_to_image_input(req: dict) -> dict:
+     return payload
+ 
+ 
++def openai_legacy_text_to_image_input(req: dict) -> dict:
++    """Classic Image2 OpenAI input (GPT Image 1): 3 native sizes, medium/high, JPEG."""
++    ratio = req.get("aspectRatio") or "auto"
++    return {
++        "prompt": req["prompt"],
++        "images": text_to_image_images(req),
++        "require_images": bool(
++            req.get("imageUrl") or req.get("styleReferenceUrl") or req.get("referenceUrls")
++        ),
++        "size": GPT_IMAGE_1_SIZES.get(ratio, "auto"),
++        "quality": "high" if req.get("quality") == "pro" else "medium",
++        "output_format": "jpeg",
++        "quantity": req["quantity"],
++    }
++
++
+ # --- LE CATALOGUE ---
+ 
+ # Candidats partagés par TOUTES les features d'édition image du scope MVP
+@@ -755,6 +771,44 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
+         supports_style_reference=True,
+         frame_ratios=("auto", *ALL_FRAMES),
+     ),
++    # Classic Image2 models (state of 2026-10-15). Selectable explicitly to compare
++    # lighting/look against the newer models; not preferred by Auto.
++    Candidate(
++        "gpt-image-1",
++        "GPT Image 1 (classic)",
++        "Classic Image2 OpenAI model with Style and content references",
++        "openai",
++        "gpt-image-1",
++        6,
++        8,
++        13,
++        IMAGE_TIMEOUT_MS,
++        ("standard", "pro"),
++        openai_legacy_text_to_image_input,
++        extract_image_urls,
++        resolutions=("1K",),
++        resolution_ratios=tuple((ratio, ("1K",)) for ratio in ("auto", "1:1", "3:2", "2:3")),
++        supports_style_reference=True,
++        frame_ratios=("auto", "1:1", "3:2", "2:3"),
++    ),
++    Candidate(
++        "gemini-2.5-flash-image",
++        "Gemini 2.5 Flash Image (classic)",
++        "Classic Image2 Google model with Style and content references",
++        "google",
++        "gemini-2.5-flash-image",
++        3,
++        3,
++        13,
++        IMAGE_TIMEOUT_MS,
++        ("standard",),
++        google_text_to_image_input,
++        extract_image_urls,
++        resolutions=("1K",),
++        resolution_ratios=tuple((ratio, ("1K",)) for ratio in ("auto", *ALL_FRAMES)),
++        supports_style_reference=True,
++        frame_ratios=("auto", *ALL_FRAMES),
++    ),
+     # Agrégateur assumé : conserve Magic Hour comme solution de repli
+     # text-to-image compatible avec ses ratios et ses références documentés.
+     Candidate(
+diff --git a/worker/prompts.py b/worker/prompts.py
+index d1b8f6d..44f9e34 100644
+--- a/worker/prompts.py
++++ b/worker/prompts.py
+@@ -433,7 +433,7 @@ def _join(parts: list[str | None]) -> str:
+     return ", ".join(part for part in parts if part)
+ 
+ 
+-def add_image_reference_map(prompt: str, fields: dict) -> str:
++def _add_image_reference_map_strict(prompt: str, fields: dict) -> str:
+     """Map every uploaded image to its provider position and explicit user role."""
+     references = fields.get("referenceUrls") or []
+     if not isinstance(references, (list, tuple)):
+@@ -549,6 +549,91 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
+         )
+     return prompt + "\n\n" + "\n".join(manifest + guidance)
+ 
++def _add_image_reference_map_classic(prompt: str, fields: dict) -> str:
++    """Classic Image2 reference map (state of 2026-10-15): short, content-first.
++
++    Provider order is: Style image (if any), primary image `imageUrl` (if any),
++    then `referenceUrls`. The old map ignored `imageUrl`; the offsets below keep
++    the @img numbering correct now that the primary image is always sent.
++    """
++    references = fields.get("referenceUrls") or []
++    if not isinstance(references, (list, tuple)):
++        references = []
++    raw_tags = fields.get("referenceTags") or []
++    if not isinstance(raw_tags, (list, tuple)):
++        raw_tags = []
++    raw_roles = fields.get("referenceRoles") or []
++    if not isinstance(raw_roles, (list, tuple)):
++        raw_roles = []
++    tags = [
++        raw_tags[i] if i < len(raw_tags) and isinstance(raw_tags[i], str) and raw_tags[i].startswith("@img") else f"@img{i + 1}"
++        for i in range(len(references))
++    ]
++    has_style = bool(fields.get("styleReferenceUrl")) or "style" in raw_roles
++    has_primary = fields.get("feature") == "text_to_image" and bool(fields.get("imageUrl"))
++    if not references and not has_style and not has_primary:
++        return prompt
++
++    lines: list[str] = []
++    provider_index = 1
++    if fields.get("styleReferenceUrl"):
++        lines.append(
++            "The separate Style/Filter image is input image 1 and is named @style. It is an aesthetic reference only, "
++            "not the subject image and not a composition to copy. Match its actual visual signature faithfully: overall "
++            "luminance, exposure, highlight roll-off, shadow depth, contrast curve, saturation, palette, color temperature, "
++            "texture character, material response, grain, edge treatment and rendering medium."
++        )
++        provider_index += 1
++    if has_primary:
++        lines.append(
++            f"@element is content image {provider_index}; use its subject or details as directed by the user's prompt "
++            "and integrate it naturally into the scene's lighting, perspective and shadows."
++        )
++        provider_index += 1
++
++    role_hint = {
++        "style": " Use it as an aesthetic/lighting reference only.",
++        "base": " Use it as the base scene and change only what the prompt asks.",
++    }
++    for index, tag in enumerate(tags):
++        role = raw_roles[index] if index < len(raw_roles) and isinstance(raw_roles[index], str) else "element"
++        lines.append(
++            f"{tag} is content/reference image {provider_index + index}; use its subject or details only as directed "
++            f"by the user's prompt.{role_hint.get(role, '')}"
++        )
++
++    if fields.get("feature") == "text_to_image" and fields.get("styleReferenceUrl"):
++        guidance = (
++            "HIGHEST-PRIORITY STYLE TRANSFER: @style must control the final image's visual treatment. Keep the requested subject, "
++            "objects and scene from the written prompt and @img content references, but make the result look as though it was "
++            "created with the same art direction as @style. Do not copy @style's subject, objects, architecture or layout unless asked. "
++            "Do not brighten, warm, whiten, increase exposure, soften shadows, boost saturation, add gloss, or convert the result to "
++            "generic photorealistic / high-key architectural imagery unless those traits are visibly present in @style. If @style is dark, "
++            "muted, low-key, cool, monochrome, matte, grainy, painterly, graphic, cinematic or high-contrast, preserve that character. "
++            "Do not insert any unrequested default lighting or color-grade."
++        )
++    elif fields.get("feature") == "text_to_image":
++        guidance = (
++            "CONTENT REFERENCE RULE: the @img labels point to content images, not hidden fixed roles. Follow the user's prompt to decide "
++            "what to retain or borrow. Do not impose a default daylight, high-key, warm, glossy or bright visual style; follow the user's description."
++        )
++    else:
++        guidance = "REFERENCE INPUT RULE: the @img labels identify their corresponding content/reference images."
++    return prompt + "\n\n" + guidance + "\n" + "\n".join(lines)
++
++
++def _image2_prompt_mode() -> str:
++    """IMAGE2_PROMPT_MODE=classic (default) | strict (sectioned fidelity prompts)."""
++    import os
++    return "strict" if os.environ.get("IMAGE2_PROMPT_MODE", "classic").strip().lower() == "strict" else "classic"
++
++
++def add_image_reference_map(prompt: str, fields: dict) -> str:
++    if _image2_prompt_mode() == "strict":
++        return _add_image_reference_map_strict(prompt, fields)
++    return _add_image_reference_map_classic(prompt, fields)
++
++
+ def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:
+     """Fonction 1 — Screenshot-to-Render."""
+     return _join(
+@@ -1012,7 +1097,7 @@ IMAGE2_FRAME_SIZE_PROMPTS: dict[str, str] = {
+         for ratio, name in _FRAME_NAMES.items()
+     },
+ }
+-def build_text_to_image_prompt(
++def _build_text_to_image_prompt_strict(
+     scene_details=None,
+     has_style_reference=False,
+     style_filters=None,
+@@ -1107,6 +1192,80 @@ def build_text_to_image_prompt(
+ 
+     return "\n\n".join(section for section in sections if section)
+ 
++def _build_text_to_image_prompt_classic(scene_details=None, has_style_reference=False, style_filters=None) -> str:
++    """Subject-first text-to-image prompt with optional text-only style filters."""
++    parts = [
++        (
++            "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
++            "subject, composition, camera, materials, palette, lighting, time of day, mood and visual medium. Do not assume an "
++            "unrequested style or lighting setup."
++        ),
++        (
++            "Maintain internal visual consistency: believable proportions where relevant, coherent perspective, consistent object "
++            "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
++        ),
++    ]
++    user_description = _sanitize_scene_details(scene_details)
++    if user_description:
++        parts.append(user_description)
++
++    selected_filters: list[str] = []
++    if isinstance(style_filters, (list, tuple)):
++        for value in style_filters:
++            if isinstance(value, str) and value in IMAGE2_STYLE_FILTER_PROMPTS and value not in selected_filters:
++                selected_filters.append(value)
++
++    if selected_filters:
++        parts.append("Apply these text-only visual style filters after interpreting the user's subject: " + ", ".join(f"#{item}" for item in selected_filters) + ".")
++        parts.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
++        parts.append(
++            "Style filters modify rendering technique, linework, texture, color treatment, shading and finish only. They are not source images, "
++            "subjects, objects, scene descriptions, backgrounds, overlays, or separate layers. Preserve the user's requested subject, composition, "
++            "object count, architectural geometry and setting. If selected styles conflict, prioritize the first selected style and keep the image readable."
++        )
++    elif has_style_reference:
++        # Backward compatibility for older clients that still submit a separate style image.
++        parts.extend([
++            (
++                "A separate Style reference image is attached. Treat it only as an aesthetic guide and preserve its tonal range, contrast, palette, "
++                "texture and rendering medium without copying its subject or composition unless requested."
++            ),
++            (
++                "Do not automatically brighten, warm, whiten, add gloss or force a photorealistic architectural look when the reference does not show those traits."
++            ),
++        ])
++    else:
++        parts.append(
++            "Let the user's prompt decide the lighting and mood. Do not add default daylight, high-key exposure, warm color grading, glossy materials or artificial glow when they were not requested."
++        )
++    return _join(parts)
++
++
++def build_text_to_image_prompt(
++    scene_details=None,
++    has_style_reference=False,
++    style_filters=None,
++    aspect_ratio=None,
++    preserve_element_identity=False,
++    has_reference_images=False,
++) -> str:
++    if _image2_prompt_mode() == "strict":
++        return _build_text_to_image_prompt_strict(
++            scene_details=scene_details,
++            has_style_reference=has_style_reference,
++            style_filters=style_filters,
++            aspect_ratio=aspect_ratio,
++            preserve_element_identity=preserve_element_identity,
++            has_reference_images=has_reference_images,
++        )
++    # Classic: short, subject-first prompt. The frame is set natively by the provider API.
++    return _build_text_to_image_prompt_classic(
++        scene_details=scene_details,
++        has_style_reference=has_style_reference,
++        style_filters=style_filters,
++    )
++
++
+ def build_feature_prompt(feature: str, fields: dict) -> str:
+     """Dispatch par feature — l'`option_id` générique porte le preset de la fonction."""
+     option_id = fields.get("optionId")
+diff --git a/worker/tests/conftest.py b/worker/tests/conftest.py
+new file mode 100644
+index 0000000..8b33af5
+--- /dev/null
++++ b/worker/tests/conftest.py
+@@ -0,0 +1,23 @@
++"""Image2 prompt mode for tests.
++
++The sectioned "strict" prompts are covered by the existing Image2 tests, so those
++modules run with IMAGE2_PROMPT_MODE=strict. The default ("classic") mode is covered
++by test_image2_classic_mode.py.
++"""
++import pytest
++
++STRICT_MODULES = {
++    "test_image2_multi_reference",
++    "test_image2_prompt_contract",
++    "test_image2_reference_roles",
++    "test_image2_scene_fidelity_generated",
++    "test_reference_mapping",
++}
++
++
++@pytest.fixture(autouse=True)
++def _image2_prompt_mode(request, monkeypatch):
++    if request.module.__name__.rsplit(".", 1)[-1] in STRICT_MODULES:
++        monkeypatch.setenv("IMAGE2_PROMPT_MODE", "strict")
++    else:
++        monkeypatch.delenv("IMAGE2_PROMPT_MODE", raising=False)
+diff --git a/worker/tests/test_image2_classic_mode.py b/worker/tests/test_image2_classic_mode.py
+new file mode 100644
+index 0000000..2b6db91
+--- /dev/null
++++ b/worker/tests/test_image2_classic_mode.py
+@@ -0,0 +1,46 @@
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++from catalog import MODEL_CATALOG, text_to_image_images, openai_legacy_text_to_image_input  # noqa: E402
++from prompts import add_image_reference_map, build_feature_prompt  # noqa: E402
++
++
++def _fields(**extra):
++    base = {"feature": "text_to_image", "option_id": "", "sceneDetails": "A sunlit loft with @img1 on the left"}
++    base.update(extra)
++    return base
++
++
++def test_classic_prompt_is_short_and_leaves_lighting_to_the_user():
++    prompt = build_feature_prompt("text_to_image", _fields(aspectRatio="16:9"))
++    assert "TASK:" not in prompt and "FIDELITY RULES" not in prompt and "OUTPUT FRAME" not in prompt
++    assert "Let the user's prompt decide the lighting and mood" in prompt
++
++
++def test_classic_reference_map_offsets_follow_provider_order():
++    fields = _fields(
++        styleReferenceUrl="s", imageUrl="e", referenceUrls=["a", "b"], referenceTags=["@img1", "@img2"],
++    )
++    mapped = add_image_reference_map("P", fields)
++    assert "input image 1 and is named @style" in mapped
++    assert "@element is content image 2" in mapped
++    assert "@img1 is content/reference image 3" in mapped
++    assert "@img2 is content/reference image 4" in mapped
++    assert text_to_image_images(fields) == ["s", "e", "a", "b"]
++
++
++def test_classic_reference_map_without_style_or_primary_starts_at_one():
++    mapped = add_image_reference_map("P", _fields(referenceUrls=["a"], referenceTags=["@img1"]))
++    assert "@img1 is content/reference image 1" in mapped
++
++
++def test_classic_models_are_selectable_and_use_native_openai_sizes():
++    keys = {c.key for c in MODEL_CATALOG["text_to_image"]}
++    assert {"gpt-image-1", "gemini-2.5-flash-image"} <= keys
++    payload = openai_legacy_text_to_image_input(
++        {"prompt": "p", "aspectRatio": "3:2", "quality": "standard", "quantity": 1, "imageUrl": "e"}
++    )
++    assert payload["size"] == "1536x1024" and payload["quality"] == "medium"
++    assert payload["output_format"] == "jpeg" and payload["images"] == ["e"]
+diff --git a/worker/workflows/image_render.py b/worker/workflows/image_render.py
+index 10ee61f..3c20f21 100644
+--- a/worker/workflows/image_render.py
++++ b/worker/workflows/image_render.py
+@@ -9,6 +9,7 @@ ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
+ import base64
+ import logging
+ import mimetypes
++import os
+ 
+ import db
+ import storage
+@@ -222,8 +223,10 @@ def run(job: dict) -> None:
+             if feature == "text_to_image" and (not input_.get("model") or input_.get("model") == "auto") and (
+                 input_.get("imageUrl") or input_.get("styleReferenceUrl") or input_.get("referenceUrls")
+             ):
+-                priority = {"gpt-image-1.5": 0, "gemini-2.5-flash": 1}
+-                candidates = sorted(candidates, key=lambda candidate: (priority.get(candidate.key, 100), candidate.cost_per_generation))
++                if os.environ.get("IMAGE2_PROMPT_MODE", "classic").strip().lower() == "strict":
++                    priority = {"gpt-image-1.5": 0, "gemini-2.5-flash": 1}
++                    candidates = sorted(candidates, key=lambda candidate: (priority.get(candidate.key, 100), candidate.cost_per_generation))
++                # classic: keep the standard cost-ordered Auto ranking from order_candidates.
+             requested_ratio = input_.get("aspectRatio") or "auto"
+             requested_resolution = input_.get("resolution") or "1K"
+ 
+-- 
+2.43.0
+

@@ -7,6 +7,7 @@ __pycache__/
 
 # Next.js / web build outputs
 **/.next/
+**/.next-dev-local/
 **/out/
 *.tsbuildinfo
 

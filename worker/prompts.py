@@ -434,46 +434,120 @@ def _join(parts: list[str | None]) -> str:
 
 
 def add_image_reference_map(prompt: str, fields: dict) -> str:
-    """Describe independent visual inputs without assigning Style the subject role."""
+    """Map every uploaded image to its provider position and explicit user role."""
     references = fields.get("referenceUrls") or []
-    tags = fields.get("referenceTags") or [f"@img{index + 1}" for index in range(len(references))]
-    has_style = bool(fields.get("styleReferenceUrl"))
-    if not references and not has_style:
+    if not isinstance(references, (list, tuple)):
+        references = []
+    raw_tags = fields.get("referenceTags") or []
+    if not isinstance(raw_tags, (list, tuple)):
+        raw_tags = []
+    raw_roles = fields.get("referenceRoles") or []
+    if not isinstance(raw_roles, (list, tuple)):
+        raw_roles = []
+
+    valid_roles = {"element", "base", "style", "detail"}
+    tags: list[str] = []
+    roles: list[str] = []
+    used_tags: set[str] = set()
+    for index in range(len(references)):
+        tag = raw_tags[index] if index < len(raw_tags) else None
+        if not isinstance(tag, str) or not tag.startswith("@img") or tag in used_tags:
+            tag = f"@img{index + 1}"
+            suffix = index + 1
+            while tag in used_tags:
+                suffix += 1
+                tag = f"@img{suffix}"
+        tags.append(tag)
+        used_tags.add(tag)
+        role = raw_roles[index] if index < len(raw_roles) else "element"
+        roles.append(role if isinstance(role, str) and role in valid_roles else "element")
+
+    has_style_image = bool(fields.get("styleReferenceUrl")) or "style" in roles
+    has_primary_element = (
+        fields.get("feature") == "text_to_image" and bool(fields.get("imageUrl"))
+    )
+    if not references and not has_style_image and not has_primary_element:
         return prompt
 
-    lines: list[str] = []
-    if has_style:
-        lines.append(
-            "The separate Style/Filter image is input image 1 and is named @style. It is an aesthetic reference only, "
-            "not the subject image and not a composition to copy. Match its actual visual signature faithfully: overall "
-            "luminance, exposure, highlight roll-off, shadow depth, contrast curve, saturation, palette, color temperature, "
-            "texture character, material response, grain, edge treatment and rendering medium."
+    manifest: list[str] = [
+        "ATTACHED IMAGE MAP (provider image order; user-declared roles are authoritative):"
+    ]
+    provider_index = 1
+    if fields.get("styleReferenceUrl"):
+        manifest.append(
+            "Input image 1 is @style, a style-only reference. Match its lighting, tonal range, "
+            "contrast, palette, color temperature, material response, texture, grain and rendering "
+            "finish. Do not copy its subject or composition unless the user explicitly requests that."
         )
-    for index, tag in enumerate(tags[:len(references)]):
-        provider_index = index + (2 if has_style else 1)
-        lines.append(
-            f"{tag} is content/reference image {provider_index}; use its subject or details only as directed by the user's prompt."
+        provider_index += 1
+    if has_primary_element:
+        manifest.append(
+            f"Input image {provider_index} is @element, the primary identity source. It is the actual "
+            "object to preserve, not inspiration for a lookalike. Keep its recognizable silhouette, "
+            "proportions, distinctive components, color/material identity, texture, labels and logos."
+        )
+        provider_index += 1
+
+    role_text = {
+        "element": (
+            "OBJECT TO INSERT/PRESERVE: use this actual object as the source; preserve its defining "
+            "silhouette, proportions, colors, materials, texture and distinctive details. Do not replace it."
+        ),
+        "base": (
+            "BASE SCENE/BACKGROUND: use this image as the destination canvas. Preserve its viewpoint, "
+            "framing, architecture and unrelated areas; only make the changes requested by the user."
+        ),
+        "style": (
+            "STYLE ONLY: transfer lighting, tonal range, contrast, palette, color temperature, texture "
+            "and rendering finish. Do not copy this image's objects or composition unless requested."
+        ),
+        "detail": (
+            "DETAIL/CONTEXT REFERENCE: use the details explicitly mentioned by the user; do not blindly "
+            "copy this image's background or unrelated objects into the destination scene."
+        ),
+    }
+    for index, (tag, role) in enumerate(zip(tags, roles)):
+        manifest.append(
+            f"{tag} is content/reference image {index + 1} (provider input image {provider_index + index}); "
+            f"user-declared role: {role}. {role_text[role]}"
         )
 
-    if fields.get("feature") == "text_to_image" and has_style:
-        guidance = (
-            "HIGHEST-PRIORITY STYLE TRANSFER: @style must control the final image's visual treatment. Keep the requested subject, "
-            "objects and scene from the written prompt and @img content references, but make the result look as though it was "
-            "created with the same art direction as @style. Do not copy @style's subject, objects, architecture or layout unless asked. "
-            "Do not brighten, warm, whiten, increase exposure, soften shadows, boost saturation, add gloss, or convert the result to "
-            "generic photorealistic / high-key architectural imagery unless those traits are visibly present in @style. If @style is dark, "
-            "muted, low-key, cool, monochrome, matte, grainy, painterly, graphic, cinematic or high-contrast, preserve that character. "
-            "Do not insert any unrequested default lighting or color-grade."
+    guidance: list[str] = []
+    if fields.get("feature") == "text_to_image":
+        guidance.append(
+            "IMAGE EDIT / COMPOSITING TASK: source images are actual visual inputs, not optional inspiration. "
+            "Use the declared role of each image and the exact @img tag referenced in the user's description. "
+            "Do not silently ignore any attachment, including the third and later images."
         )
-    elif fields.get("feature") == "text_to_image":
-        guidance = (
-            "CONTENT REFERENCE RULE: the @img labels point to content images, not hidden fixed roles. Follow the user's prompt to decide "
-            "what to retain or borrow. Do not impose a default daylight, high-key, warm, glossy or bright visual style; follow the user's description."
+        if has_primary_element or "element" in roles:
+            guidance.append(
+                "ELEMENT IDENTITY: the user's element image is the same object that must appear in the result. "
+                "Do not substitute a generic object of the same category, redesign it, merge it with another object, "
+                "or invent distinctive details. Adapt only the position, scale, projected geometry, perspective, "
+                "lighting, reflections, occlusion and contact/cast shadows needed for the described camera and scene."
+            )
+        if "base" in roles:
+            guidance.append(
+                "BASE IMAGE PRESERVATION: keep the designated base scene and all unrequested areas stable. "
+                "Do not replace its background with a newly invented scene. Do not import the unrelated backgrounds "
+                "from element images."
+            )
+        if has_style_image:
+            guidance.append(
+                "HISTORICAL IMAGE2 LIGHTING DISCIPLINE: match the style reference's luminance, exposure, highlight "
+                "roll-off, shadow depth, contrast curve, saturation, palette, color temperature, material response, "
+                "grain, edge treatment and rendering medium. Do not brighten, warm, whiten, raise exposure, soften "
+                "shadows, add gloss or apply generic bright architectural daylight unless those traits appear in the "
+                "style reference or are explicitly requested. A dark, muted, cool, matte, grainy, painterly, graphic, "
+                "cinematic or high-contrast reference must retain that character."
+            )
+        guidance.append(
+            "LIGHTING/GEOMETRY BALANCE: adapt lighting and projected geometry only as far as needed to fit the "
+            "requested camera/viewpoint; these adaptations must not change the object's identity. A single 2D image "
+            "does not reveal hidden surfaces, so infer unseen geometry conservatively. Preserve the original object's "
+            "visible features rather than inventing a 3D redesign."
         )
-    else:
-        guidance = "REFERENCE INPUT RULE: the @img labels identify their corresponding content/reference images."
-    return prompt + "\n\n" + guidance + "\n" + "\n".join(lines)
-
+    return prompt + "\n\n" + "\n".join(manifest + guidance)
 
 def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:
     """Fonction 1 — Screenshot-to-Render."""
@@ -911,91 +985,89 @@ IMAGE2_STYLE_FILTER_PROMPTS: dict[str, str] = {
     "cyberpunk": "Apply a restrained cyberpunk treatment through controlled cyan-and-magenta color, selective neon-like accents, cinematic contrast, cooler shadow colors, and edge reflections only where materials support them. Preserve the current scene, subject, architecture, object count, camera, and setting. Do not add neon signs, holograms, vehicles, rain, wet pavement, sci-fi buildings, or a new city background unless requested.",
 }
 
+# The provider API sets the requested frame. These short hints guide composition only;
+# they do not ask the model to crop an existing image to achieve the target ratio.
+_FRAME_NAMES: dict[str, str] = {
+    "1:1": "a square 1:1 frame",
+    "16:9": "a widescreen 16:9 landscape frame",
+    "9:16": "a vertical 9:16 portrait frame",
+    "4:3": "a 4:3 landscape frame",
+    "3:4": "a 3:4 portrait frame",
+    "3:2": "a 3:2 landscape photographic frame",
+    "2:3": "a 2:3 portrait photographic frame",
+    "21:9": "an ultra-wide 21:9 cinematic frame",
+}
+_FRAME_COMMON = (
+    "Compose the scene naturally for the requested frame. Fill the frame edge to edge; "
+    "do not add borders, letterboxing, blank margins, or padding. Keep the main subject "
+    "complete and undistorted."
+)
 IMAGE2_FRAME_SIZE_PROMPTS: dict[str, str] = {
     "auto": (
-        "Choose the most appropriate aspect ratio for the existing image "
-        "based on its original composition and subject orientation. "
-        "Preserve the complete main subject whenever possible. "
-        "Avoid unnecessary cropping, stretching, or distortion."
+        "Use the frame chosen by the image provider's native Auto setting. "
+        + _FRAME_COMMON
     ),
-
-    "1:1": (
-        "Output in a square 1:1 aspect ratio. "
-        "Fit the existing composition naturally within a square frame. "
-        "Preserve the subject's proportions. Crop only excess peripheral "
-        "content when necessary; never stretch or distort the image."
-    ),
-
-    "3:2": (
-        "Output in a 3:2 aspect ratio, suitable for standard landscape "
-        "photography. Preserve the original subject, proportions, and "
-        "composition. Adjust peripheral framing only as necessary. "
-        "Never stretch or distort the image."
-    ),
-
-    "2:3": (
-        "Output in a 2:3 aspect ratio, suitable for portrait photography. "
-        "Preserve the subject's proportions and important details. "
-        "Adjust peripheral framing only as necessary. "
-        "Never stretch or distort the image."
-    ),
-
-    "4:3": (
-        "Output in a 4:3 aspect ratio. Preserve the existing subject and "
-        "composition while fitting the image naturally within the frame. "
-        "Avoid unnecessary cropping and never stretch or distort the image."
-    ),
-
-    "3:4": (
-        "Output in a 3:4 portrait aspect ratio. Preserve the existing "
-        "subject and its proportions. Adjust the framing naturally while "
-        "keeping important details visible. Never stretch or distort the image."
-    ),
-
-    "16:9": (
-        "Output in a widescreen 16:9 aspect ratio. Preserve the original "
-        "subject and composition. Adjust peripheral framing only as necessary "
-        "to achieve the target ratio. Never stretch or distort the image."
-    ),
-
-    "9:16": (
-        "Output in a vertical 9:16 aspect ratio. Preserve the original "
-        "subject and its proportions. Keep important details visible and "
-        "adjust peripheral framing only as necessary. Never stretch or "
-        "distort the image."
-    ),
-
-    "21:9": (
-        "Output in an ultra-wide 21:9 aspect ratio. Preserve the original "
-        "subject and proportions. Fit the composition naturally into the "
-        "wide frame, adjusting peripheral framing only as necessary. "
-        "Never stretch or distort the image."
-    ),
+    **{
+        ratio: f"Compose the image for {name}. " + _FRAME_COMMON
+        for ratio, name in _FRAME_NAMES.items()
+    },
 }
 def build_text_to_image_prompt(
     scene_details=None,
     has_style_reference=False,
     style_filters=None,
     aspect_ratio=None,
+    preserve_element_identity=False,
+    has_reference_images=False,
 ) -> str:
-    """Subject-first text-to-image prompt with optional text-only style filters and aspect ratio framing."""
-    parts = [
+    """Build a sectioned Image2 prompt for text generation or source-image editing."""
+    user_description = _sanitize_scene_details(scene_details)
+    sections = [
         (
-            "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
-            "subject, composition, camera, materials, palette, lighting, time of day, mood and visual medium. Do not assume an "
-            "unrequested style or lighting setup."
+            (
+                "TASK: Edit/composite the supplied source images into the scene requested by the user. "
+                "Use image roles and preserve every object identity specified by the user. "
+                "The description below is authoritative for placement and scene contents."
+            ) if has_reference_images else (
+                "TASK: Generate one coherent image of the scene requested by the user. "
+                "The user's scene specification below is the source of truth for the subject and its contents."
+            )
         ),
         (
-            "Maintain internal visual consistency: believable proportions where relevant, coherent perspective, consistent object "
-            "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
+            "FIDELITY RULES: Include every explicitly requested object and meaningful detail. "
+            "Preserve stated quantities, colors, materials, locations, directions, relative sizes and relationships. "
+            "Do not omit, replace, duplicate, merge, hide, or invent scene objects. Do not add decorative elements "
+            "that the user did not request. Keep each requested object recognizable and visible; avoid unnecessary "
+            "occlusion. If a stylistic choice conflicts with an explicit scene requirement, the scene requirement wins."
+        ),
+        "USER'S EXACT SCENE SPECIFICATION:\n" + (user_description or "(No scene description supplied.)"),
+        (
+            "VISUAL COHERENCE: Use believable proportions where relevant, coherent perspective, consistent object identity, "
+            "intentional detail hierarchy and clean rendering appropriate to the user's requested medium. "
+            "Do not impose an unrequested style, lighting setup, camera angle, or color grade."
         ),
     ]
-    user_description = _sanitize_scene_details(scene_details)
-    if user_description:
-        parts.append(user_description)
-
+    if preserve_element_identity:
+        sections.insert(
+            3,
+            (
+                "PRIMARY ELEMENT IDENTITY: The image explicitly designated as "
+                "@element is the actual object that must appear in the final scene. "
+                "Do not replace it with a generic object of the same category. "
+                "Preserve its recognizable silhouette, defining proportions, "
+                "distinctive components, color distribution, material identity, "
+                "surface patterns, labels and logos wherever visible. "
+                "Adapt perspective, projected shape, exposure, shading, reflections "
+                "and cast/contact shadows to the requested camera viewpoint and scene "
+                "lighting. Such adaptations must make the SAME object look physically "
+                "plausible, not redesign it. Generate the new background according "
+                "to the user's scene description; do not retain the source background "
+                "unless explicitly requested. Infer hidden surfaces conservatively "
+                "because a single image cannot reveal the complete unseen geometry."
+            ),
+        )
     if aspect_ratio and aspect_ratio in IMAGE2_FRAME_SIZE_PROMPTS:
-        parts.append(IMAGE2_FRAME_SIZE_PROMPTS[aspect_ratio])
+        sections.append("OUTPUT FRAME:\n" + IMAGE2_FRAME_SIZE_PROMPTS[aspect_ratio])
 
     selected_filters: list[str] = []
     if isinstance(style_filters, (list, tuple)):
@@ -1004,30 +1076,36 @@ def build_text_to_image_prompt(
                 selected_filters.append(value)
 
     if selected_filters:
-        parts.append("Apply these text-only visual style filters after interpreting the user's subject: " + ", ".join(f"#{item}" for item in selected_filters) + ".")
-        parts.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
-        parts.append(
-            "Style filters modify rendering technique, linework, texture, color treatment, shading and finish only. They are not source images, "
-            "subjects, objects, scene descriptions, backgrounds, overlays, or separate layers. Preserve the user's requested subject, composition, "
-            "object count, architectural geometry and setting. If selected styles conflict, prioritize the first selected style and keep the image readable."
+        sections.append(
+            "STYLE-ONLY MODIFIERS (apply after resolving the required scene; never change its contents): "
+            + ", ".join(f"#{item}" for item in selected_filters)
+            + "."
+        )
+        sections.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
+        sections.append(
+            "Style filters may change rendering technique, linework, texture, color treatment, shading and finish only. "
+            "They are not source images, subjects, objects, scene descriptions, backgrounds, overlays, or separate layers. "
+            "They must not change the requested subject, object inventory, object count, composition, architectural geometry "
+            "or setting. If filters conflict, prioritize the first selected style while preserving every scene requirement."
         )
     elif has_style_reference:
-        # Backward compatibility for older clients that still submit a separate style image.
-        parts.extend([
+        sections.extend([
             (
-                "A separate Style reference image is attached. Treat it only as an aesthetic guide and preserve its tonal range, contrast, palette, "
-                "texture and rendering medium without copying its subject or composition unless requested."
+                "STYLE REFERENCE: Use the separate Style image only as an aesthetic guide. Match its tonal range, contrast, "
+                "palette, texture and rendering medium without copying its subject or composition unless the user asks."
             ),
             (
-                "Do not automatically brighten, warm, whiten, add gloss or force a photorealistic architectural look when the reference does not show those traits."
+                "Do not automatically brighten, warm, whiten, add gloss or force a photorealistic architectural look when "
+                "the Style image does not show those traits."
             ),
         ])
     else:
-        parts.append(
-            "Let the user's prompt decide the lighting and mood. Do not add default daylight, high-key exposure, warm color grading, glossy materials or artificial glow when they were not requested."
+        sections.append(
+            "LIGHTING AND MOOD: Follow the user's exact description. Do not add default daylight, high-key exposure, "
+            "warm color grading, glossy materials or artificial glow unless requested."
         )
-    return _join(parts)
 
+    return "\n\n".join(section for section in sections if section)
 
 def build_feature_prompt(feature: str, fields: dict) -> str:
     """Dispatch par feature — l'`option_id` générique porte le preset de la fonction."""
@@ -1059,9 +1137,13 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
     if feature == "text_to_image":
         return build_text_to_image_prompt(
             scene_details=details,
-            has_style_reference=bool(fields.get("styleReferenceUrl")),
+            has_style_reference=bool(fields.get("styleReferenceUrl")) or "style" in (fields.get("referenceRoles") or []),
             style_filters=fields.get("styleFilters"),
             aspect_ratio=fields.get("aspectRatio"),
+            preserve_element_identity=bool(fields.get("preserveElementIdentity")),
+            has_reference_images=bool(
+                fields.get("imageUrl") or fields.get("styleReferenceUrl") or fields.get("referenceUrls")
+            ),
         )
     return build_print_render_prompt(
         scene_details=details,

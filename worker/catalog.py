@@ -13,10 +13,14 @@ Règles :
 - Les model_id sont INDICATIFS : vérifier la doc de chaque fournisseur
   avant la mise en production (les versions évoluent vite).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from providers.http_helpers import to_base64_or_url
+from frame_ratio import (
+    ALL_FRAMES, BFL_DIMENSIONS, GPT_IMAGE_1_SIZES, GPT_IMAGE_RESOLUTION_RATIOS,
+    GEMINI_RESOLUTION_RATIOS, MAGICHOUR_FRAMES, exact_size, gpt_image_size,
+)
 
 IMAGE_TIMEOUT_MS = 3 * 60 * 1000
 VIDEO_TIMEOUT_MS = 10 * 60 * 1000
@@ -55,14 +59,22 @@ class Candidate:
     supports_image_to_3d: bool = False
     # True only for adapters that pass images as multimodal context, not as the image being edited.
     supports_style_reference: bool = False
-    # Current text-to-image adapters expose approximately 1K output only.
-    # Do not advertise 2K/4K until an adapter really requests those sizes.
+    # Advertise only resolutions actually passed to this provider's API adapter.
     resolutions: tuple[str, ...] = ("1K",)
+    # Only frames confirmed for this exact model/adapter; empty means unknown.
+    frame_ratios: tuple[str, ...] = ()
+    # Map each frame to the resolution tiers this exact model/adapter accepts.
+    resolution_ratios: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    # True only if the adapter sends source images to a true edit-capable model/API.
+    supports_identity_edit: bool = False
+    # Provider-documented limit for reference images explicitly used as objects
+    # whose identity should be preserved. This is an eligibility cap, not a guarantee.
+    max_identity_objects: int | None = None
 
 
 # --- Helpers d'exposition des modèles disponibles ---
 
-def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]:
+def list_feature_models(feature: str, include_costs: bool = False, candidates: list[Candidate] | None = None) -> list[dict]:
     """Retourne les candidats d'une feature, prêts à être affichés dans un
     sélecteur utilisateur.
 
@@ -74,10 +86,12 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
     `include_costs=True` expose `costPerGeneration` (centimes réels provider)
     pour le calcul des crédits côté web.
     """
+
     from providers import is_provider_configured
 
     result = []
-    for c in MODEL_CATALOG.get(feature, []):
+    source = candidates if candidates is not None else MODEL_CATALOG.get(feature, [])
+    for c in source:
         item: dict = {
             "key": c.key,
             "name": c.name,
@@ -86,6 +100,10 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "maxReferences": c.max_references,
             "supportsStyleReference": c.supports_style_reference,
             "resolutions": c.resolutions,
+            "frameRatios": c.frame_ratios,
+            "resolutionRatios": dict(c.resolution_ratios),
+            "supportsIdentityEdit": c.supports_identity_edit,
+            "maxIdentityObjects": c.max_identity_objects,
             "configured": is_provider_configured(c.provider),
             "tiers": c.tiers,
             "supportsTextToVideo": c.supports_text_to_video,
@@ -101,6 +119,86 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             item["costPerGeneration"] = c.cost_per_generation
         result.append(item)
     return result
+
+
+def text_to_image_candidates_for_tier(tier: str) -> list[Candidate]:
+    """Expose the Magic Hour Flux 2 Klein resolution tiers for the API key's plan."""
+    paid_tiers = {"creator", "pro", "business"}
+    magic_hour_resolutions = ("1K", "2K") if tier.lower() in paid_tiers else ("640px",)
+    candidates = []
+    for candidate in MODEL_CATALOG["text_to_image"]:
+        if candidate.key == "magichour-flux-2-klein-text":
+            candidates.append(replace(
+                candidate,
+                resolutions=magic_hour_resolutions,
+                resolution_ratios=tuple(
+                    (ratio, magic_hour_resolutions) for ratio in MAGICHOUR_FRAMES
+                ),
+            ))
+        else:
+            candidates.append(candidate)
+    return candidates
+
+
+def normalize_image2_reference_roles(req: dict) -> list[str]:
+    """Return one validated role per reference image; legacy/malformed roles default to element."""
+    references = req.get("referenceUrls") or []
+    if not isinstance(references, (list, tuple)):
+        references = []
+
+    raw_roles = req.get("referenceRoles") or []
+    if not isinstance(raw_roles, (list, tuple)):
+        raw_roles = []
+
+    valid_roles = {"element", "base", "style", "detail"}
+    roles: list[str] = []
+    for index in range(len(references)):
+        role = raw_roles[index] if index < len(raw_roles) else "element"
+        if not isinstance(role, str) or role not in valid_roles:
+            role = "element"
+        roles.append(role)
+    return roles
+
+
+def text_to_image_identity_locked(req: dict) -> bool:
+    """Whether source-object/base-scene fidelity must restrict model routing."""
+    if isinstance(req.get("imageUrl"), str) and req["imageUrl"]:
+        return True
+    return any(
+        role in {"element", "base"}
+        for role in normalize_image2_reference_roles(req)
+    )
+
+
+def image2_identity_object_count(req: dict) -> int:
+    """Count object references, not base-scene/style/detail references."""
+    count = int(isinstance(req.get("imageUrl"), str) and bool(req.get("imageUrl")))
+    return count + sum(role == "element" for role in normalize_image2_reference_roles(req))
+
+
+def filter_text_to_image_candidates(
+    candidates: list[Candidate],
+    *,
+    input_count: int,
+    has_style_reference: bool,
+    identity_locked: bool,
+    identity_object_count: int,
+) -> list[Candidate]:
+    """Apply reference, Style and object-identity eligibility before Auto ordering."""
+    eligible = [
+        candidate
+        for candidate in candidates
+        if candidate.max_references >= input_count
+        and (not has_style_reference or candidate.supports_style_reference)
+    ]
+    if identity_locked:
+        eligible = [candidate for candidate in eligible if candidate.supports_identity_edit]
+        eligible = [
+            candidate for candidate in eligible
+            if candidate.max_identity_objects is None
+            or identity_object_count <= candidate.max_identity_objects
+        ]
+    return eligible
 
 
 def filter_candidates_by_mode(candidates: list[Candidate], mode: str) -> list[Candidate]:
@@ -247,31 +345,56 @@ def magichour_edit_input(req: dict) -> dict:
     }
 
 
-def magichour_text_to_image_input(req: dict) -> dict:
-    """Magic Hour image generation/editing : gère à la fois le text-to-image
-    pur et les générations avec images de référence / Style."""
-    ratio = (
-        "auto"
-        if req["aspectRatio"] == "auto"
-        else "16:9"
-        if req["aspectRatio"] in ("16:9", "4:3", "3:2", "21:9")
-        else "9:16"
-        if req["aspectRatio"] in ("9:16", "3:4", "2:3")
-        else "1:1"
-    )
+def text_to_image_images(req: dict) -> list[str]:
+    """
+    Build Image2 inputs in the exact order used by add_image_reference_map:
+    style image, primary element, then additional reference images.
+
+    A supplied primary image must never be silently discarded merely
+    because preserveElementIdentity is missing or false.
+    """
     images: list[str] = []
+
+    # 1. Style reference.
     style_image = req.get("styleReferenceUrl")
     if isinstance(style_image, str) and style_image:
         images.append(style_image)
-    if req.get("imageUrl"):
-        images.append(req["imageUrl"])
-    images.extend(req.get("referenceUrls", []))
+
+    # 2. Primary element: always send it when provided.
+    element_image = req.get("imageUrl")
+    if isinstance(element_image, str) and element_image:
+        images.append(element_image)
+
+    # 3. Additional uploaded elements/references.
+    references = req.get("referenceUrls") or []
+    if isinstance(references, (list, tuple)):
+        images.extend(
+            image
+            for image in references
+            if isinstance(image, str) and image
+        )
+
+    return images
+
+
+def magichour_text_to_image_input(req: dict) -> dict:
+    """Magic Hour Flux 2 Klein: pass only documented generation ratios."""
+    ratio = req.get("aspectRatio") or "auto"
+    if ratio not in MAGICHOUR_FRAMES:
+        raise ValueError(
+            f"Magic Hour Flux 2 Klein does not declare native support for {ratio}. "
+            f"Supported frames: {', '.join(MAGICHOUR_FRAMES)}."
+        )
+    resolution = str(req.get("resolution") or "1K")
+    if resolution not in {"640px", "1K", "2K"}:
+        raise ValueError("Magic Hour Flux 2 Klein supports 640px, 1K, or 2K output.")
     return {
         "prompt": req["prompt"],
-        "images": images,
+        "images": text_to_image_images(req),
         "aspectRatio": ratio,
-        "resolution": "auto",
+        "resolution": resolution.lower(),
         "quantity": req["quantity"],
+        "is_text_to_image": True,
     }
 
 
@@ -342,18 +465,14 @@ def google_background_removal_input(req: dict) -> dict:
 
 
 def bfl_text_to_image_input(req: dict) -> dict:
-    """BFL text-to-image: pass actual dimensions so the selected frame is honored."""
-    ratio = req.get("resolvedAspectRatio") if req.get("aspectRatio") == "auto" else req.get("aspectRatio")
-    width, height = {
-        "1:1": (1024, 1024),
-        "16:9": (1024, 576),
-        "9:16": (576, 1024),
-        "4:3": (1024, 768),
-        "3:4": (768, 1024),
-        "3:2": (1024, 683),
-        "2:3": (683, 1024),
-        "21:9": (1024, 439),
-    }.get(ratio, (1024, 768))
+    """BFL text-to-image: pass valid native dimensions for the selected frame."""
+    ratio = req.get("aspectRatio") or "auto"
+    if ratio == "auto":
+        raise ValueError("This BFL model requires an explicit frame size.")
+    try:
+        width, height = BFL_DIMENSIONS[ratio]
+    except KeyError:
+        raise ValueError(f"BFL does not declare native support for the {ratio} frame.") from None
     payload: dict = {
         "prompt": req["prompt"],
         "width": width,
@@ -362,53 +481,59 @@ def bfl_text_to_image_input(req: dict) -> dict:
         "safety_tolerance": 2,
         "quantity": req["quantity"],
     }
-    image = req.get("imageUrl")
+    image = (
+        req.get("imageUrl")
+        if req.get("preserveElementIdentity")
+        else None
+    )
     if not image:
         references = req.get("referenceUrls") or []
         image = references[0] if references else None
     if image:
-        payload["input_image"] = to_base64_or_url(image)
+        payload["image_prompt"] = to_base64_or_url(image)
     return payload
 
 
 def openai_text_to_image_input(req: dict) -> dict:
-    """OpenAI image generation/edit with a dedicated Style input when supplied."""
-    size = (
-        "auto"
-        if req["aspectRatio"] == "auto"
-        else "1536x1024"
-        if req["aspectRatio"] in ("16:9", "4:3", "3:2", "21:9")
-        else "1024x1536"
-        if req["aspectRatio"] in ("9:16", "3:4", "2:3")
-        else "1024x1024"
-    )
-    images: list[str] = []
-    style_image = req.get("styleReferenceUrl")
-    if isinstance(style_image, str) and style_image:
-        images.append(style_image)
-    images.extend(req.get("referenceUrls") or [])
+    """OpenAI GPT Image 2.5 edit input with native size and high source fidelity."""
+    ratio = req.get("aspectRatio") or "auto"
+    resolution = req.get("resolution") or "1K"
+    size = gpt_image_size(ratio, resolution)
+    images = text_to_image_images(req)
     return {
         "prompt": req["prompt"],
         "images": images,
+        "require_images": bool(
+            req.get("imageUrl")
+            or req.get("styleReferenceUrl")
+            or req.get("referenceUrls")
+        ),
         "size": size,
-        "quality": "high" if req["quality"] == "pro" else "medium",
+        # Preserve the old high-quality look in Standard; Pro opts into xhigh.
+        "quality": "xhigh" if req.get("quality") == "pro" else "high",
+        # PNG avoids adding a lossy JPEG encoding step to detailed product/archviz edges.
+        "output_format": "png",
         "quantity": req["quantity"],
     }
 
 def google_text_to_image_input(req: dict) -> dict:
-    """Google multimodal generation: preserve Style order and pass a native ratio when selected."""
-    images: list[str] = []
-    style_image = req.get("styleReferenceUrl")
-    if isinstance(style_image, str) and style_image:
-        images.append(style_image)
-    images.extend(req.get("referenceUrls") or [])
+    images = text_to_image_images(req)
+
     payload = {
         "prompt": req["prompt"],
         "images": images,
+        "require_images": bool(
+            req.get("imageUrl")
+            or req.get("styleReferenceUrl")
+            or req.get("referenceUrls")
+        ),
         "quantity": req["quantity"],
+        "resolution": req.get("resolution") or "1K",
     }
+
     if req.get("aspectRatio") not in (None, "auto"):
         payload["aspectRatio"] = req["aspectRatio"]
+
     return payload
 
 
@@ -425,10 +550,12 @@ IMAGE_EDIT_CANDIDATES: list[Candidate] = [
     Candidate("flux-kontext-pro", "Flux Kontext Pro", "Reliable photorealistic edits", "bfl", "flux-kontext-pro", 4, 3, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_edit_input, extract_image_urls),
     Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast image edits at lower cost", "google", "gemini-2.5-flash-image", 2, 3, 13, IMAGE_TIMEOUT_MS, ("standard",), google_edit_input, extract_image_urls),
     Candidate("gpt-image-1.5", "GPT Image 1.5", "High quality architectural edits", "openai", "gpt-image-1.5", 7, 15, 13, IMAGE_TIMEOUT_MS, ("pro",), openai_edit_input, extract_image_urls),
-    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI image edits", "openai", "gpt-image-1", 5, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_edit_input, extract_image_urls),
-    # Agrégateur (exception assumée, AGENTS.md §1) : flux-2-klein ÉPINGLÉ
-    # (seul modèle d'édition éligible au free tier).
+    # Agr?gateur (exception assum?e, AGENTS.md ?1) : flux-2-klein ?pingl?
+    # (seul mod?le d'?dition ?ligible au free tier).
     Candidate("magichour-flux-2-klein", "Magic Hour Flux 2 Klein", "Free tier friendly image edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_edit_input, extract_image_urls),
+    # GPT Image 2 accepte jusqu'? 4 r?f?rences ; FLUX.2 Pro jusqu'? 8.
+    Candidate("gpt-image-2", "GPT Image 2", "High quality image edit with up to 4 references", "openai", "gpt-image-2", 6, 12, 4, IMAGE_TIMEOUT_MS, ("pro",), openai_edit_input, extract_image_urls),
+    Candidate("flux-2-pro", "Flux 2 Pro", "High fidelity multi-reference edit (up to 8 refs)", "bfl", "flux-2-pro", 7, 10, 8, IMAGE_TIMEOUT_MS, ("pro",), bfl_edit_input, extract_image_urls),
 ]
 
 ANIMATE_CANDIDATES: list[Candidate] = [
@@ -622,14 +749,99 @@ THREED_CANDIDATES: list[Candidate] = [
 # peuvent aussi servir quand une image est fournie ; ici on privilégie les
 # modèles natifs text-to-image.
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
-    Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls),
-    Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls),
-    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True),
-    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image with Style and content references", "google", "gemini-2.5-flash-image", 3, 3, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True),
-    # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
-    # image de référence est fournie, car l'API Magic Hour exige une image
-    # d'entrée.
-    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly text-to-image and style reference edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls, supports_style_reference=True),
+    Candidate(
+        "flux-pro",
+        "Flux Pro",
+        "High quality text-to-image photorealistic renders; supports one reference image",
+        "bfl",
+        "flux-pro",
+        7,
+        5,
+        1,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        bfl_text_to_image_input,
+        extract_image_urls,
+        resolutions=("1K",),
+        frame_ratios=ALL_FRAMES,
+        resolution_ratios=tuple((ratio, ("1K",)) for ratio in ALL_FRAMES),
+    ),
+    Candidate(
+        "flux-dev",
+        "Flux Dev",
+        "Fast text-to-image generation; supports one reference image",
+        "bfl",
+        "flux-dev",
+        5,
+        3,
+        1,
+        IMAGE_TIMEOUT_MS,
+        ("standard",),
+        bfl_text_to_image_input,
+        extract_image_urls,
+        resolutions=("1K",),
+        frame_ratios=ALL_FRAMES,
+        resolution_ratios=tuple((ratio, ("1K",)) for ratio in ALL_FRAMES),
+    ),
+    Candidate(
+        "gpt-image-1.5",
+        "GPT Image 2.5 Sunburst",
+        "High-fidelity image generation with element and style references",
+        "openai",
+        "gpt-image-2.5-sunburst",
+        7,
+        15,
+        16,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        openai_text_to_image_input,
+        extract_image_urls,
+        supports_identity_edit=True,
+        resolutions=("1K", "2K", "4K"),
+        resolution_ratios=tuple(GPT_IMAGE_RESOLUTION_RATIOS.items()),
+        supports_style_reference=True,
+        frame_ratios=("auto", *ALL_FRAMES),
+    ),
+    Candidate(
+        "gemini-2.5-flash",
+        "Gemini Nano Banana 2.1",
+        "High-fidelity multi-reference image generation",
+        "google",
+        "gemini-nano-banana-2.1",
+        3,
+        4,
+        14,
+        IMAGE_TIMEOUT_MS,
+        ("standard",),
+        google_text_to_image_input,
+        extract_image_urls,
+        supports_identity_edit=True,
+        max_identity_objects=10,
+        resolutions=("1K", "2K", "4K"),
+        resolution_ratios=tuple(GEMINI_RESOLUTION_RATIOS.items()),
+        supports_style_reference=True,
+        frame_ratios=("auto", *ALL_FRAMES),
+    ),
+    # Agrégateur assumé : conserve Magic Hour comme solution de repli
+    # text-to-image compatible avec ses ratios et ses références documentés.
+    Candidate(
+        "magichour-flux-2-klein-text",
+        "Magic Hour Flux 2 Klein",
+        "Free tier friendly text-to-image with reference images as visual guidance; exact identity preservation is not guaranteed",
+        "magichour",
+        "flux-2-klein",
+        5,
+        1,
+        5,
+        IMAGE_TIMEOUT_MS,
+        ("standard",),
+        magichour_text_to_image_input,
+        extract_image_urls,
+        resolutions=("1K",),
+        resolution_ratios=tuple((ratio, ("1K",)) for ratio in MAGICHOUR_FRAMES),
+        supports_style_reference=True,
+        frame_ratios=MAGICHOUR_FRAMES,
+    ),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {

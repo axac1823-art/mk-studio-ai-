@@ -1,6 +1,6 @@
 """Adaptateur OpenAI — API officielle (port de openai.ts).
 
-Modèles servis : gpt-image-1.5 / gpt-image-1 (édition d'images) et
+Modèle servi : gpt-image-1.5 (édition d'images) et
 sora-2 / sora-2-pro (image->vidéo).
 
 Images : POST /v1/images/edits en multipart (champ `image[]` répété pour
@@ -57,6 +57,10 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
         ext = mime.split("/")[1] if "/" in mime else "png"
         files.append(("image[]", (f"image.{ext}", base64.b64decode(data), mime)))
 
+    output_format = str(input_.get("output_format") or "jpeg")
+    if output_format not in {"png", "jpeg", "webp"}:
+        raise ProviderError(f"openai: unsupported image output format {output_format!r}")
+
     # PAS de Content-Type manuel : httpx pose le boundary multipart lui-même.
     # Timeout large : la génération gpt-image dépasse couramment 60 s.
     response = httpx.post(
@@ -67,7 +71,12 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
             "prompt": str(input_.get("prompt") or ""),
             "size": str(input_.get("size") or "auto"),
             "quality": str(input_.get("quality") or "auto"),
-            "output_format": "jpeg",
+            "output_format": output_format,
+            **(
+                {"input_fidelity": "high"}
+                if model_id == "gpt-image-1.5"
+                else {}
+            ),
         },
         files=files,
         timeout=300,
@@ -82,7 +91,8 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
     b64 = items[0].get("b64_json") if items else None
     if not b64:
         raise ProviderError("openai: no image in images/edits response")
-    return f"data:image/jpeg;base64,{b64}"
+    mime_type = {"png": "image/png", "jpeg": "image/jpeg", "webp": "image/webp"}[output_format]
+    return f"data:{mime_type};base64,{b64}"
 
 
 def _run_image_generation(model_id: str, input_: dict) -> str:
@@ -163,6 +173,11 @@ def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
     # Text-to-image : aucune image d'entrée -> /images/generations.
     images = input_.get("images")
     has_images = isinstance(images, list) and len(images) > 0
+    # Fail instead of silently generating a different object from text alone.
+    if input_.get("require_images") and not has_images:
+        raise ProviderError(
+            "openai: Image2 expected reference images, but no images were attached"
+        )
     runner = _run_image_edit if has_images else _run_image_generation
     with ThreadPoolExecutor(max_workers=count) as pool:
         urls = list(pool.map(lambda _: runner(model_id, input_), range(count)))

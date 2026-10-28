@@ -1,55 +1,63 @@
-"""Workflow de changement de vitesse vidéo avec MoviePy, sans API IA externe."""
-from pathlib import Path
+"""Runway Magnific video upscaling workflow; user credits debit only after output is stored."""
+import logging
 
 import db
 import storage
+from providers import hitpaw, magichour, runway_video_upscale
+from workflows.common import complete_job, fail_job, insert_asset, mark_processing, store_output
 from moviepy import VideoFileClip
-from workflows.common import complete_job, fail_job, insert_asset, mark_processing
 
-
-def _resolve_storage_path(asset_id: str, user_id: str) -> str:
-    with db.connect() as conn:
-        row = conn.execute(
-            "SELECT storage_path FROM assets WHERE id = %s AND user_id = %s",
-            (asset_id, user_id),
-        ).fetchone()
-    if not row:
-        raise ValueError(f"asset not found: {asset_id}")
-    return row["storage_path"]
+log = logging.getLogger("workflows")
 
 
 def run(job: dict) -> None:
-    """Génère une copie du clip avec la vitesse demandée et son audio ajusté."""
     input_ = job["input"]
-    speed_factor = int(input_.get("speedFactor") or 1)
-    if speed_factor not in (1, 2, 4, 8, 16, 32):
-        raise ValueError("speedFactor must be 1, 2, 4, 8, 16 or 32")
-
+    provider = input_.get("provider", "runway_magnific")
+    options = {
+        "resolution": input_.get("resolution", "2k"),
+        "creativity": input_.get("creativity", 25),
+        "sharpen": input_.get("sharpen", 25),
+        "smartGrain": input_.get("smartGrain", 0),
+        "flavor": input_.get("flavor", "natural"),
+        "fpsBoost": input_.get("fpsBoost", False),
+    }
     with db.connect() as conn:
         mark_processing(conn, job["id"])
-
     try:
-        storage_path = _resolve_storage_path(input_["assetId"], job["user_id"])
-        video_path = storage.resolve(storage_path)
-        out_name = storage.save_file(b"", "mp4")
-        out_path = storage.resolve(out_name)
-
-        with VideoFileClip(str(video_path)) as clip:
-            speed_clip = clip.with_speed_scaled(factor=speed_factor)
-            try:
-                speed_clip.write_videofile(
-                    str(out_path),
-                    fps=clip.fps or 24,
-                    codec="libx264",
-                    audio_codec="aac" if speed_clip.audio is not None else None,
-                    logger=None,
-                )
-            finally:
-                speed_clip.close()
-
         with db.connect() as conn:
-            asset_id = insert_asset(conn, job, "video", out_name)
-            complete_job(conn, job, asset_id, int(input_.get("creditCost") or 0))
+            row = conn.execute(
+                "SELECT storage_path FROM assets WHERE id = %s AND user_id = %s AND type = 'video'",
+                (input_["assetId"], job["user_id"]),
+            ).fetchone()
+        if not row:
+            raise ValueError("Source video is unavailable.")
+        source_path = storage.resolve(row["storage_path"])
+        with VideoFileClip(str(source_path)) as clip:
+            duration = float(clip.duration or 0)
+            original_width, original_height = int(clip.w), int(clip.h)
+            max_duration = {"runway_magnific": 30, "magichour": 133, "hitpaw": 3600}.get(provider)
+            if not duration:
+                raise ValueError("Video duration could not be determined.")
+            if max_duration is not None and duration > max_duration:
+                raise ValueError(f"Video must be {max_duration} seconds or shorter for this AI provider.")
+        if provider == "runway_magnific":
+            result = runway_video_upscale.upscale(source_path, options)
+            model_used = runway_video_upscale.MODEL
+        elif provider == "magichour":
+            result = magichour.upscale_video(row["storage_path"], duration, "1080p" if options["resolution"] == "1k" else options["resolution"])
+            model_used = "magichour-video-upscaler"
+        elif provider == "hitpaw":
+            result = hitpaw.upscale(
+                str(source_path), options["resolution"], original_width, original_height
+            )
+            model_used = result.get("model") or "general_restore"
+        else:
+            raise ValueError("Unsupported video upscaling provider.")
+        stored, _ = store_output(result["url"])
+        with db.connect() as conn:
+            asset_id = insert_asset(conn, job, "video", stored)
+            complete_job(conn, job, asset_id, int(input_.get("creditCost") or 0), model_used=model_used)
     except Exception as err:
+        log.exception("video upscale job %s failed", job["id"])
         with db.connect() as conn:
             fail_job(conn, job, err)

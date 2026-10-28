@@ -13,7 +13,6 @@ import {
   Check,
   ChevronDown,
   Download,
-  FolderOpen,
   Images,
   ImagePlus,
   Loader2,
@@ -33,6 +32,7 @@ import {
   Mic,
   Box,
   Layers3,
+  
 } from "lucide-react";
 
 import type { ModelOption } from "@/components/studio/generation-controls";
@@ -60,6 +60,8 @@ const MAX_REFERENCE_SIZE_BYTES = 100 * 1024 * 1024;
 const MAX_TOTAL_REFERENCE_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = SCENE_DETAILS_MAX;
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+type Image2Resolution = Resolution | "640px";
+const IMAGE2_RESOLUTIONS: Image2Resolution[] = ["640px", ...RESOLUTIONS];
 
 const IMAGE2_STYLE_FILTERS = [
   {
@@ -249,11 +251,99 @@ const IMAGE2_STYLE_CATEGORIES = [
   "Photo",
 ] as const;
 
+const IMAGE2_OPTION_CATEGORIES = [
+  {
+    id: "character",
+    label: "Character",
+    max: 1,
+    options: [
+      { id: "none", label: "No people", description: "Empty, uninhabited space.", swatch: "linear-gradient(135deg,#2b2d33,#16171b)", prompt: "No people or figures." },
+      { id: "scale-figures", label: "Scale figures", description: "A few discreet figures to convey scale.", swatch: "linear-gradient(135deg,#3b3f52,#1c1e2a)", prompt: "A few discreet human figures for scale." },
+      { id: "family-life", label: "Family life", description: "Natural everyday occupants.", swatch: "linear-gradient(135deg,#5a4a3a,#2a2018)", prompt: "A few natural everyday occupants, secondary to the space." },
+      { id: "urban-crowd", label: "Urban crowd", description: "Lively pedestrians and street activity.", swatch: "linear-gradient(135deg,#3a4a5a,#1a232c)", prompt: "Lively pedestrians, architecture stays visible." },
+      { id: "silhouettes", label: "Silhouettes", description: "Minimal dark silhouettes.", swatch: "linear-gradient(135deg,#d8d8de,#6d6f7a)", prompt: "People, if any, as minimal dark silhouettes." },
+    ],
+  },
+  {
+    id: "element",
+    label: "Element",
+    max: 2,
+    options: [
+      { id: "vegetation", label: "Lush vegetation", description: "Trees, planters, green facades.", swatch: "linear-gradient(135deg,#2f5d3a,#12261a)", prompt: "Lush believable vegetation." },
+      { id: "water", label: "Water feature", description: "Pool, pond or reflecting basin.", swatch: "linear-gradient(135deg,#2a6f8f,#0f2a38)", prompt: "A water feature with accurate reflections." },
+      { id: "timber", label: "Warm timber", description: "Wood cladding and joinery.", swatch: "linear-gradient(135deg,#a8743f,#4a2f17)", prompt: "Warm timber cladding with realistic grain." },
+      { id: "concrete", label: "Raw concrete", description: "Exposed board-marked concrete.", swatch: "linear-gradient(135deg,#9a9a9a,#4b4b4f)", prompt: "Exposed board-marked concrete." },
+      { id: "glass", label: "Glass & steel", description: "Large glazing, slim steel frames.", swatch: "linear-gradient(135deg,#8fb7cc,#2d4150)", prompt: "Large glazing with slim steel frames." },
+      { id: "stone", label: "Natural stone", description: "Stone walls and paving.", swatch: "linear-gradient(135deg,#b8aa94,#625848)", prompt: "Natural stone walls and paving." },
+    ],
+  },
+  {
+    id: "location",
+    label: "Location",
+    max: 1,
+    options: [
+      { id: "mediterranean", label: "Mediterranean", description: "Coastal hillside, whitewashed light.", swatch: "linear-gradient(135deg,#5fb3d4,#f2e6c9)", prompt: "Mediterranean coastal hillside setting." },
+      { id: "desert", label: "Desert", description: "Arid landscape, dunes, warm earth.", swatch: "linear-gradient(135deg,#e0a95f,#7a4a22)", prompt: "Arid desert landscape setting." },
+      { id: "urban", label: "Dense city", description: "Metropolitan street context.", swatch: "linear-gradient(135deg,#4a5568,#171a21)", prompt: "Dense metropolitan street context." },
+      { id: "forest", label: "Forest", description: "Wooded site, filtered light.", swatch: "linear-gradient(135deg,#2d5a3d,#0f1f16)", prompt: "Wooded forest site with filtered light." },
+      { id: "alpine", label: "Alpine", description: "Mountain terrain, crisp air.", swatch: "linear-gradient(135deg,#c7d7e6,#4a5d73)", prompt: "Alpine mountain landscape setting." },
+      { id: "tropical", label: "Tropical", description: "Lush tropical coastline.", swatch: "linear-gradient(135deg,#2fbf9f,#0f4a52)", prompt: "Lush tropical coastline setting." },
+    ],
+  },
+  {
+    id: "color",
+    label: "Color",
+    max: 1,
+    options: [
+      { id: "warm-neutral", label: "Warm neutrals", description: "Sand, cream, soft beige.", swatch: "linear-gradient(135deg,#e8d8bf,#b89a74)", prompt: "Warm neutral palette." },
+      { id: "cool-mono", label: "Cool monochrome", description: "Greys and blue-greys.", swatch: "linear-gradient(135deg,#aab4c0,#4a5360)", prompt: "Cool monochrome palette." },
+      { id: "earth", label: "Earth tones", description: "Terracotta, ochre, clay.", swatch: "linear-gradient(135deg,#c46a3f,#6b3a22)", prompt: "Earth-tone palette (terracotta, ochre)." },
+      { id: "high-contrast", label: "High contrast", description: "Deep blacks, bright whites.", swatch: "linear-gradient(135deg,#ffffff,#0a0a0a)", prompt: "High-contrast palette." },
+      { id: "pastel", label: "Soft pastel", description: "Muted, airy pastels.", swatch: "linear-gradient(135deg,#f4c9d6,#c9d9f4,#cdeee0)", prompt: "Soft airy pastel palette." },
+    ],
+  },
+  {
+    id: "effects",
+    label: "Effects",
+    max: 2,
+    options: [
+      { id: "golden-hour", label: "Golden hour", description: "Low warm sun, long shadows.", swatch: "linear-gradient(135deg,#ffcf70,#d9622b)", prompt: "Golden-hour light with long soft shadows." },
+      { id: "blue-hour", label: "Blue hour", description: "Dusk sky, glowing interiors.", swatch: "linear-gradient(135deg,#3b4fa8,#e0883a)", prompt: "Blue-hour dusk with warm glowing interior lights." },
+      { id: "fog", label: "Morning fog", description: "Soft mist, diffused light.", swatch: "linear-gradient(135deg,#d7dbe0,#8f98a3)", prompt: "Soft morning fog." },
+      { id: "rain", label: "Rain", description: "Wet surfaces and reflections.", swatch: "linear-gradient(135deg,#4a5b70,#1b232e)", prompt: "Light rain, wet reflective surfaces." },
+      { id: "snow", label: "Snow", description: "Fresh snow, cold clean light.", swatch: "linear-gradient(135deg,#f1f6fb,#a9bfd6)", prompt: "Fresh snow, cold clean light." },
+      { id: "volumetric", label: "Light rays", description: "Subtle volumetric sun beams.", swatch: "linear-gradient(135deg,#fff2c2,#7a6a3a)", prompt: "Subtle volumetric sun rays." },
+    ],
+  },
+  {
+    id: "camera",
+    label: "Camera",
+    max: 1,
+    options: [
+      { id: "eye-level", label: "Eye level", description: "Natural human viewpoint.", swatch: "linear-gradient(135deg,#4a4f5c,#1d2028)", prompt: "Eye-level camera." },
+      { id: "aerial", label: "Aerial", description: "High drone-like viewpoint.", swatch: "linear-gradient(135deg,#6d8fb3,#26384d)", prompt: "High aerial camera viewpoint." },
+      { id: "wide-angle", label: "Wide angle", description: "24mm wide view.", swatch: "linear-gradient(135deg,#7a6fb8,#2a2650)", prompt: "Wide-angle lens (24mm)." },
+      { id: "telephoto", label: "Telephoto", description: "Compressed perspective.", swatch: "linear-gradient(135deg,#b87a6f,#50282a)", prompt: "Telephoto lens, compressed perspective." },
+      { id: "two-point", label: "Two-point", description: "Corrected verticals, archviz.", swatch: "linear-gradient(135deg,#6fb89a,#1f4a3a)", prompt: "Two-point perspective with corrected verticals." },
+      { id: "low-angle", label: "Low angle", description: "Heroic upward view.", swatch: "linear-gradient(135deg,#b8a06f,#4a3a1f)", prompt: "Low camera angle, heroic view." },
+    ],
+  },
+] as const;
+
+const IMAGE2_OPTION_MAX_TOTAL = 6;
+
+type ImageReferenceRole = "element" | "base" | "style" | "detail";
+
 type Image2ModelOption = ModelOption & {
   provider?: string;
   maxReferences?: number;
+  maxIdentityObjects?: number | null;
   tiers?: string[];
   resolutions?: string[];
+  frameRatios?: string[];
+  resolutionRatios?: Record<string, string[]>;
+  supportsIdentityEdit?: boolean;
+  supportsStyleReference?: boolean;
   costPerGeneration?: number;
   service?: string;
 };
@@ -281,6 +371,7 @@ interface ImageInput {
   tag: string;
   name: string;
   previewUrl: string;
+  role: ImageReferenceRole;
   file?: File;
   assetId?: string;
   sizeBytes: number;
@@ -320,7 +411,7 @@ interface LastGenerationMeta {
   modelLabel: string;
   aspectRatio: Image2AspectRatio;
   quality: QualityTier;
-  resolution: Resolution;
+  resolution: Image2Resolution;
   createdAt: string;
 }
 
@@ -425,6 +516,8 @@ export function Image2Workspace() {
     [],
   );
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]); // "category:id"
+  const [pickerTab, setPickerTab] = useState<string>("style");
   const [styleFilterSearch, setStyleFilterSearch] = useState("");
   const [styleFilterCategory, setStyleFilterCategory] =
     useState<(typeof IMAGE2_STYLE_CATEGORIES)[number]>("All");
@@ -436,6 +529,7 @@ export function Image2Workspace() {
   const [mentionIndex, setMentionIndex] = useState(0);
   const [modelOptions, setModelOptions] = useState<Image2ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const [modelFrameNotice, setModelFrameNotice] = useState<string | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("all");
@@ -451,7 +545,7 @@ export function Image2Workspace() {
   const [balance, setBalance] = useState<number | null>(null);
   const [quality, setQuality] = useState<QualityTier>("standard");
   const [aspectRatio, setAspectRatio] = useState<Image2AspectRatio>("4:3");
-  const [resolution, setResolution] = useState<Resolution>("1K");
+  const [resolution, setResolution] = useState<Image2Resolution>("1K");
   const [quantity, setQuantity] = useState(1);
   const [result, setResult] = useState<ResultState>({ status: "idle" });
   const [lastGenerationMeta, setLastGenerationMeta] = useState<LastGenerationMeta | null>(null);
@@ -464,14 +558,13 @@ export function Image2Workspace() {
   const [promptGuideOpen, setPromptGuideOpen] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [feedTab, setFeedTab] = useState<
-    "Creations" | "My templates" | "Academy"
+    "Creations" | "My templates" 
   >("Creations");
   const [feedSearchOpen, setFeedSearchOpen] = useState(false);
   const [feedSearch, setFeedSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [feedFilter, setFeedFilter] = useState<
-    "all" | "generated" | "project" | "favorites"
-  >("all");
+"all" | "generated" | "favorites"  >("all");
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [feedColumns, setFeedColumns] = useState<2 | 3 | 4>(3);
 
@@ -636,21 +729,42 @@ export function Image2Workspace() {
     void refreshAssets(selectedProjectId);
   }, [selectedProjectId, refreshAssets]);
 
+  const removeReferenceAndRenumber = useCallback(
+    (id: string) => {
+      const removed = references.find((reference) => reference.id === id);
+      const remaining = references.filter((reference) => reference.id !== id);
+      if (!removed) return;
+      if (removed.file) revokeObjectUrl(removed.previewUrl);
+
+      const renumbered = remaining.map((reference, index) => ({
+        ...reference,
+        tag: `@img${index + 1}`,
+      }));
+      setPrompt((current) => {
+        let next = current.replace(new RegExp(`${removed.tag}(?!\\d)`, "g"), "");
+        remaining.forEach((reference, index) => {
+          const newTag = `@img${index + 1}`;
+          if (reference.tag !== newTag) {
+            next = next.replace(new RegExp(`${reference.tag}(?!\\d)`, "g"), newTag);
+          }
+        });
+        return next.replace(/[ \t]{2,}/g, " ");
+      });
+      setReferences(renumbered);
+      nextTagRef.current = renumbered.length + 1;
+      setMention(null);
+      setReferenceNotice(null);
+    },
+    [references, revokeObjectUrl],
+  );
+
   const addProjectAssetToReferences = useCallback(
     (asset: WorkspaceAsset) => {
       const existing = references.find(
         (reference) => reference.assetId === asset.id,
       );
       if (existing) {
-        const tag = existing.tag;
-        setReferences((current) =>
-          current.filter((reference) => reference.assetId !== asset.id),
-        );
-        setPrompt((current) =>
-          current.replaceAll(tag, "").replace(/[ \t]{2,}/g, " "),
-        );
-        setMention(null);
-        setReferenceNotice(null);
+        removeReferenceAndRenumber(existing.id);
         return;
       }
       if (references.length >= MAX_REFERENCE_IMAGES) {
@@ -659,11 +773,16 @@ export function Image2Workspace() {
         );
         return;
       }
+      const defaultRole: ImageReferenceRole =
+        selectedModelOption && selectedModelOption.supportsIdentityEdit === false
+          ? "style"
+          : "element";
       setReferences((current) => [
         ...current,
         {
           id: generateUuid(),
           tag: `@img${nextTagRef.current++}`,
+          role: defaultRole,
           name: "Project image",
           previewUrl: asset.url,
           assetId: asset.id,
@@ -673,7 +792,7 @@ export function Image2Workspace() {
       setReferenceNotice(null);
       setError(null);
     },
-    [references],
+    [references, removeReferenceAndRenumber, selectedModelOption],
   );
 
   useEffect(() => {
@@ -696,6 +815,10 @@ export function Image2Workspace() {
             {
               id: generateUuid(),
               tag: `@img${nextTagRef.current++}`,
+              role:
+                selectedModelOption && selectedModelOption.supportsIdentityEdit === false
+                  ? "style"
+                  : "element",
               name: "Project image",
               previewUrl: asset.url,
               assetId: asset.id,
@@ -748,9 +871,14 @@ export function Image2Workspace() {
       setReferenceNotice(notices.length ? notices.join(" ") : null);
 
       if (accepted.length) {
-        const additions = accepted.map((file) => ({
+        const defaultRole: ImageReferenceRole =
+          selectedModelOption && selectedModelOption.supportsIdentityEdit === false
+            ? "style"
+            : "element";
+        const additions: ImageInput[] = accepted.map((file) => ({
           id: generateUuid(),
           tag: `@img${nextTagRef.current++}`,
+          role: defaultRole,
           name: file.name,
           file,
           previewUrl: makeObjectUrl(file),
@@ -763,23 +891,14 @@ export function Image2Workspace() {
       }
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [references, makeObjectUrl],
+    [references, makeObjectUrl, selectedModelOption],
   );
 
   const removeReference = useCallback(
     (id: string) => {
-      const reference = references.find((item) => item.id === id);
-      if (reference?.file) revokeObjectUrl(reference.previewUrl);
-      if (reference) {
-        setPrompt((value) =>
-          value.replaceAll(reference.tag, "").replace(/[ \t]{2,}/g, " "),
-        );
-      }
-      setReferences((current) => current.filter((item) => item.id !== id));
-      setMention(null);
-      setReferenceNotice(null);
+      removeReferenceAndRenumber(id);
     },
-    [references, revokeObjectUrl],
+    [removeReferenceAndRenumber],
   );
 
   const addTagAtCursor = (tag: string) => {
@@ -873,31 +992,70 @@ export function Image2Workspace() {
   );
 
   const imageInputCount = references.length;
+  const identityLockedReferenceSelected = references.some(
+    (reference) => !reference.role || reference.role === "element" || reference.role === "base",
+  );
+  const identityObjectCount = references.filter(
+    (reference) => !reference.role || reference.role === "element",
+  ).length;
+  const styleRoleSelected = references.some(
+    (reference) => reference.role === "style",
+  );
   const isCompatibleWithSelectedInputs = useCallback(
     (model: Image2ModelOption) =>
-      model.configured && imageInputCount <= (model.maxReferences ?? 0),
-    [imageInputCount],
+      model.configured &&
+      imageInputCount <= (model.maxReferences ?? 0) &&
+      (!identityLockedReferenceSelected || model.supportsIdentityEdit === true) &&
+      (model.maxIdentityObjects == null || identityObjectCount <= model.maxIdentityObjects) &&
+      (!styleRoleSelected || model.supportsStyleReference === true),
+    [
+      imageInputCount,
+      identityLockedReferenceSelected,
+      identityObjectCount,
+      styleRoleSelected,
+    ],
   );
   const compatibleConfiguredModels = useMemo(
     () => modelOptions.filter(isCompatibleWithSelectedInputs),
     [modelOptions, isCompatibleWithSelectedInputs],
   );
-  // Show only settings genuinely exposed by the selected model. Auto uses the
-  // intersection across configured models that can handle the selected inputs.
+  // Keep Auto settings consistent with models that support the selected frame.
+  const frameCompatibleModels = useMemo(
+    () => compatibleConfiguredModels.filter((model) => model.frameRatios?.includes(aspectRatio)),
+    [compatibleConfiguredModels, aspectRatio],
+  );
+  // Keep settings aligned to the current frame/resolution in both manual and Auto mode.
+  const resolutionCompatibleModels = useMemo(() => {
+    const capabilityModels = selectedModelOption
+      ? (isCompatibleWithSelectedInputs(selectedModelOption) ? [selectedModelOption] : [])
+      : frameCompatibleModels;
+    return capabilityModels.filter((model) => {
+      const frameTiers = model.resolutionRatios
+        ? (model.resolutionRatios[aspectRatio] ?? [])
+        : (model.resolutions ?? ["1K"]);
+      return frameTiers.includes(resolution);
+    });
+  }, [selectedModelOption, isCompatibleWithSelectedInputs, frameCompatibleModels, aspectRatio, resolution]);
+
+  // Auto uses the union of tiers exposed by compatible models. The worker requires an exact tier match.
   const availableQualityTiers = useMemo(() => {
-    const capabilityModels = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
-    if (capabilityModels.length === 0) return [QUALITY_TIERS[0]];
-    const supportedIds = new Set(capabilityModels.flatMap((model) => model.tiers ?? ["standard"]));
+    const supportedIds = new Set(resolutionCompatibleModels.flatMap((model) => model.tiers ?? ["standard"]));
     const supported = QUALITY_TIERS.filter((tier) => supportedIds.has(tier.id));
     return supported.length > 0 ? supported : [QUALITY_TIERS[0]];
-  }, [selectedModelOption, compatibleConfiguredModels]);
-  const availableResolutions = useMemo<Resolution[]>(() => {
-    const capabilityModels = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
+  }, [resolutionCompatibleModels]);
+
+  const availableResolutions = useMemo<Image2Resolution[]>(() => {
+    const capabilityModels = selectedModelOption
+      ? (isCompatibleWithSelectedInputs(selectedModelOption) ? [selectedModelOption] : [])
+      : frameCompatibleModels;
     if (capabilityModels.length === 0) return ["1K"];
-    return RESOLUTIONS.filter((value) =>
-      capabilityModels.every((model) => (model.resolutions ?? ["1K"]).includes(value)),
-    );
-  }, [selectedModelOption, compatibleConfiguredModels]);
+    return IMAGE2_RESOLUTIONS.filter((value) => capabilityModels.some((model) => {
+      const frameTiers = model.resolutionRatios
+        ? (model.resolutionRatios[aspectRatio] ?? [])
+        : (model.resolutions ?? ["1K"]);
+      return frameTiers.includes(value);
+    }));
+  }, [selectedModelOption, isCompatibleWithSelectedInputs, frameCompatibleModels, aspectRatio]);
 
   useEffect(() => {
     if (!availableQualityTiers.some((tier) => tier.id === quality)) {
@@ -910,24 +1068,44 @@ export function Image2Workspace() {
       setResolution(availableResolutions[0] ?? "1K");
     }
   }, [availableResolutions, resolution]);
-  // Résolution locale du mode Auto : le serveur choisit le candidat
-  // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
-  // catalogue en tie-break). On reproduit cette logique ici pour afficher
-  // le modèle résolu dans le bouton « Auto ».
+  // Preview the worker's Auto order using the current frame and quality tier.
   const resolvedAutoModel = useMemo<Image2ModelOption | null>(() => {
-    if (compatibleConfiguredModels.length === 0) return null;
-    return compatibleConfiguredModels.reduce((best, m) =>
-      (m.costPerGeneration ?? Infinity) < (best.costPerGeneration ?? Infinity)
-        ? m
+    if (resolutionCompatibleModels.length === 0) return null;
+    if (imageInputCount > 0) {
+      const fidelityCandidate = resolutionCompatibleModels.find((model) => model.key === "gpt-image-1.5");
+      if (fidelityCandidate) return fidelityCandidate;
+    }
+    const matchingTier = resolutionCompatibleModels.filter((model) =>
+      (model.tiers ?? ["standard"]).includes(quality),
+    );
+    const candidates = matchingTier.length > 0 ? matchingTier : resolutionCompatibleModels;
+    return candidates.reduce((best, model) =>
+      (model.costPerGeneration ?? Infinity) < (best.costPerGeneration ?? Infinity)
+        ? model
         : best,
     );
-  }, [compatibleConfiguredModels]);
+  }, [resolutionCompatibleModels, quality, imageInputCount]);
+  // Auto offers the union of frames from configured compatible models.
+  // A missing capability declaration is not treated as support.
+  const supportedFrames = useMemo<Set<string> | null>(() => {
+    if (modelOptions.length === 0) return null;
+    const source = selectedModelOption
+      ? (isCompatibleWithSelectedInputs(selectedModelOption) ? [selectedModelOption] : [])
+      : compatibleConfiguredModels;
+    return new Set(source.flatMap((model) => model.frameRatios ?? []));
+  }, [modelOptions.length, selectedModelOption, isCompatibleWithSelectedInputs, compatibleConfiguredModels]);
+  const frameSupported = useCallback(
+    (ratio: Image2AspectRatio) => supportedFrames === null || supportedFrames.has(ratio),
+    [supportedFrames],
+  );
   const selectedModelCanHandleImages = selectedModelOption
     ? isCompatibleWithSelectedInputs(selectedModelOption)
     : !selectedModel;
   const canGenerate =
     prompt.trim().length > 0 &&
     selectedModelCanHandleImages &&
+    frameSupported(aspectRatio) &&
+    (modelOptions.length === 0 || resolutionCompatibleModels.length > 0) &&
     (Boolean(selectedModel) ||
       modelOptions.length === 0 ||
       compatibleConfiguredModels.length > 0);
@@ -942,18 +1120,73 @@ export function Image2Workspace() {
     : 0;
   const hasEnoughCredits =
     !costsConfig || balance === null || balance >= activeCost;
+
+  const disabledReason = useMemo(() => {
+    if (isBusy) return null;
+    if (costsConfig && balance !== null && balance < activeCost) {
+      return `Not enough credits (${activeCost} needed, ${balance} available).`;
+    }
+    if (!prompt.trim()) {
+      return "Please enter a prompt description to generate.";
+    }
+    if (selectedModelOption && !selectedModelCanHandleImages) {
+      if (identityLockedReferenceSelected && !selectedModelOption.supportsIdentityEdit) {
+        return `${selectedModelOption.name} cannot be used with Element or Base images. Change the image role to 'Style / lighting only', or switch to Auto.`;
+      }
+      if (
+        selectedModelOption.maxIdentityObjects != null &&
+        identityObjectCount > selectedModelOption.maxIdentityObjects
+      ) {
+        return `${selectedModelOption.name} supports up to ${selectedModelOption.maxIdentityObjects} element images.`;
+      }
+      if (imageInputCount > (selectedModelOption.maxReferences ?? 0)) {
+        return `${selectedModelOption.name} supports up to ${selectedModelOption.maxReferences ?? 0} images.`;
+      }
+      if (styleRoleSelected && !selectedModelOption.supportsStyleReference) {
+        return `${selectedModelOption.name} does not support Style images.`;
+      }
+      return `${selectedModelOption.name} is not compatible with the selected inputs.`;
+    }
+    if (!frameSupported(aspectRatio)) {
+      return `${selectedModelOption?.name ?? "Selected model"} does not support ${aspectRatio} aspect ratio.`;
+    }
+    if (resolutionCompatibleModels.length === 0) {
+      return `Resolution ${resolution} is not supported with this setup.`;
+    }
+    if (!selectedModel && compatibleConfiguredModels.length === 0) {
+      return "No configured model supports this combination of images and roles.";
+    }
+    return null;
+  }, [
+    isBusy,
+    costsConfig,
+    balance,
+    activeCost,
+    prompt,
+    selectedModelOption,
+    selectedModelCanHandleImages,
+    identityLockedReferenceSelected,
+    identityObjectCount,
+    imageInputCount,
+    styleRoleSelected,
+    frameSupported,
+    aspectRatio,
+    resolutionCompatibleModels.length,
+    resolution,
+    selectedModel,
+    compatibleConfiguredModels.length,
+  ]);
   const selectedOutputUrls = result.status === "done" ? result.outputUrls : [];
   // Durable gallery content comes from /api/assets. The currently selected
   // result is rendered in its dedicated "Just created" group above; keeping it
   // out of this list prevents duplicate tiles and lets saved groups survive reloads.
   const creationItems = useMemo<CreationFeedItem[]>(() => assets
-    .filter((asset) => asset.type === "image")
+    .filter((asset) => asset.type === "image" && Boolean(asset.generationId))
     .map((asset) => ({
       id: asset.id,
       url: asset.url,
       name: "Project image",
-      kind: asset.generationId || asset.feature ? "generated" : "project",
-      assetId: asset.id,
+kind: "generated" as const,      assetId: asset.id,
       createdAt: asset.createdAt,
       feature: asset.feature,
       isFavorite: asset.isFavorite,
@@ -978,7 +1211,6 @@ export function Image2Workspace() {
       const matchesFilter =
         feedFilter === "all" ||
         (feedFilter === "generated" && item.kind === "generated") ||
-        (feedFilter === "project" && item.kind === "project") ||
         (feedFilter === "favorites" && item.isFavorite === true);
       return matchesQuery && matchesFilter;
     });
@@ -1019,6 +1251,44 @@ export function Image2Workspace() {
 
   const handleModelSelection = (key: string) => {
     setSelectedModel(key);
+    const model = modelOptions.find((option) => option.key === key);
+    const supportedFrames = (model?.frameRatios ?? []).filter(
+      (ratio): ratio is Image2AspectRatio =>
+        ratio !== "auto" && IMAGE2_ASPECT_RATIOS.includes(ratio as Image2AspectRatio),
+    );
+    if (model && model.supportsIdentityEdit === false) {
+      setReferences((current) =>
+        current.map((item) =>
+          item.role === "element" || item.role === "base"
+            ? { ...item, role: "style" }
+            : item,
+        ),
+      );
+    }
+    if (
+      model?.configured &&
+      supportedFrames.length > 0 &&
+      !model.frameRatios?.includes(aspectRatio)
+    ) {
+      const ratioValue = (ratio: Image2AspectRatio) => {
+        const [width, height] = ratio.split(":").map(Number);
+        return width / height;
+      };
+      const nextRatio = supportedFrames.reduce((closest, candidate) => {
+        if (aspectRatio === "auto") return closest;
+        return Math.abs(Math.log(ratioValue(candidate) / ratioValue(aspectRatio))) <
+          Math.abs(Math.log(ratioValue(closest) / ratioValue(aspectRatio)))
+          ? candidate
+          : closest;
+      });
+      const previousRatio = aspectRatio === "auto" ? "AUTO" : aspectRatio;
+      setAspectRatio(nextRatio);
+      setModelFrameNotice(
+        `${model.name} does not support ${previousRatio}; changed the frame to ${nextRatio}.`,
+      );
+    } else {
+      setModelFrameNotice(null);
+    }
     setModelPickerOpen(false);
   };
 
@@ -1038,6 +1308,55 @@ export function Image2Workspace() {
     setStyleFilterNotice(null);
   };
 
+  const toggleOption = (categoryId: string, optionId: string) => {
+    const wire = `${categoryId}:${optionId}`;
+    const category = IMAGE2_OPTION_CATEGORIES.find((c) => c.id === categoryId);
+    if (!category) return;
+    if (selectedOptions.includes(wire)) {
+      setSelectedOptions((cur) => cur.filter((v) => v !== wire));
+      setStyleFilterNotice(null);
+      return;
+    }
+    const inCategory = selectedOptions.filter((v) => v.startsWith(`${categoryId}:`));
+    if (inCategory.length >= category.max) {
+      if (category.max === 1) {
+        setSelectedOptions((cur) => [...cur.filter((v) => !v.startsWith(`${categoryId}:`)), wire]);
+        setStyleFilterNotice(null);
+      } else {
+        setStyleFilterNotice(`Choose up to ${category.max} in ${category.label}.`);
+      }
+      return;
+    }
+    if (selectedOptions.length >= IMAGE2_OPTION_MAX_TOTAL) {
+      setStyleFilterNotice(`Choose up to ${IMAGE2_OPTION_MAX_TOTAL} options in total.`);
+      return;
+    }
+    setSelectedOptions((cur) => [...cur, wire]);
+    setStyleFilterNotice(null);
+  };
+
+  const optionsPromptText = selectedOptions
+    .map((wire) => {
+      const [cat, id] = wire.split(":");
+      return IMAGE2_OPTION_CATEGORIES.find((c) => c.id === cat)?.options.find(
+        (o) => o.id === id,
+      )?.prompt;
+    })
+    .filter(Boolean)
+    .join(" ");
+
+  const pickerOptionCategory = IMAGE2_OPTION_CATEGORIES.find((c) => c.id === pickerTab);
+  const pickerQuery = styleFilterSearch.trim().toLowerCase();
+  const visibleStyles = IMAGE2_STYLE_FILTERS.filter(
+    (item) =>
+      (styleFilterCategory === "All" || item.category === styleFilterCategory) &&
+      `${item.tag} ${item.label} ${item.description}`.toLowerCase().includes(pickerQuery),
+  );
+  const visibleOptions = (pickerOptionCategory?.options ?? []).filter((o) =>
+    `${o.label} ${o.description}`.toLowerCase().includes(pickerQuery),
+  );
+  const pickerTotalSelected = selectedStyleFilters.length + selectedOptions.length;
+
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isBusy) return;
 
@@ -1047,12 +1366,64 @@ export function Image2Workspace() {
       );
       return;
     }
-    if (
-      selectedModelOption &&
-      imageInputCount > (selectedModelOption.maxReferences ?? 0)
-    ) {
+    if (selectedModelOption && !isCompatibleWithSelectedInputs(selectedModelOption)) {
+      if (identityLockedReferenceSelected && !selectedModelOption.supportsIdentityEdit) {
+        setError(
+          "The selected model is not eligible for Image2 element or base-scene editing. Choose an edit-compatible model or Auto, or adjust the reference roles.",
+        );
+        return;
+      }
+      if (
+        selectedModelOption.maxIdentityObjects != null &&
+        identityObjectCount > selectedModelOption.maxIdentityObjects
+      ) {
+        setError(
+          `${selectedModelOption.name} supports up to ${selectedModelOption.maxIdentityObjects} element images. Reduce the element references or choose Auto.`,
+        );
+        return;
+      }
+      if (imageInputCount > (selectedModelOption.maxReferences ?? 0)) {
+        setError(
+          `${selectedModelOption.name} supports up to ${selectedModelOption.maxReferences ?? 0} total image inputs including Style. Choose a compatible model or remove images.`,
+        );
+        return;
+      }
+      if (styleRoleSelected && !selectedModelOption.supportsStyleReference) {
+        setError(
+          `${selectedModelOption.name} does not support Style references. Choose a compatible model or remove the Style role.`,
+        );
+        return;
+      }
       setError(
-        `${selectedModelOption.name} supports up to ${selectedModelOption.maxReferences ?? 0} total image inputs including Style. Choose a compatible model or remove images.`,
+        "The selected model does not support the current image inputs or roles. Choose a compatible model or Auto.",
+      );
+      return;
+    }
+
+    if (!frameSupported(aspectRatio)) {
+      const supported = Array.from(supportedFrames ?? []).join(", ") || "none";
+      setError(
+        `No compatible configured model can generate ${aspectRatio} natively. Supported frames: ${supported}.`,
+      );
+      return;
+    }
+
+    const sceneDetailsText = optionsPromptText
+      ? `${prompt.trim()}\n\nScene options: ${optionsPromptText}`
+      : prompt.trim();
+    const attachedTags = new Set(references.map((reference) => reference.tag));
+    const missingTags = Array.from(
+      new Set(sceneDetailsText.match(/@img[1-9]\d*/g) ?? []),
+    ).filter((tag) => !attachedTags.has(tag));
+    if (missingTags.length > 0) {
+      setError(
+        `The description refers to ${missingTags.join(", ")}, but those images are not attached. Add the image or remove the tag.`,
+      );
+      return;
+    }
+    if (sceneDetailsText.length > MAX_PROMPT_LENGTH) {
+      setError(
+        `Prompt plus selected options exceed ${MAX_PROMPT_LENGTH} characters. Shorten the prompt or remove options.`,
       );
       return;
     }
@@ -1069,7 +1440,7 @@ export function Image2Workspace() {
     setResult({ status: "busy" });
     const form = new FormData();
     form.append("feature", "text_to_image");
-    form.append("sceneDetails", prompt.trim());
+    form.append("sceneDetails", sceneDetailsText);
     form.append("quality", quality);
     form.append("aspectRatio", aspectRatio);
     form.append("resolution", resolution);
@@ -1085,6 +1456,7 @@ export function Image2Workspace() {
           source: reference.file ? "upload" : "asset",
           assetId: reference.assetId,
           tag: reference.tag,
+          role: reference.role ?? "element",
         }),
       );
       if (reference.file) form.append(`referenceFile_${index}`, reference.file);
@@ -1122,8 +1494,11 @@ export function Image2Workspace() {
     isBusy,
     selectedModelOption,
     resolvedAutoModel,
+    frameSupported,
+    supportedFrames,
     references,
     selectedStyleFilters,
+    optionsPromptText,
     imageInputCount,
     quality,
     aspectRatio,
@@ -1133,6 +1508,10 @@ export function Image2Workspace() {
     selectedModel,
     balance,
     stopAndPollJob,
+    isCompatibleWithSelectedInputs,
+    identityLockedReferenceSelected,
+    identityObjectCount,
+    styleRoleSelected,
   ]);
 
   const handleCreateProject = useCallback(
@@ -1364,10 +1743,10 @@ export function Image2Workspace() {
           <section className="mt-5 space-y-2" aria-label="Style filters">
             <div className="flex h-6 items-center justify-between gap-2">
               <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#91939e]">
-                Style / Filter
+                Style & Options
               </h2>
               <span className="text-[9px] tabular-nums text-[#858792]">
-                {selectedStyleFilters.length}/3
+                {pickerTotalSelected}
               </span>
             </div>
             <button
@@ -1421,6 +1800,26 @@ export function Image2Workspace() {
                 Browse
               </span>
             </button>
+            {selectedOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedOptions.map((wire) => {
+                  const [cat, id] = wire.split(":");
+                  const option = IMAGE2_OPTION_CATEGORIES.find((c) => c.id === cat)?.options.find((o) => o.id === id);
+                  return option ? (
+                    <button
+                      key={wire}
+                      type="button"
+                      onClick={() => toggleOption(cat, id)}
+                      title={`Remove ${option.label}`}
+                      className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/[0.06] px-2 py-1 text-[9px] text-[#d8d7e2] hover:bg-white/[0.12]"
+                    >
+                      {cat}: {option.label}
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  ) : null;
+                })}
+              </div>
+            )}
             {selectedStyleFilters.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {selectedStyleFilters.map((filterId) => {
@@ -1444,6 +1843,7 @@ export function Image2Workspace() {
                   type="button"
                   onClick={() => {
                     setSelectedStyleFilters([]);
+                    setSelectedOptions([]);
                     setStyleFilterNotice(null);
                   }}
                   className="rounded-full px-2 py-1 text-[9px] text-[#858893] hover:bg-white/[0.06] hover:text-white"
@@ -1472,7 +1872,7 @@ export function Image2Workspace() {
                   References
                 </h2>
                 <p className="mt-0.5 text-[9px] text-[#757883]">
-                  Use @img1, @img2… in your prompt.
+                  Each image is used as a scene element. Use @img1, @img2… to control placement; recognizable details are preserved where possible.
                 </p>
               </div>
               <span className="text-[9px] tabular-nums text-[#858792]">
@@ -1558,6 +1958,26 @@ export function Image2Workspace() {
                     >
                       {reference.name}
                     </p>
+                    <select
+                      aria-label={`Role for ${reference.tag}`}
+                      value={reference.role ?? (selectedModelOption?.supportsIdentityEdit === false ? "style" : "element")}
+                      onChange={(event) => {
+                        const role = event.target.value as ImageReferenceRole;
+                        setReferences((current) => current.map((item) =>
+                          item.id === reference.id ? { ...item, role } : item,
+                        ));
+                      }}
+                      className="mt-1 w-full rounded-md border border-white/[0.10] bg-[#17181c] px-1 py-1 text-[9px] text-[#d8d9e0] outline-none focus:border-[#aaa7ff]"
+                    >
+                      <option value="element" disabled={selectedModelOption?.supportsIdentityEdit === false}>
+                        Element · preserve identity{selectedModelOption?.supportsIdentityEdit === false ? " (Not supported)" : ""}
+                      </option>
+                      <option value="base" disabled={selectedModelOption?.supportsIdentityEdit === false}>
+                        Base scene / background{selectedModelOption?.supportsIdentityEdit === false ? " (Not supported)" : ""}
+                      </option>
+                      <option value="style">Style / lighting only</option>
+                      <option value="detail">Detail / context</option>
+                    </select>
                   </div>
                 ))}
                 {references.length < MAX_REFERENCE_IMAGES && (
@@ -1615,24 +2035,7 @@ export function Image2Workspace() {
             )}
           </section>
 
-          {assets.length > 0 && (
-            <section
-              className="mt-5 space-y-2 border-t border-white/[0.07] pt-3"
-              aria-label="Project image library"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <FolderOpen className="h-3.5 w-3.5 text-[#8b8e98]" />
-                  <h2 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#91939e]">
-                    From this project
-                  </h2>
-                </div>
-                <span className="text-[9px] text-[#737680]">
-                  Add content references
-                </span>
-              </div>
-            </section>
-          )}
+
 
           <section className="mt-5 pb-4" aria-label="Image prompt">
             <div className="mb-2 flex min-h-5 items-center justify-between gap-2">
@@ -1898,8 +2301,15 @@ export function Image2Workspace() {
                     <button
                       key={ratio}
                       type="button"
+                      disabled={!frameSupported(ratio)}
+                      title={
+                        frameSupported(ratio)
+                          ? undefined
+                          : "Not available natively with the selected model"
+                      }
                       onClick={() => {
                         setAspectRatio(ratio);
+                        setModelFrameNotice(null);
                         setAspectPickerOpen(false);
                       }}
                       className={cn(
@@ -1907,6 +2317,8 @@ export function Image2Workspace() {
                         ratio === aspectRatio
                           ? "bg-[#aaa7ff]/15 text-[#d1cfff]"
                           : "text-[#d4d4db] hover:bg-white/[0.06]",
+                        !frameSupported(ratio) &&
+                          "cursor-not-allowed opacity-35 hover:bg-transparent",
                       )}
                     >
                       <span>
@@ -1926,12 +2338,12 @@ export function Image2Workspace() {
               <select
                 value={resolution}
                 onChange={(event) =>
-                  setResolution(event.target.value as Resolution)
+                  setResolution(event.target.value as Image2Resolution)
                 }
                 aria-label="Output resolution"
                 className="w-full min-w-0 bg-transparent text-center text-[10px] text-[#e5e5eb] outline-none"
               >
-                {RESOLUTIONS.map((value) => (
+                {availableResolutions.map((value) => (
                   <option
                     key={value}
                     value={value}
@@ -1987,6 +2399,11 @@ export function Image2Workspace() {
               </select>
             </label>
           </div>
+          {modelFrameNotice && (
+            <p className="mt-1 text-[9px] text-amber-300/90" role="status">
+              {modelFrameNotice}
+            </p>
+          )}
           <div className="mt-2 flex items-center gap-2">
             <span className="text-[9px] text-[#727580]">Project</span>
             <select
@@ -2080,9 +2497,9 @@ export function Image2Workspace() {
               </span>
             </button>
           </div>
-          {costsConfig && balance !== null && balance < activeCost && (
-            <p className="mt-1.5 text-right text-[9px] text-rose-300">
-              Not enough credits for this generation.
+          {disabledReason && (
+            <p className="mt-1.5 text-right text-[9px] text-amber-300/90 leading-tight">
+              {disabledReason}
             </p>
           )}
         </footer>
@@ -2094,7 +2511,7 @@ export function Image2Workspace() {
       >
         <div className="sticky top-0 z-40 flex min-h-[52px] flex-wrap items-center gap-2 border-b border-white/[0.07] bg-[#222328] px-3 py-2.5 md:px-4">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-            {(["Creations", "My templates", "Academy"] as const).map((tab) => (
+            {(["Creations", "My templates"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -2211,7 +2628,6 @@ export function Image2Workspace() {
                     [
                       { id: "all", label: "All images" },
                       { id: "generated", label: "Generated" },
-                      { id: "project", label: "Project images" },
                       { id: "favorites", label: "Favorites" },
                     ] as const
                   ).map((item) => (
@@ -2659,21 +3075,7 @@ export function Image2Workspace() {
                 Browse prompt starters
               </button>
             </div>
-          ) : (
-            <div className="flex min-h-[min(54vh,520px)] flex-col items-center justify-center px-5 py-12 text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.08] bg-[#292a30] text-[#888b96]">
-                <Sparkles className="h-5 w-5" />
-              </span>
-              <h2 className="mt-4 text-sm font-medium text-[#dedee5]">
-                Image generation workspace
-              </h2>
-              <p className="mt-2 max-w-sm text-xs leading-5 text-[#81848e]">
-                Explore a prompt guide, visual style filters and content
-                references, and the model selector. Academy content is not
-                connected to this experimental page.
-              </p>
-            </div>
-          )}
+          ) : null}
         </div>
       </section>
 
@@ -2688,167 +3090,238 @@ export function Image2Workspace() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="image2-style-picker-title"
-            className="flex max-h-[min(800px,92vh)] w-full max-w-[900px] flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-[#23242a] text-[#eeeef2] shadow-2xl"
+            className="flex h-[min(820px,92vh)] w-full max-w-[1000px] flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-[#23242a] text-[#eeeef2] shadow-2xl sm:flex-row"
           >
-            <div className="border-b border-white/[0.08] p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2
-                    id="image2-style-picker-title"
-                    className="text-lg font-medium"
-                  >
-                    Styles
-                  </h2>
-                  <p className="mt-1 text-[11px] text-[#858893]">
-                    Choose up to 3 filters. These references are visual examples
-                    only and are never sent to the generation model.
-                  </p>
-                </div>
+            <nav
+              aria-label="Reference categories"
+              className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/[0.08] bg-[#1b1c20] p-2 sm:w-52 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r sm:p-4"
+            >
+              <p className="hidden h-8 items-center px-2 text-[10px] font-medium uppercase tracking-wider text-[#6f717c] sm:flex">
+                All references
+              </p>
+              {[
+                { id: "style", label: "Style", count: selectedStyleFilters.length },
+                ...IMAGE2_OPTION_CATEGORIES.map((c) => ({
+                  id: c.id as string,
+                  label: c.label,
+                  count: selectedOptions.filter((v) => v.startsWith(`${c.id}:`)).length,
+                })),
+              ].map((tab) => (
                 <button
+                  key={tab.id}
                   type="button"
-                  onClick={() => setStylePickerOpen(false)}
-                  aria-label="Close style picker"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#9b9da7] hover:bg-white/[0.06] hover:text-white"
+                  aria-pressed={pickerTab === tab.id}
+                  onClick={() => {
+                    setPickerTab(tab.id);
+                    setStyleFilterSearch("");
+                  }}
+                  className={cn(
+                    "flex shrink-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors",
+                    pickerTab === tab.id
+                      ? "bg-white/[0.10] text-white"
+                      : "text-[#a3a5b0] hover:bg-white/[0.05] hover:text-white",
+                  )}
                 >
-                  <X className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                  {tab.count > 0 && (
+                    <span className="rounded-full bg-[#aaa7ff] px-1.5 text-[9px] font-semibold text-[#17171b]">
+                      {tab.count}
+                    </span>
+                  )}
                 </button>
-              </div>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div
-                  className="flex min-w-0 flex-wrap gap-1.5"
-                  role="group"
-                  aria-label="Filter style categories"
-                >
-                  {IMAGE2_STYLE_CATEGORIES.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => setStyleFilterCategory(category)}
-                      aria-pressed={styleFilterCategory === category}
-                      className={cn(
-                        "h-7 rounded-lg px-3 text-[10px] font-medium transition-colors",
-                        styleFilterCategory === category
-                          ? "bg-[#3a3b43] text-white"
-                          : "text-[#92949f] hover:bg-white/[0.05] hover:text-white",
-                      )}
-                    >
-                      {category}
-                    </button>
-                  ))}
+              ))}
+            </nav>
+
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <div className="border-b border-white/[0.08] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 id="image2-style-picker-title" className="text-lg font-medium">
+                      {pickerTab === "style" ? "Styles" : pickerOptionCategory?.label}
+                    </h2>
+                    <p className="mt-1 text-[11px] text-[#858893]">
+                      {pickerTab === "style"
+                        ? "Choose up to 3 filters. These references are visual examples only and are never sent to the generation model."
+                        : `Choose up to ${pickerOptionCategory?.max} option(s). They guide the scene without changing your described subject.`}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStylePickerOpen(false)}
+                    aria-label="Close style picker"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#9b9da7] hover:bg-white/[0.06] hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-                <div className="relative w-full sm:max-w-[250px]">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#777a85]" />
-                  <input
-                    value={styleFilterSearch}
-                    onChange={(event) =>
-                      setStyleFilterSearch(event.target.value)
-                    }
-                    placeholder="Search styles…"
-                    aria-label="Search style filters"
-                    className="h-8 w-full rounded-lg border border-white/[0.09] bg-[#191a1f] pl-9 pr-3 text-xs outline-none placeholder:text-[#70727d] focus:border-[#8c88ff]"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {IMAGE2_STYLE_FILTERS.filter(
-                  (item) =>
-                    (styleFilterCategory === "All" ||
-                      item.category === styleFilterCategory) &&
-                    `${item.tag} ${item.label} ${item.description}`
-                      .toLowerCase()
-                      .includes(styleFilterSearch.trim().toLowerCase()),
-                ).map((item) => {
-                  const active = selectedStyleFilters.includes(item.id);
-                  const canAdd = active || selectedStyleFilters.length < 3;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleStyleFilter(item.id)}
-                      aria-pressed={active}
-                      title={item.description}
-                      className={cn(
-                        "group relative min-w-0 overflow-hidden rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a09cff]",
-                        active
-                          ? "border-[#aaa7ff] bg-[#aaa7ff]/10"
-                          : "border-white/[0.08] bg-[#1a1b20] hover:border-white/[0.20]",
-                        !canAdd && "opacity-55",
-                      )}
-                    >
-                      <div className="relative aspect-square overflow-hidden bg-[#15161a]">
-                        <img
-                          src={item.previewUrl}
-                          alt={`${item.tag} style preview`}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.025]"
-                        />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/65 to-transparent" />
-                        <span className="absolute left-2 top-2 rounded-md border border-white/15 bg-black/55 px-1.5 py-1 text-[9px] font-semibold text-white backdrop-blur">
-                          {item.tag}
-                        </span>
-                        <span
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  {pickerTab === "style" ? (
+                    <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label="Filter style categories">
+                      {IMAGE2_STYLE_CATEGORIES.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() => setStyleFilterCategory(category)}
+                          aria-pressed={styleFilterCategory === category}
                           className={cn(
-                            "absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border",
-                            active
-                              ? "border-[#d0ceff] bg-[#aaa7ff] text-[#17171b]"
-                              : "border-white/55 bg-black/25 text-transparent",
+                            "h-7 rounded-lg px-3 text-[10px] font-medium transition-colors",
+                            styleFilterCategory === category
+                              ? "bg-[#3a3b43] text-white"
+                              : "text-[#92949f] hover:bg-white/[0.05] hover:text-white",
                           )}
                         >
-                          <Check className="h-3 w-3" />
-                        </span>
-                      </div>
-                      <span className="block px-2.5 pb-2.5 pt-2">
-                        <span className="block truncate text-[11px] font-medium text-[#e8e8ef]">
-                          {item.label}
-                        </span>
-                        <span className="mt-1 block line-clamp-2 min-h-8 text-[9px] leading-4 text-[#858893]">
-                          {item.description}
-                        </span>
-                        <span className="mt-1 block text-[8px] text-[#686b75]">
-                          Preview source: linked image source page
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {IMAGE2_STYLE_FILTERS.filter(
-                (item) =>
-                  (styleFilterCategory === "All" ||
-                    item.category === styleFilterCategory) &&
-                  `${item.tag} ${item.label} ${item.description}`
-                    .toLowerCase()
-                    .includes(styleFilterSearch.trim().toLowerCase()),
-              ).length === 0 && (
-                <div className="py-12 text-center text-xs text-[#858893]">
-                  No matching styles.
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <span />
+                  )}
+                  <div className="relative w-full sm:max-w-[250px]">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#777a85]" />
+                    <input
+                      value={styleFilterSearch}
+                      onChange={(event) => setStyleFilterSearch(event.target.value)}
+                      placeholder="Search…"
+                      aria-label="Search"
+                      className="h-8 w-full rounded-lg border border-white/[0.09] bg-[#191a1f] pl-9 pr-3 text-xs outline-none placeholder:text-[#70727d] focus:border-[#8c88ff]"
+                    />
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] bg-[#1b1c20] px-4 py-3">
-              <p className="text-[10px] text-[#92949f]">
-                {selectedStyleFilters.length}/3 selected
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedStyleFilters([]);
-                    setStyleFilterNotice(null);
-                  }}
-                  className="h-8 rounded-lg px-3 text-[10px] text-[#9c9eaa] hover:bg-white/[0.06] hover:text-white"
-                >
-                  Clear selection
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStylePickerOpen(false)}
-                  className="h-8 rounded-lg bg-[#f2f0ff] px-4 text-[10px] font-semibold text-[#17171b] hover:bg-white"
-                >
-                  Done
-                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  {pickerTab === "style"
+                    ? visibleStyles.map((item) => {
+                        const active = selectedStyleFilters.includes(item.id);
+                        const canAdd = active || selectedStyleFilters.length < 3;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => toggleStyleFilter(item.id)}
+                            aria-pressed={active}
+                            title={item.description}
+                            className={cn(
+                              "group relative min-w-0 overflow-hidden rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a09cff]",
+                              active
+                                ? "border-[#aaa7ff] bg-[#aaa7ff]/10"
+                                : "border-white/[0.08] bg-[#1a1b20] hover:border-white/[0.20]",
+                              !canAdd && "opacity-55",
+                            )}
+                          >
+                            <div className="relative aspect-square overflow-hidden bg-[#15161a]">
+                              <img
+                                src={item.previewUrl}
+                                alt={`${item.tag} style preview`}
+                                loading="lazy"
+                                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.025]"
+                              />
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/65 to-transparent" />
+                              <span className="absolute left-2 top-2 rounded-md border border-white/15 bg-black/55 px-1.5 py-1 text-[9px] font-semibold text-white backdrop-blur">
+                                {item.tag}
+                              </span>
+                              <span
+                                className={cn(
+                                  "absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border",
+                                  active
+                                    ? "border-[#d0ceff] bg-[#aaa7ff] text-[#17171b]"
+                                    : "border-white/55 bg-black/25 text-transparent",
+                                )}
+                              >
+                                <Check className="h-3 w-3" />
+                              </span>
+                            </div>
+                            <span className="block px-2.5 pb-2.5 pt-2">
+                              <span className="block truncate text-[11px] font-medium text-[#e8e8ef]">{item.label}</span>
+                              <span className="mt-1 block line-clamp-2 min-h-8 text-[9px] leading-4 text-[#858893]">
+                                {item.description}
+                              </span>
+                              <span className="mt-1 block text-[8px] text-[#686b75]">
+                                Preview source: linked image source page
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    : pickerOptionCategory &&
+                      visibleOptions.map((option) => {
+                        const wire = `${pickerOptionCategory.id}:${option.id}`;
+                        const active = selectedOptions.includes(wire);
+                        return (
+                          <button
+                            key={wire}
+                            type="button"
+                            onClick={() => toggleOption(pickerOptionCategory.id, option.id)}
+                            aria-pressed={active}
+                            title={option.description}
+                            className={cn(
+                              "group relative min-w-0 overflow-hidden rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a09cff]",
+                              active
+                                ? "border-[#aaa7ff] bg-[#aaa7ff]/10"
+                                : "border-white/[0.08] bg-[#1a1b20] hover:border-white/[0.20]",
+                            )}
+                          >
+                            <div className="relative aspect-square overflow-hidden bg-[#15161a]">
+                              <div className="h-full w-full" style={{ background: option.swatch }} />
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/65 to-transparent" />
+                              <span
+                                className={cn(
+                                  "absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border",
+                                  active
+                                    ? "border-[#d0ceff] bg-[#aaa7ff] text-[#17171b]"
+                                    : "border-white/55 bg-black/25 text-transparent",
+                                )}
+                              >
+                                <Check className="h-3 w-3" />
+                              </span>
+                            </div>
+                            <span className="block px-2.5 pb-2.5 pt-2">
+                              <span className="block truncate text-[11px] font-medium text-[#e8e8ef]">{option.label}</span>
+                              <span className="mt-1 block line-clamp-2 min-h-8 text-[9px] leading-4 text-[#858893]">
+                                {option.description}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                </div>
+                {((pickerTab === "style" && visibleStyles.length === 0) ||
+                  (pickerTab !== "style" && visibleOptions.length === 0)) && (
+                  <div className="py-12 text-center text-xs text-[#858893]">No matching items.</div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] bg-[#1b1c20] px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] text-[#92949f]">{pickerTotalSelected} selected</p>
+                  {styleFilterNotice && (
+                    <p role="status" className="mt-0.5 text-[10px] text-amber-200">
+                      {styleFilterNotice}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedStyleFilters([]);
+                      setSelectedOptions([]);
+                      setStyleFilterNotice(null);
+                    }}
+                    className="h-8 rounded-lg px-3 text-[10px] text-[#9c9eaa] hover:bg-white/[0.06] hover:text-white"
+                  >
+                    Clear all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStylePickerOpen(false)}
+                    className="h-8 rounded-lg bg-[#f2f0ff] px-4 text-[10px] font-semibold text-[#17171b] hover:bg-white"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -2975,7 +3448,7 @@ export function Image2Workspace() {
                   </span>
                   <span className="mt-1 block text-[10px] text-[#898c96]">
                     {resolvedAutoModel
-                      ? `Will use ${resolvedAutoModel.name} (${providerLabel(resolvedAutoModel.provider, resolvedAutoModel)}) — cheapest configured model matching your inputs.`
+                      ? `Will use ${resolvedAutoModel.name} (${providerLabel(resolvedAutoModel.provider, resolvedAutoModel)}) — ${imageInputCount > 0 ? "prioritizes identity-preserving image editing and may cost more" : "lowest-cost compatible model for this request"}.`
                       : "Automatically pick a configured model that supports your content references and requested quality."}
                   </span>
                 </span>
@@ -3053,6 +3526,11 @@ export function Image2Workspace() {
                           {model.description && (
                             <span className="mt-1.5 block line-clamp-3 text-[10px] leading-4 text-[#858892]">
                               {model.description}
+                            </span>
+                          )}
+                          {model.frameRatios && (
+                            <span className="mt-1 block text-[9px] leading-4 text-[#858892]">
+                              Supported frames: {model.frameRatios.join(" · ")}
                             </span>
                           )}
                           {!fitsReferences && (

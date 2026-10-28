@@ -40,6 +40,13 @@ from providers.http_helpers import (
 BASE_URL = "https://api.magichour.ai"
 
 
+def account_tier() -> str:
+    """Return the tier attached to the configured API key for entitlement checks."""
+    account = get_json(f"{BASE_URL}/v1/account", _headers(), timeout_s=8)
+    tier = account.get("tier")
+    return tier.lower() if isinstance(tier, str) else "free"
+
+
 def _headers() -> dict:
     return {"Authorization": f"Bearer {require_env('MAGIC_HOUR_API_KEY')}"}
 
@@ -109,19 +116,45 @@ def _poll_project(kind: str, project_id: str, timeout_ms: int) -> str:
     )
 
 
+def upscale_video(storage_path: str, duration: float, resolution: str) -> dict:
+    """Create a Magic Hour AI video upscaler project from a worker asset."""
+    if resolution not in {"720p", "1080p", "2k", "4k"}:
+        raise ValueError("Magic Hour supports 720p, 1080p, 2K, and 4K output.")
+    if not 0 < duration <= 133:
+        raise ValueError("Magic Hour accepts videos up to 133 seconds.")
+    video_file_path = _ensure_file_path(storage_path)
+    project = post_json(
+        f"{BASE_URL}/v1/ai-video-upscaler",
+        _headers(),
+        {"name": "RenderStudio Video Upscale", "start_seconds": 0, "end_seconds": duration,
+         "resolution": resolution, "assets": {"video_file_path": video_file_path}},
+    )
+    project_id = project.get("id")
+    if not project_id:
+        raise ProviderError("magichour upscale: no project id in response")
+    return {"url": _poll_project("video", project_id, timeout_ms=3_600_000), "task_id": project_id}
+
+
 def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
-    """Génération text-to-image pure via Magic Hour /v1/ai-image-generator."""
+    """Génération text-to-image via Magic Hour /v1/ai-image-generator (avec ou sans références)."""
+    payload: dict = {
+        "name": "renderstudio-image",
+        "model": model_id,
+        "image_count": 1,
+        "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
+        "resolution": str(input_.get("resolution") or "auto"),
+        "style": {"prompt": str(input_.get("prompt") or "")},
+    }
+    images = input_.get("images")
+    if isinstance(images, list) and images:
+        with ThreadPoolExecutor(max_workers=max(1, len(images))) as pool:
+            file_paths = list(pool.map(_ensure_file_path, images))
+        payload["assets"] = {"image_file_paths": file_paths}
+
     job = post_json(
         f"{BASE_URL}/v1/ai-image-generator",
         _headers(),
-        {
-            "name": "renderstudio-image",
-            "model": model_id,
-            "image_count": 1,
-            "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
-            "resolution": "auto",
-            "style": {"prompt": str(input_.get("prompt") or "")},
-        },
+        payload,
     )
     job_id = job.get("id")
     if not job_id:
@@ -229,8 +262,18 @@ def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
             count = max(1, int(input_.get("quantity") or 1))
         except (TypeError, ValueError):
             count = 1
+        # Image2 uses the generator endpoint even when it includes reference
+        # images. The generator accepts assets and receives the requested
+        # frame; the editor endpoint has returned its default 640x448 frame
+        # for Image2 reference requests. Other image-edit features still use
+        # the editor endpoint.
+        runner = (
+            _run_image_generator
+            if input_.get("is_text_to_image")
+            else _run_image_edit
+        )
         with ThreadPoolExecutor(max_workers=count) as pool:
-            urls = list(pool.map(lambda _: _run_image_edit(model_id, input_, timeout_ms), range(count)))
+            urls = list(pool.map(lambda _: runner(model_id, input_, timeout_ms), range(count)))
         return {"images": [{"url": url} for url in urls]}
     if input_.get("audioUrl"):
         return _run_lip_sync(model_id, input_, timeout_ms)

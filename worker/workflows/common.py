@@ -34,6 +34,9 @@ _MIME_EXT = {
 def _client_failure_message(err: Exception) -> str:
     """Traduit les erreurs providers en messages actionnables sans exposer
     les réponses brutes, URLs internes ou détails d'authentification."""
+    if isinstance(err, ValueError):
+        return str(err)
+
     if isinstance(err, AllModelsFailedError):
         errors = [str(attempt.get("error") or "").lower() for attempt in err.attempts]
     else:
@@ -42,6 +45,12 @@ def _client_failure_message(err: Exception) -> str:
     combined = "\n".join(errors)
     if not combined.strip():
         return "No AI model is available for this feature. Configure a provider and try again."
+
+    if "frame mismatch:" in combined:
+        return "No available model returned an image with the requested frame. Configure another compatible provider or select a different model, then retry."
+
+    if "plan_upgrade_required" in combined or "not available for your subscription tier" in combined:
+        return "This Magic Hour plan does not include the selected Video Upscaler resolution. Upgrade the plan linked to your API key or choose another AI provider."
 
     if any(
         marker in combined

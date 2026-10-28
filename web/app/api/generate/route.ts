@@ -171,6 +171,7 @@ export async function POST(req: NextRequest) {
     .filter((value): value is string => typeof value === "string");
   const referenceItems: Array<{
     tag: string;
+    role: "element" | "base" | "style" | "detail";
     file?: File;
     assetId?: string;
     storagePath?: string;
@@ -178,13 +179,18 @@ export async function POST(req: NextRequest) {
 
   if (rawReferenceMetadata.length > 0) {
     for (let position = 0; position < rawReferenceMetadata.length; position += 1) {
-      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown };
+      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown; role?: unknown };
       try {
         metadata = JSON.parse(rawReferenceMetadata[position]) as typeof metadata;
       } catch {
         return NextResponse.json({ error: "Invalid reference metadata." }, { status: 400 });
       }
       const tag = typeof metadata.tag === "string" ? metadata.tag : "";
+      const validRoles = new Set(["element", "base", "style", "detail"]);
+      const role = metadata.role === undefined ? "element" : metadata.role;
+      if (typeof role !== "string" || !validRoles.has(role)) {
+        return NextResponse.json({ error: "Invalid image input role." }, { status: 400 });
+      }
       const itemIndex = typeof metadata.index === "number" && Number.isInteger(metadata.index)
         ? metadata.index
         : position;
@@ -197,13 +203,13 @@ export async function POST(req: NextRequest) {
         if (!(file instanceof File)) {
           return NextResponse.json({ error: "An image input is missing its file." }, { status: 400 });
         }
-        referenceItems.push({ tag, file });
+        referenceItems.push({ tag, role: role as "element" | "base" | "style" | "detail", file });
       } else if (metadata.source === "asset" && typeof metadata.assetId === "string") {
         const asset = await getAsset(user.id, metadata.assetId);
         if (!asset || asset.is_trashed || asset.type !== "image") {
           return NextResponse.json({ error: "One of the selected project images is unavailable." }, { status: 400 });
         }
-        referenceItems.push({ tag, assetId: metadata.assetId, storagePath: asset.storage_path });
+        referenceItems.push({ tag, role: role as "element" | "base" | "style" | "detail", assetId: metadata.assetId, storagePath: asset.storage_path });
       } else {
         return NextResponse.json({ error: "Invalid image input source." }, { status: 400 });
       }
@@ -218,7 +224,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Reference labels do not match the attached images." }, { status: 400 });
     }
     legacyFiles.forEach((file, index) => {
-      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, file });
+      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, role: "element", file });
     });
   }
 
@@ -269,6 +275,7 @@ export async function POST(req: NextRequest) {
     );
   }
   const referenceTags = referenceItems.map((item) => item.tag);
+  const referenceRoles = referenceItems.map((item) => item.role);
   if (referenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(referenceTags).size !== referenceTags.length) {
     return NextResponse.json({ error: "Invalid or repeated image input labels." }, { status: 400 });
   }
@@ -286,9 +293,11 @@ export async function POST(req: NextRequest) {
         ? (rawAspect as AspectRatio)
         : "1:1";
   const rawResolution = form.get("resolution");
-  const resolution: Resolution = RESOLUTIONS.includes(rawResolution as Resolution)
-    ? (rawResolution as Resolution)
-    : "1K";
+  const resolution: Resolution | "640px" = isTextToImage && rawResolution === "640px"
+    ? "640px"
+    : RESOLUTIONS.includes(rawResolution as Resolution)
+      ? (rawResolution as Resolution)
+      : "1K";
   const rawQuantity = Number(form.get("quantity"));
   const quantity = Number.isInteger(rawQuantity)
     ? Math.min(Math.max(rawQuantity, 1), MAX_QUANTITY)
@@ -296,8 +305,16 @@ export async function POST(req: NextRequest) {
 
   const sceneDetails = optionalString(form, "sceneDetails")?.slice(0, SCENE_DETAILS_MAX);
   const describedReferenceTags = sceneDetails?.match(/@img[1-9]\d*/g) ?? [];
-  if (describedReferenceTags.some((tag) => !referenceTags.includes(tag))) {
-    return NextResponse.json({ error: "Description refers to an image tag that is not attached. Update the description or add that reference." }, { status: 400 });
+  const missingReferenceTags = Array.from(new Set(describedReferenceTags)).filter(
+    (tag) => !referenceTags.includes(tag),
+  );
+  if (missingReferenceTags.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Description refers to unattached image tag${missingReferenceTags.length === 1 ? "" : "s"}: ${missingReferenceTags.join(", ")}. Add the image or remove the tag.`,
+      },
+      { status: 400 },
+    );
   }
   const model = optionalString(form, "model"); // choix utilisateur (optionnel)
   const cameraState = parseCameraState(optionalString(form, "cameraState"));
@@ -315,7 +332,12 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Coût affiché = coût facturé, quel que soit le modèle servant ---
-  const cost = await computeCost({ feature: feature as Feature, quality, resolution, quantity });
+  const cost = await computeCost({
+    feature: feature as Feature,
+    quality,
+    resolution: resolution === "640px" ? "1K" : resolution,
+    quantity,
+  });
   const balance = await getBalance();
   if (balance < cost) {
     // Le client affiche le détail chiffré (sans rien révéler du backend).
@@ -394,8 +416,11 @@ export async function POST(req: NextRequest) {
     jobInput: {
       feature,
       imageUrl,
+      // In Image2, the primary source image defines the element identity.
+      preserveElementIdentity: isTextToImage && Boolean(imageUrl),
       referenceUrls,
       referenceTags,
+      referenceRoles,
       styleReferenceUrl: styleReferenceUrl ?? undefined,
       quality,
       aspectRatio,

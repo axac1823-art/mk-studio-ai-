@@ -9,9 +9,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()  # worker/.env (optionnel)
-
 BASE_DIR = Path(__file__).resolve().parent
+
+load_dotenv(BASE_DIR / ".env")  # worker/.env
+load_dotenv()
 
 # Dossier des fichiers générés (dev local ; S3/Supabase Storage en prod).
 STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", BASE_DIR / "storage")).resolve()

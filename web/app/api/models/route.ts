@@ -16,6 +16,7 @@ export async function GET() {
       image?: unknown[];
       video?: unknown[];
       upscale?: unknown[];
+      video_upscale?: unknown[];
       audio?: unknown[];
       threed?: Array<{
         key: string;
@@ -30,12 +31,13 @@ export async function GET() {
       image: Array.isArray(data.image) ? data.image : [],
       video: Array.isArray(data.video) ? data.video : [],
       upscale: Array.isArray(data.upscale) ? data.upscale : [],
+      video_upscale: Array.isArray(data.video_upscale) ? data.video_upscale : [],
       audio: Array.isArray(data.audio) ? data.audio : [],
       threed: Array.isArray(data.threed) ? data.threed : [],
     });
   } catch (err) {
     if (err instanceof WorkerNotConfiguredError) {
-      return NextResponse.json({ image: [], video: [], upscale: [], audio: [], threed: [] }, { status: 503 });
+      return NextResponse.json({ image: [], video: [], upscale: [], video_upscale: [], audio: [], threed: [] }, { status: 503 });
     }
     return NextResponse.json({ error: "Failed to load models." }, { status: 502 });
   }
