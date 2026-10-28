@@ -1249,7 +1249,7 @@ kind: "generated" as const,      assetId: asset.id,
     );
     // Reference roles describe user intent. Never rewrite them to fit a model;
     // incompatible roles are reported by the existing compatibility guard.
-if (
+    if (
       model?.configured &&
       supportedFrames.length > 0 &&
       !model.frameRatios?.includes(aspectRatio)
