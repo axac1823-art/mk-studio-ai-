@@ -773,10 +773,7 @@ export function Image2Workspace() {
         );
         return;
       }
-      const defaultRole: ImageReferenceRole =
-        selectedModelOption && selectedModelOption.supportsIdentityEdit === false
-          ? "style"
-          : "element";
+      const defaultRole: ImageReferenceRole = "element";
       setReferences((current) => [
         ...current,
         {
@@ -792,7 +789,7 @@ export function Image2Workspace() {
       setReferenceNotice(null);
       setError(null);
     },
-    [references, removeReferenceAndRenumber, selectedModelOption],
+    [references, removeReferenceAndRenumber],
   );
 
   useEffect(() => {
@@ -815,10 +812,7 @@ export function Image2Workspace() {
             {
               id: generateUuid(),
               tag: `@img${nextTagRef.current++}`,
-              role:
-                selectedModelOption && selectedModelOption.supportsIdentityEdit === false
-                  ? "style"
-                  : "element",
+              role: "element",
               name: "Project image",
               previewUrl: asset.url,
               assetId: asset.id,
@@ -871,10 +865,7 @@ export function Image2Workspace() {
       setReferenceNotice(notices.length ? notices.join(" ") : null);
 
       if (accepted.length) {
-        const defaultRole: ImageReferenceRole =
-          selectedModelOption && selectedModelOption.supportsIdentityEdit === false
-            ? "style"
-            : "element";
+        const defaultRole: ImageReferenceRole = "element";
         const additions: ImageInput[] = accepted.map((file) => ({
           id: generateUuid(),
           tag: `@img${nextTagRef.current++}`,
@@ -891,7 +882,7 @@ export function Image2Workspace() {
       }
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [references, makeObjectUrl, selectedModelOption],
+    [references, makeObjectUrl],
   );
 
   const removeReference = useCallback(
@@ -1256,16 +1247,9 @@ kind: "generated" as const,      assetId: asset.id,
       (ratio): ratio is Image2AspectRatio =>
         ratio !== "auto" && IMAGE2_ASPECT_RATIOS.includes(ratio as Image2AspectRatio),
     );
-    if (model && model.supportsIdentityEdit === false) {
-      setReferences((current) =>
-        current.map((item) =>
-          item.role === "element" || item.role === "base"
-            ? { ...item, role: "style" }
-            : item,
-        ),
-      );
-    }
-    if (
+    // Reference roles describe user intent. Never rewrite them to fit a model;
+    // incompatible roles are reported by the existing compatibility guard.
+if (
       model?.configured &&
       supportedFrames.length > 0 &&
       !model.frameRatios?.includes(aspectRatio)
