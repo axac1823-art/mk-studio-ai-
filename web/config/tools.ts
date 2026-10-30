@@ -3,7 +3,6 @@ import {
   Box,
   Camera,
   DoorOpen,
-  FastForward,
   Images,
   Map,
   Maximize,
@@ -128,9 +127,9 @@ export const TOOLS: ToolDefinition[] = [
   {
     id: "video-upscaler",
     category: "video",
-    name: "Video Speed",
-    description: "Change playback speed on an existing video",
-    icon: FastForward,
+    name: "Video Upscaler",
+    description: "Enhance video resolution with AI",
+    icon: MonitorPlay,
     route: "/app/video-upscaler",
   },
   {

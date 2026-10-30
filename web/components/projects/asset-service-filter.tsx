@@ -28,7 +28,7 @@ export const ASSET_SERVICE_OPTIONS: ServiceOption[] = [
   { id: "multi_shot", label: "Multi-Shot Video", types: ["video"] },
   { id: "video_to_video", label: "Modify Video", types: ["video"] },
   { id: "relight", label: "Video Relight", types: ["video"] },
-  { id: "video_upscale", label: "Video Speed", types: ["video"] },
+  { id: "video_upscale", label: "Video Upscale", types: ["video"] },
   { id: "video_edit_trim", label: "Clip Editor: Trim", types: ["video"] },
   { id: "video_edit_speed", label: "Clip Editor: Speed", types: ["video"] },
   { id: "video_edit_overlay", label: "Clip Editor: Text Overlay", types: ["video"] },

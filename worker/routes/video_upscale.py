@@ -1,4 +1,4 @@
-"""Endpoint de changement de vitesse vidéo — démarre un job worker."""
+"""Endpoint de lancement d'un job IA de mise à l'échelle vidéo."""
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from routes.generate import StartJob, _load_pending_job
@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.post("/video/upscale")
 def video_upscale(payload: StartJob, background: BackgroundTasks):
-    """Démarre un job de changement de vitesse avec MoviePy."""
+    """Démarre un job de mise à l'échelle vidéo avec le fournisseur sélectionné."""
     job = _load_pending_job(payload.job_id)
     if job["type"] != "video_upscale":
         raise HTTPException(400, f"not a video upscale job: {job['type']}")

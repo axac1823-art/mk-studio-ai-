@@ -2,12 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { FastForward, Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchCostsConfig, computeDisplayCost, type CostsConfig } from "@/lib/config/action-costs";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_VIDEO_UPSCALE_RESOLUTION,
+  VIDEO_UPSCALE_RESOLUTIONS,
+  type VideoUpscaleProvider,
+} from "@/lib/video-upscale-options";
 
 interface AssetSummary {
   id: string;
@@ -16,9 +21,19 @@ interface AssetSummary {
   createdAt: string;
 }
 
+interface UpscaleAIOption {
+  key: VideoUpscaleProvider;
+  name: string;
+  provider: string;
+  description: string;
+  configured: boolean;
+  available?: boolean;
+  availabilityMessage?: string | null;
+}
+
 const POLL_INTERVAL_MS = 2500;
 const VIDEO_MIME_TYPES = "video/mp4,video/webm,video/quicktime";
-const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024;
+const MAX_VIDEO_SIZE_BYTES = 200 * 1024 * 1024;
 
 export default function VideoUpscalerPage() {
   const searchParams = useSearchParams();
@@ -27,7 +42,14 @@ export default function VideoUpscalerPage() {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
-  const [speedFactor, setSpeedFactor] = useState<1 | 2 | 4 | 8 | 16 | 32>(1);
+  const [resolution, setResolution] = useState("1080p");
+  const [creativity, setCreativity] = useState(25);
+  const [sharpen, setSharpen] = useState(25);
+  const [smartGrain, setSmartGrain] = useState(0);
+  const [flavor, setFlavor] = useState("natural");
+  const [fpsBoost, setFpsBoost] = useState(false);
+  const [upscaleAIs, setUpscaleAIs] = useState<UpscaleAIOption[]>([]);
+  const [selectedAI, setSelectedAI] = useState<UpscaleAIOption["key"]>("hitpaw");
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -46,6 +68,24 @@ export default function VideoUpscalerPage() {
   }, []);
 
   useEffect(() => stopPolling, [stopPolling]);
+
+  useEffect(() => {
+    fetch("/api/models")
+      .then((res) => (res.ok ? res.json() : { video_upscale: [] }))
+      .then((data: { video_upscale?: UpscaleAIOption[] }) => {
+        const options = Array.isArray(data.video_upscale) ? data.video_upscale : [];
+        setUpscaleAIs(options);
+      })
+      .catch(() => setUpscaleAIs([]));
+  }, []);
+
+  useEffect(() => {
+    if (upscaleAIs.length === 0 || upscaleAIs.some((option) => option.key === selectedAI && (option.available ?? option.configured))) return;
+    const firstAvailable = upscaleAIs.find((option) => option.available ?? option.configured);
+    if (!firstAvailable) return;
+    setSelectedAI(firstAvailable.key);
+    setResolution(DEFAULT_VIDEO_UPSCALE_RESOLUTION[firstAvailable.key]);
+  }, [upscaleAIs, selectedAI]);
 
   useEffect(() => {
     fetchCostsConfig().then(setCostsConfig).catch(() => setCostsConfig(null));
@@ -80,6 +120,8 @@ export default function VideoUpscalerPage() {
       })
     : 20;
   const hasEnoughCredits = balance === null || balance >= cost;
+  const selectedAIOption = upscaleAIs.find((option) => option.key === selectedAI);
+  const aiConfigured = selectedAIOption ? (selectedAIOption.available ?? selectedAIOption.configured) : false;
   const hasSource = Boolean(selectedAssetId || uploadedFile);
 
   const pollJob = useCallback(
@@ -119,7 +161,7 @@ export default function VideoUpscalerPage() {
       return;
     }
     if (file.size > MAX_VIDEO_SIZE_BYTES) {
-      setError("Video must be under 100 MB.");
+      setError("Video must be under 200 MB.");
       return;
     }
     setSelectedAssetId(null);
@@ -150,7 +192,13 @@ export default function VideoUpscalerPage() {
     setResultUrl(null);
 
     const form = new FormData();
-    form.append("speedFactor", String(speedFactor));
+    form.append("provider", selectedAI);
+    form.append("resolution", resolution);
+    form.append("creativity", String(creativity));
+    form.append("sharpen", String(sharpen));
+    form.append("smartGrain", String(smartGrain));
+    form.append("flavor", flavor);
+    form.append("fpsBoost", String(fpsBoost));
     if (uploadedFile) {
       form.append("video", uploadedFile);
     } else if (selectedAssetId) {
@@ -185,8 +233,8 @@ export default function VideoUpscalerPage() {
     <main className="flex min-h-screen w-full flex-col">
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Video Speed</h1>
-          <p className="text-sm text-muted-foreground">Change the playback speed of an existing video. No external AI service is used.</p>
+          <h1 className="text-xl font-semibold tracking-tight">Video Upscaler</h1>
+          <p className="text-sm text-muted-foreground">Choose Magnific by Runway, Magic Hour, or HitPaw Video Enhancer.</p>
         </div>
         <div className="text-sm text-muted-foreground">{balance === null ? "…" : `${balance} credits`}</div>
       </header>
@@ -227,46 +275,42 @@ export default function VideoUpscalerPage() {
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
-                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 100 MB</p>
+                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 200 MB{selectedAI === "magichour" ? " · up to 133 seconds" : selectedAI === "runway_magnific" ? " · up to 30 seconds" : selectedAI === "hitpaw" ? " · up to 1 hour" : ""}</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium">Playback speed</span>
-                <div className="flex overflow-hidden rounded-md border">
-                  {([1, 2, 4, 8, 16, 32] as const).map((speed) => (
-                    <button
-                      key={speed}
-                      type="button"
-                      aria-pressed={speedFactor === speed}
-                      disabled={isBusy}
-                      onClick={() => setSpeedFactor(speed)}
-                      className={cn(
-                        "flex-1 px-2 py-1.5 text-xs font-medium transition-colors",
-                        speedFactor === speed ? "bg-primary text-primary-foreground" : "hover:bg-accent disabled:opacity-50"
-                      )}
-                    >
-                      {speed}×
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Processing costs 20 credits. {speedFactor > 1 ? `Output duration will be divided by ${speedFactor}.` : "1× keeps the original duration."}
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2">
+                <label className="flex flex-col gap-1.5 text-sm font-medium">AI provider
+                  <select aria-label="AI provider" value={selectedAI} onChange={(e) => { const nextAI = e.target.value as VideoUpscaleProvider; setSelectedAI(nextAI); setResolution((current) => VIDEO_UPSCALE_RESOLUTIONS[nextAI].includes(current) ? current : DEFAULT_VIDEO_UPSCALE_RESOLUTION[nextAI]); }} disabled={isBusy} className="h-10 rounded-md border bg-background px-3 text-sm font-normal">
+                    {upscaleAIs.map((option) => {
+                      const available = option.available ?? option.configured;
+                      return <option key={option.key} value={option.key} disabled={!available}>{option.name}{available ? ` · ${option.provider}` : option.configured ? " · paid API plan required" : " · not configured"}</option>;
+                    })}
+                  </select>
+                </label>
+                {selectedAIOption && <p className="text-xs text-muted-foreground">{selectedAIOption.description}</p>}
+                {selectedAIOption && !aiConfigured && <p role="status" className="text-xs text-amber-500">{selectedAIOption.availabilityMessage ?? "Configure this provider on the worker to use it."}</p>}
+                {upscaleAIs.filter((option) => !(option.available ?? option.configured) && option.availabilityMessage).map((option) => <p key={option.key} role="status" className="text-xs text-amber-500">{option.name}: {option.availabilityMessage}</p>)}
+                <span className="text-sm font-medium">Output resolution</span>
+                <select aria-label="Output resolution" value={resolution} onChange={(e) => setResolution(e.target.value)} disabled={isBusy} className="h-10 rounded-md border bg-background px-3 text-sm">{VIDEO_UPSCALE_RESOLUTIONS[selectedAI].map((value) => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select>
+                <p className="text-xs text-muted-foreground">Options match this AI provider. Your API plan may limit which resolutions are available.</p>
+                {selectedAI === "runway_magnific" && <>
+                {[{ label: "Creativity", value: creativity, set: setCreativity }, { label: "Sharpen", value: sharpen, set: setSharpen }, { label: "Smart Grain", value: smartGrain, set: setSmartGrain }].map((item) => <label key={item.label} title={item.label === "Creativity" ? "Higher values reconstruct more detail." : item.label === "Sharpen" ? "Controls edge sharpness." : "Controls texture enhancement."} className="flex flex-col gap-2 text-sm"><span className="flex justify-between">{item.label}<span className="text-muted-foreground">{item.value}</span></span><input type="range" min="0" max="100" value={item.value} disabled={isBusy} onChange={(e) => item.set(Number(e.target.value))} /></label>)}
+                <label className="flex flex-col gap-2 text-sm">Processing style<select value={flavor} onChange={(e) => setFlavor(e.target.value)} disabled={isBusy} className="h-10 rounded-md border bg-background px-3"><option value="natural">Natural</option><option value="vivid">Vivid</option></select></label>
+                <label className="flex items-center gap-2 text-sm" title="May increase provider cost."><input type="checkbox" checked={fpsBoost} disabled={isBusy} onChange={(e) => setFpsBoost(e.target.checked)} /> FPS boost</label>
+                </>}
+              </div>              <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Cost</span>
+                  <span className="text-muted-foreground">Credit charge</span>
                   <span className="font-medium">{cost} credits</span>
                 </div>
                 <Button
                   type="button"
                   onClick={handleUpscale}
-                  disabled={!hasSource || isBusy || !hasEnoughCredits}
+                  disabled={!hasSource || isBusy || !hasEnoughCredits || !aiConfigured}
                   className="w-full gap-2"
                 >
-                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FastForward className="h-4 w-4" />}
-                  Change video speed
+                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  Upscale Video
                 </Button>
               </div>
 
@@ -275,6 +319,7 @@ export default function VideoUpscalerPage() {
                   {error}
                 </p>
               )}
+              {resultUrl && <a href={resultUrl} download className="inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium hover:bg-accent"><Upload className="h-4 w-4 rotate-180" /> Download result</a>}
             </CardContent>
           </Card>
         </div>
@@ -298,10 +343,10 @@ export default function VideoUpscalerPage() {
           ) : (
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-                <FastForward className="h-8 w-8" />
+                <Upload className="h-8 w-8" />
               </div>
               <div>
-                <p className="text-lg font-semibold">Change video speed</p>
+                <p className="text-lg font-semibold">Upscale video</p>
                 <p className="text-sm text-muted-foreground">Select a video from your assets or upload one.</p>
               </div>
             </div>
@@ -309,7 +354,7 @@ export default function VideoUpscalerPage() {
           <Card className="w-full max-w-4xl text-left">
             <CardContent className="flex flex-col gap-3 p-4">
               <div>
-                <h2 className="text-sm font-medium">Previous Video Speed projects</h2>
+                <h2 className="text-sm font-medium">Previous Video Upscaler projects</h2>
                 <p className="text-xs text-muted-foreground">Choose a previous speed result to process again.</p>
               </div>
               {selectedAsset && !uploadedFile && (
@@ -319,7 +364,7 @@ export default function VideoUpscalerPage() {
                 </div>
               )}
               {assets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No previous Video Speed projects yet.</p>
+                <p className="text-sm text-muted-foreground">No previous Video Upscaler projects yet.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {assets.map((asset) => (

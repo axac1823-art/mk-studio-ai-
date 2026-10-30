@@ -332,7 +332,7 @@ export default function VideoProjectEditorPage() {
                 <option value="multi_shot">Multi-Shot</option>
                 <option value="video_to_video">Modify Video</option>
                 <option value="relight">Video Relight</option>
-                <option value="video_upscale">Video Speed</option>
+                <option value="video_upscale">Video Upscale</option>
                 <option value="video_edit_trim">Clip Editor: Trim</option>
                 <option value="video_edit_speed">Clip Editor: Speed</option>
                 <option value="video_edit_overlay">Clip Editor: Caption</option>

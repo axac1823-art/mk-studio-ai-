@@ -40,6 +40,13 @@ from providers.http_helpers import (
 BASE_URL = "https://api.magichour.ai"
 
 
+def account_tier() -> str:
+    """Return the tier attached to the configured API key for entitlement checks."""
+    account = get_json(f"{BASE_URL}/v1/account", _headers(), timeout_s=8)
+    tier = account.get("tier")
+    return tier.lower() if isinstance(tier, str) else "free"
+
+
 def _headers() -> dict:
     return {"Authorization": f"Bearer {require_env('MAGIC_HOUR_API_KEY')}"}
 
@@ -107,6 +114,25 @@ def _poll_project(kind: str, project_id: str, timeout_ms: int) -> str:
         timeout_ms,
         interval_ms=5000 if kind == "video" else 3000,
     )
+
+
+def upscale_video(storage_path: str, duration: float, resolution: str) -> dict:
+    """Create a Magic Hour AI video upscaler project from a worker asset."""
+    if resolution not in {"720p", "1080p", "2k", "4k"}:
+        raise ValueError("Magic Hour supports 720p, 1080p, 2K, and 4K output.")
+    if not 0 < duration <= 133:
+        raise ValueError("Magic Hour accepts videos up to 133 seconds.")
+    video_file_path = _ensure_file_path(storage_path)
+    project = post_json(
+        f"{BASE_URL}/v1/ai-video-upscaler",
+        _headers(),
+        {"name": "RenderStudio Video Upscale", "start_seconds": 0, "end_seconds": duration,
+         "resolution": resolution, "assets": {"video_file_path": video_file_path}},
+    )
+    project_id = project.get("id")
+    if not project_id:
+        raise ProviderError("magichour upscale: no project id in response")
+    return {"url": _poll_project("video", project_id, timeout_ms=3_600_000), "task_id": project_id}
 
 
 def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:

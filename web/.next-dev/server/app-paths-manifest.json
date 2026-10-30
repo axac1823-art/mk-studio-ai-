@@ -1,0 +1,12 @@
+{
+  "/api/credits/balance/route": "app/api/credits/balance/route.js",
+  "/api/models/route": "app/api/models/route.js",
+  "/api/config/costs/route": "app/api/config/costs/route.js",
+  "/api/projects/route": "app/api/projects/route.js",
+  "/api/models/[feature]/route": "app/api/models/[feature]/route.js",
+  "/api/assets/route": "app/api/assets/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
+  "/app/video-upscaler/page": "app/app/video-upscaler/page.js",
+  "/app/image-generator/page": "app/app/image-generator/page.js"
+}

@@ -70,7 +70,7 @@ export const IMAGE_SERVICES = [
 export const VIDEO_SERVICES = [
   ["Video Generator", "/app/ai-video-generator"],
   ["Video Relight", "/app/ai-video-generator?mode=relight"],
-  ["Video Speed", "/app/video-upscaler"],
+  ["Video Upscaler", "/app/video-upscaler"],
   ["Clip Editor", "/app/clip-editor"],
   ["Video Project Editor", "/app/video-project-editor"],
 ] as const;
