@@ -162,5 +162,3 @@ def test_image2_camera_does_not_consume_style_filter_slots():
     )
     assert "#inkprint, #dark, #3d" in prompt
     assert "CAMERA POSITION PRESET" in prompt
-
-
