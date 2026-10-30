@@ -38,10 +38,17 @@ def _run_one(model_id: str, input_: dict) -> str:
         mime, data = parsed
         parts.append({"inline_data": {"mime_type": mime, "data": data}})
 
+    generation_config: dict = {"responseModalities": ["IMAGE"]}
+    # Gemini supports native imageConfig.aspectRatio for explicit frames. For AUTO,
+    # omit the override and let the model choose its default framing.
+    aspect_ratio = input_.get("aspectRatio")
+    if aspect_ratio in {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"}:
+        generation_config["imageConfig"] = {"aspectRatio": aspect_ratio}
+
     response = post_json(
         f"{BASE_URL}/{model_id}:generateContent",
         {"x-goog-api-key": require_env("GOOGLE_API_KEY")},
-        {"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["IMAGE"]}},
+        {"contents": [{"parts": parts}], "generationConfig": generation_config},
     )
     for candidate in response.get("candidates") or []:
         for part in (candidate.get("content") or {}).get("parts") or []:

@@ -84,3 +84,23 @@ def test_unknown_image2_style_filter_ids_are_ignored():
     assert "not-a-real-filter" not in prompt
     assert "Apply these text-only visual style filters" not in prompt
 
+
+def test_image2_frame_size_prompts_are_included():
+    from prompts import IMAGE2_FRAME_SIZE_PROMPTS, build_feature_prompt
+
+    for ratio in ["16:9", "1:1", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "auto"]:
+        prompt = build_text_to_image_prompt(
+            scene_details="A modern minimalist villa.",
+            aspect_ratio=ratio,
+        )
+        expected = IMAGE2_FRAME_SIZE_PROMPTS[ratio]
+        assert expected in prompt, f"Expected framing prompt for {ratio} to be in prompt"
+
+    # Also test via build_feature_prompt
+    feature_prompt = build_feature_prompt(
+        "text_to_image",
+        {"sceneDetails": "A glass pavilion.", "aspectRatio": "16:9"},
+    )
+    assert IMAGE2_FRAME_SIZE_PROMPTS["16:9"] in feature_prompt
+
+
