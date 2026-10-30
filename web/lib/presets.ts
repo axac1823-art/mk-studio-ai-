@@ -81,6 +81,8 @@ export const EXTENDER_DIRECTION_PRESETS: PresetMeta[] = [
 // --- Bornes et options des contrôles de génération ---
 
 export const MAX_REFERENCES = 14;
+export const MAX_REFERENCE_SIZE_BYTES = 100 * 1024 * 1024;
+export const MAX_TOTAL_REFERENCE_SIZE_BYTES = 500 * 1024 * 1024;
 export const MAX_QUANTITY = 4;
 export const SCENE_DETAILS_MAX = 10_000;
 
