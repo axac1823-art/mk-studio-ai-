@@ -909,7 +909,90 @@ IMAGE2_STYLE_FILTER_PROMPTS: dict[str, str] = {
     "mock": "Treat #mock as an early-stage rough concept draft, not as a polished presentation mockup. Establish primary masses and silhouettes first; use loose exploratory strokes and light construction guides; simplify secondary details; keep materials partially resolved; and use rough shading or broad color blocking instead of final polish. Preserve the user's subject, object count, essential geometry, spatial relationships, camera, perspective, and composition. For architecture, retain existing building masses, levels, openings, and circulation cues; roughen the finish without redesigning the architecture. Do not create a product-on-background mockup, device frame, poster, presentation board, CAD wireframe, blueprint grid, notes, labels, dimensions, logos, watermarks, extra objects, or a new background. The result should read as a first-pass concept explored by a designer, less finished than a polished sketch or render.",
     "2000s-phone": "Apply an authentic early-2000s compact digital-camera / phone snapshot look: modest sensor detail, limited dynamic range, slightly imperfect white balance, subtle chroma noise, mild JPEG compression, gentle softness, and direct flash only where the scene supports it. Preserve the original subject and background. Do not add VHS lines, film scratches, date stamps, camera UI, frames, or a new party setting.",
     "cyberpunk": "Apply a restrained cyberpunk treatment through controlled cyan-and-magenta color, selective neon-like accents, cinematic contrast, cooler shadow colors, and edge reflections only where materials support them. Preserve the current scene, subject, architecture, object count, camera, and setting. Do not add neon signs, holograms, vehicles, rain, wet pavement, sci-fi buildings, or a new city background unless requested.",
+    "character-studio-portrait": "Use clean portrait framing and soft flattering light on the existing subject. Preserve identity and do not add people.",
+    "character-heroic-pose": "Emphasize a confident full-figure stance and strong silhouette while preserving identity and anatomy.",
+    "character-elegant-fashion": "Apply refined styling and editorial posture to the existing subject without changing identity or adding accessories.",
+    "character-stylized-character": "Use expressive, simplified character design while preserving recognizable features and proportions.",
+    "character-fantasy-creature": "Render the existing creature with imaginative but coherent anatomy and texture; add no other creatures or props.",
+    "character-robot-android": "Give the existing subject coherent mechanical panels, joints and materials while preserving its silhouette.",
+    "element-glass": "Render existing glass with realistic transparency, refraction and reflections; add no glass objects.",
+    "element-brushed-metal": "Render existing metal with fine directional grain and plausible anisotropic reflections.",
+    "element-natural-wood": "Render existing wood with visible natural grain and warm tones; add no wooden objects.",
+    "element-soft-fabric": "Render existing textiles with woven fibers, natural folds and soft shading.",
+    "element-water-and-liquid": "Render requested water or liquid with plausible ripples, transparency and reflections; add none otherwise.",
+    "element-smoke-and-mist": "Add subtle volumetric haze only when consistent with the requested scene; keep the subject visible.",
+    "element-botanical": "Refine existing foliage with organic detail; preserve plant positions and landscape layout.",
+    "location-modern-interior": "Use a contemporary interior atmosphere while preserving the established room layout.",
+    "location-photo-studio": "Use controlled studio lighting and a clean backdrop without changing the subject or adding set dressing.",
+    "location-city-street": "Emphasize convincing urban depth and ambient city light while preserving the requested architecture.",
+    "location-forest": "Render the existing woodland with layered trees and filtered light; do not relocate the scene.",
+    "location-beach-and-coast": "Emphasize the requested coastal setting with natural horizon, surf and atmosphere.",
+    "location-desert": "Emphasize existing desert forms and atmospheric depth without adding structures.",
+    "location-outer-space": "Render a requested space scene with coherent stars and distant celestial detail.",
+    "color-warm-sunset": "Apply coordinated warm golden and soft pink tones while respecting requested light direction.",
+    "color-earth-tones": "Use a natural terracotta, sand and olive palette while preserving material distinctions.",
+    "color-cool-blue": "Apply a calm blue-teal palette while preserving material readability and contrast.",
+    "color-neon-palette": "Use selective saturated cyan, magenta and violet accents; invent no signage or fixtures.",
+    "color-pastel": "Use a soft, low-saturation pastel palette while preserving tonal hierarchy.",
+    "color-black-and-white": "Convert to monochrome with controlled contrast and preserved highlight and shadow detail.",
+    "effects-soft-glow": "Add gentle bloom around existing highlights without hiding detail or inventing lights.",
+    "effects-bokeh": "Use restrained background bokeh where suitable and keep the main subject sharp.",
+    "effects-lens-flare": "Add restrained optical flare only from existing bright light sources.",
+    "effects-film-grain": "Apply subtle analog grain and tonal roll-off while keeping the image detailed.",
+    "effects-glitch": "Apply controlled RGB offsets and limited distortion without obscuring the subject.",
+    "effects-motion-blur": "Apply directional blur only to moving elements; keep architecture and subject clear.",
 }
+
+IMAGE2_CAMERA_POSITION_PROMPTS = {
+    "front_view": "Place the camera directly in front of the main facade at natural architectural-photo height.",
+    "three_quarter_view": "Use a natural ground-level three-quarter view showing two adjacent facades and depth.",
+    "low_angle": "Use a low camera looking upward, emphasizing height without distorting proportions.",
+    "elevated_view": "Use an elevated view looking gently down while keeping facades visible.",
+    "aerial_three_quarter": "Use an oblique aerial view showing the roof and two facades, not a top-down view.",
+    "high_aerial": "Use a distant oblique aerial view showing the building, plot and site context.",
+    "low_altitude_aerial": "Use a close low-altitude aerial view emphasizing facade and immediate surroundings.",
+    "top_down_nadir": "Use a true vertical top-down view showing roof, footprint and site arrangement.",
+    "interior_corner": "Place the camera near an interior corner, looking diagonally across the room.",
+}
+IMAGE2_WEATHER_PROMPTS = {
+    "clear_sunny": "Clear sunny sky, natural daylight and realistic shadows.",
+    "partly_cloudy": "Blue sky with scattered clouds and balanced sunlight.",
+    "overcast": "Overcast sky with broad diffused daylight; no rain or lightning.",
+    "dark_clouds": "Dense dramatic storm clouds while retaining believable daylight; no rain or lightning.",
+    "thunderstorm": "Plausible thunderstorm clouds and rain; distant lightning only when appropriate.",
+    "rain": "Natural rainfall with plausible wet paving and subtle reflections; no flooding.",
+    "fog_mist": "Layered realistic mist while keeping the main building readable.",
+    "snow": "Natural snowfall and plausible accumulation on exposed horizontal surfaces.",
+    "dust_haze": "Subtle dusty haze and atmospheric depth while keeping the foreground clear.",
+}
+IMAGE2_SEASON_PROMPTS = {
+    "spring": "Fresh spring growth and restrained seasonal flowers.",
+    "summer": "Mature healthy foliage and natural summer colors.",
+    "autumn": "Autumn foliage in amber, gold and muted red; preserve planting layout.",
+    "winter": "Cool winter colors and reduced deciduous foliage; add no snow unless requested.",
+}
+
+
+def build_camera_position_prompt(camera_preset_id=None) -> str:
+    if not isinstance(camera_preset_id, str):
+        return ""
+    instruction = IMAGE2_CAMERA_POSITION_PROMPTS.get(camera_preset_id)
+    return f"CAMERA POSITION: {instruction} The user's written camera directions take priority." if instruction else ""
+
+
+def build_weather_season_prompt(weather=None, season=None) -> str:
+    parts = []
+    if isinstance(weather, str) and weather in IMAGE2_WEATHER_PROMPTS:
+        parts.append("WEATHER: " + IMAGE2_WEATHER_PROMPTS[weather])
+    if isinstance(season, str) and season in IMAGE2_SEASON_PROMPTS:
+        parts.append("SEASON: " + IMAGE2_SEASON_PROMPTS[season])
+    if not parts:
+        return ""
+    return (
+        "Apply the selected environmental changes photorealistically. Preserve the building's identity, geometry, "
+        "proportions, facade, materials, structural details, camera position, perspective and composition.\n"
+        + "\n".join(parts)
+    )
 
 IMAGE2_FRAME_SIZE_PROMPTS: dict[str, str] = {
     "auto": (
@@ -977,6 +1060,9 @@ def build_text_to_image_prompt(
     has_style_reference=False,
     style_filters=None,
     aspect_ratio=None,
+    camera_preset_id=None,
+    weather=None,
+    season=None,
 ) -> str:
     """Subject-first text-to-image prompt with optional text-only style filters and aspect ratio framing."""
     parts = [
@@ -993,6 +1079,13 @@ def build_text_to_image_prompt(
     user_description = _sanitize_scene_details(scene_details)
     if user_description:
         parts.append(user_description)
+
+    environment_prompt = build_weather_season_prompt(weather, season)
+    if environment_prompt:
+        parts.append(environment_prompt)
+    camera_prompt = build_camera_position_prompt(camera_preset_id)
+    if camera_prompt:
+        parts.append(camera_prompt)
 
     if aspect_ratio and aspect_ratio in IMAGE2_FRAME_SIZE_PROMPTS:
         parts.append(IMAGE2_FRAME_SIZE_PROMPTS[aspect_ratio])
@@ -1062,6 +1155,9 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
             has_style_reference=bool(fields.get("styleReferenceUrl")),
             style_filters=fields.get("styleFilters"),
             aspect_ratio=fields.get("aspectRatio"),
+            camera_preset_id=fields.get("cameraPresetId"),
+            weather=fields.get("weather"),
+            season=fields.get("season"),
         )
     return build_print_render_prompt(
         scene_details=details,

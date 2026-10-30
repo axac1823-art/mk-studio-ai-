@@ -12,6 +12,7 @@ import { useSearchParams } from "next/navigation";
 import {
   Check,
   ChevronDown,
+  CloudSun,
   Download,
   FolderOpen,
   Images,
@@ -33,6 +34,7 @@ import {
   Mic,
   Box,
   Layers3,
+  type LucideIcon,
 } from "lucide-react";
 
 import type { ModelOption } from "@/components/studio/generation-controls";
@@ -61,7 +63,7 @@ const MAX_TOTAL_REFERENCE_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = SCENE_DETAILS_MAX;
 const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
-const IMAGE2_STYLE_FILTERS = [
+const IMAGE2_STYLE_BASE = [
   {
     id: "inkprint",
     tag: "#inkprint",
@@ -249,6 +251,194 @@ const IMAGE2_STYLE_CATEGORIES = [
   "Photo",
 ] as const;
 
+const IMAGE2_STYLE_SECTIONS = [
+  { id: "style", label: "Style" },
+  { id: "character", label: "Character" },
+  { id: "element", label: "Element" },
+  { id: "location", label: "Location" },
+  { id: "color", label: "Color" },
+  { id: "weather-seasons", label: "Weather & Seasons" },
+] as const;
+
+type Image2Section = (typeof IMAGE2_STYLE_SECTIONS)[number]["id"];
+
+const IMAGE2_CAMERA_POSITIONS = [
+  {
+    id: "front_view",
+    label: "Front View",
+    group: "Exterior",
+    description:
+      "Direct frontal view of the main facade, with controlled vertical lines and minimal perspective convergence.",
+  },
+  {
+    id: "three_quarter_view",
+    label: "Three-Quarter View",
+    group: "Exterior",
+    description:
+      "Ground-level diagonal view showing two facades and the building's depth.",
+  },
+  {
+    id: "low_angle",
+    label: "Low Angle",
+    group: "Exterior",
+    description:
+      "Low camera position looking upward to create a strong architectural presence.",
+  },
+  {
+    id: "elevated_view",
+    label: "Elevated View",
+    group: "Exterior",
+    description:
+      "Elevated viewpoint looking gently downward while keeping the facades visible.",
+  },
+  {
+    id: "aerial_three_quarter",
+    label: "Aerial Three-Quarter",
+    group: "Aerial",
+    description:
+      "Oblique aerial view showing the roof and two facades from above a building corner.",
+  },
+  {
+    id: "high_aerial",
+    label: "High Aerial",
+    group: "Aerial",
+    description:
+      "High and distant aerial view showing the building and its surrounding site.",
+  },
+  {
+    id: "low_altitude_aerial",
+    label: "Low-Altitude Aerial",
+    group: "Aerial",
+    description:
+      "Low drone viewpoint emphasizing the facade and nearby outdoor environment.",
+  },
+  {
+    id: "top_down_nadir",
+    label: "Top-Down / Nadir",
+    group: "Aerial",
+    description:
+      "Vertical overhead view showing the roof, building footprint and site arrangement.",
+  },
+  {
+    id: "interior_corner",
+    label: "Interior Corner",
+    group: "Interior",
+    description:
+      "Interior corner viewpoint showing room depth, two walls and the spatial arrangement.",
+  },
+] as const;
+
+type Image2CameraPositionId =
+  (typeof IMAGE2_CAMERA_POSITIONS)[number]["id"];
+
+interface Image2Filter {
+  id: string;
+  tag: string;
+  label: string;
+  category: string;
+  description: string;
+  previewUrl: string;
+  section: Image2Section;
+  sourcePage?: string;
+}
+
+const IMAGE2_SECTION_ICONS: Record<Image2Section, LucideIcon> = {
+  style: Wand2,
+  character: Heart,
+  element: Box,
+  location: LayoutGrid,
+  color: Layers3,
+  "weather-seasons": CloudSun,
+};
+
+function swatch(from: string, to: string): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${from}'/><stop offset='1' stop-color='${to}'/></linearGradient></defs><rect width='120' height='120' fill='url(#g)'/></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+const IMAGE2_WEATHER_OPTIONS = [
+  { id: "clear_sunny", label: "Clear / Sunny", description: "Clear sky, natural sunlight and balanced daylight.", gradient: "linear-gradient(135deg, #f6d37b, #4d9bc8)" },
+  { id: "partly_cloudy", label: "Partly Cloudy", description: "Blue sky with scattered natural white clouds.", gradient: "linear-gradient(135deg, #8fc9e8, #dce5e9)" },
+  { id: "overcast", label: "Overcast", description: "Fully cloudy sky with soft diffused daylight.", gradient: "linear-gradient(135deg, #aeb8c2, #687582)" },
+  { id: "dark_clouds", label: "Dark Clouds", description: "Dense dark clouds without automatically adding rain.", gradient: "linear-gradient(135deg, #596574, #242a35)" },
+  { id: "thunderstorm", label: "Thunderstorm", description: "Storm clouds and realistic thunderstorm conditions.", gradient: "linear-gradient(135deg, #414b63, #171c2b)" },
+  { id: "rain", label: "Rain", description: "Realistic rainfall and naturally wet outdoor surfaces.", gradient: "linear-gradient(135deg, #7199b0, #344b60)" },
+  { id: "fog_mist", label: "Fog / Mist", description: "Atmospheric fog, soft visibility and natural depth.", gradient: "linear-gradient(135deg, #d6dcdf, #87949d)" },
+  { id: "snow", label: "Snow", description: "Realistic snowfall and plausible snow accumulation.", gradient: "linear-gradient(135deg, #edf5fa, #9bbbd2)" },
+  { id: "dust_haze", label: "Dust / Haze", description: "Fine airborne dust and reduced distant visibility.", gradient: "linear-gradient(135deg, #d9bd91, #91775d)" },
+] as const;
+
+const IMAGE2_SEASON_OPTIONS = [
+  { id: "spring", label: "Spring", description: "Fresh green growth and subtle seasonal flowering.", gradient: "linear-gradient(135deg, #b5dc9b, #43875a)" },
+  { id: "summer", label: "Summer", description: "Full healthy foliage and natural summer colors.", gradient: "linear-gradient(135deg, #a8cb64, #376b36)" },
+  { id: "autumn", label: "Autumn", description: "Golden, amber, orange and red foliage with fallen leaves.", gradient: "linear-gradient(135deg, #e6b35c, #a34e2b)" },
+  { id: "winter", label: "Winter", description: "Cool seasonal appearance without automatically adding snow.", gradient: "linear-gradient(135deg, #d5e0e9, #8296a9)" },
+] as const;
+
+type Image2WeatherId = (typeof IMAGE2_WEATHER_OPTIONS)[number]["id"];
+type Image2SeasonId = (typeof IMAGE2_SEASON_OPTIONS)[number]["id"];
+
+function extraFilter(
+  section: Image2Section,
+  category: string,
+  label: string,
+  description: string,
+  from: string,
+  to: string,
+): Image2Filter {
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return {
+    id: `${section}-${slug}`,
+    tag: `#${slug}`,
+    label,
+    category,
+    description,
+    previewUrl: swatch(from, to),
+    section,
+  };
+}
+
+const IMAGE2_EXTRA_FILTERS: Image2Filter[] = [
+  // Character
+  extraFilter("character", "People", "Studio portrait", "Clean portrait framing, natural skin rendering and flattering soft light on the subject.", "#d9b8a6", "#5b4a52"),
+  extraFilter("character", "People", "Heroic pose", "Confident full-figure stance, strong silhouette and dramatic presence.", "#f2a65a", "#2b2d42"),
+  extraFilter("character", "People", "Elegant fashion", "Refined styling, tailored fabrics and editorial posture.", "#e6c9d6", "#6a4c93"),
+  extraFilter("character", "Creatures", "Stylized character", "Simplified, expressive character design with a consistent proportion language.", "#ffd166", "#ef476f"),
+  extraFilter("character", "Creatures", "Fantasy creature", "Imaginative creature anatomy with believable texture and scale.", "#80ed99", "#22577a"),
+  extraFilter("character", "Creatures", "Robot android", "Mechanical body with panel lines, joints and metallic material response.", "#adb5bd", "#212529"),
+  // Element
+  extraFilter("element", "Material", "Glass", "Transparent and refractive surfaces with crisp highlights and accurate reflections.", "#bde0fe", "#4361ee"),
+  extraFilter("element", "Material", "Brushed metal", "Anisotropic metal surfaces with directional micro-scratches.", "#ced4da", "#495057"),
+  extraFilter("element", "Material", "Natural wood", "Visible grain, warm tones and organic surface variation.", "#c8935a", "#5c3d2e"),
+  extraFilter("element", "Material", "Soft fabric", "Woven textile folds, soft shading and fiber detail.", "#f4acb7", "#9d8189"),
+  extraFilter("element", "Nature", "Water and liquid", "Fluid motion, splashes, ripples and realistic transparency.", "#48cae4", "#023e8a"),
+  extraFilter("element", "Nature", "Smoke and mist", "Volumetric haze and drifting smoke with soft falloff.", "#e9ecef", "#6c757d"),
+  extraFilter("element", "Nature", "Botanical", "Leaves, petals and organic plant forms integrated into the scene.", "#95d5b2", "#1b4332"),
+  // Location
+  extraFilter("location", "Indoor", "Modern interior", "Contemporary indoor space with clean architecture and natural daylight.", "#e9d8a6", "#6b705c"),
+  extraFilter("location", "Indoor", "Photo studio", "Seamless backdrop with controlled studio lighting.", "#f1faee", "#a8dadc"),
+  extraFilter("location", "Outdoor", "City street", "Urban environment with depth, signage and ambient city light.", "#ffb703", "#023047"),
+  extraFilter("location", "Outdoor", "Forest", "Layered trees, filtered light and organic ground detail.", "#74c69d", "#081c15"),
+  extraFilter("location", "Outdoor", "Beach and coast", "Open horizon, sand, surf and coastal atmosphere.", "#fefae0", "#219ebc"),
+  extraFilter("location", "Outdoor", "Desert", "Wide dunes, warm light and dry atmospheric haze.", "#f4a261", "#9c6644"),
+  extraFilter("location", "Outdoor", "Outer space", "Deep-space backdrop with stars, nebulae and distant planets.", "#3a0ca3", "#03071e"),
+  // Color
+  extraFilter("color", "Warm", "Warm sunset", "Golden-orange palette with soft pink highlights.", "#ff9e00", "#d00000"),
+  extraFilter("color", "Warm", "Earth tones", "Terracotta, sand and olive palette with a natural feel.", "#bc6c25", "#606c38"),
+  extraFilter("color", "Cool", "Cool blue", "Calm blue-teal palette with crisp, cold highlights.", "#90e0ef", "#03045e"),
+  extraFilter("color", "Cool", "Neon palette", "Saturated cyan, magenta and violet accents.", "#00f5d4", "#f15bb5"),
+  extraFilter("color", "Neutral", "Pastel", "Low-saturation, soft and airy color palette.", "#cdb4db", "#bde0fe"),
+  extraFilter("color", "Neutral", "Black and white", "Full monochrome rendering with strong tonal contrast.", "#f8f9fa", "#212529"),
+];
+
+const IMAGE2_STYLE_FILTERS: readonly Image2Filter[] = [
+  ...IMAGE2_STYLE_BASE.map((item) => ({ ...item, section: "style" as const })),
+  ...IMAGE2_EXTRA_FILTERS,
+];
+
 type Image2ModelOption = ModelOption & {
   provider?: string;
   maxReferences?: number;
@@ -424,10 +614,17 @@ export function Image2Workspace() {
   const [selectedStyleFilters, setSelectedStyleFilters] = useState<string[]>(
     [],
   );
+  const [selectedWeather, setSelectedWeather] =
+    useState<Image2WeatherId | null>(null);
+  const [selectedSeason, setSelectedSeason] =
+    useState<Image2SeasonId | null>(null);
+  const [cameraPresetId, setCameraPresetId] =
+    useState<Image2CameraPositionId | "">("");
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
   const [styleFilterSearch, setStyleFilterSearch] = useState("");
   const [styleFilterCategory, setStyleFilterCategory] =
     useState<(typeof IMAGE2_STYLE_CATEGORIES)[number]>("All");
+  const [styleSection, setStyleSection] = useState<Image2Section>("style");
   const [styleFilterNotice, setStyleFilterNotice] = useState<string | null>(
     null,
   );
@@ -478,6 +675,9 @@ export function Image2Workspace() {
   const isBusy = result.status === "busy";
   const selectedModelOption =
     modelOptions.find((model) => model.key === selectedModel) ?? null;
+  const selectedCameraPosition =
+    IMAGE2_CAMERA_POSITIONS.find((preset) => preset.id === cameraPresetId) ??
+    null;
   const providers = useMemo(
     () =>
       Array.from(
@@ -1092,6 +1292,11 @@ export function Image2Workspace() {
     selectedStyleFilters.forEach((filterId) =>
       form.append("styleFilter", filterId),
     );
+    if (selectedWeather) form.append("weather", selectedWeather);
+    if (selectedSeason) form.append("season", selectedSeason);
+    if (cameraPresetId) {
+      form.append("cameraPresetId", cameraPresetId);
+    }
 
     try {
       const response = await fetch("/api/generate", {
@@ -1124,6 +1329,9 @@ export function Image2Workspace() {
     resolvedAutoModel,
     references,
     selectedStyleFilters,
+    selectedWeather,
+    selectedSeason,
+    cameraPresetId,
     imageInputCount,
     quality,
     aspectRatio,
@@ -1361,6 +1569,72 @@ export function Image2Workspace() {
               </p>
             )}
 
+          <section
+            className="mt-5 space-y-2"
+            aria-label="Camera position"
+          >
+            <div className="flex h-6 items-center justify-between gap-2">
+              <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#91939e]">
+                Camera Position
+              </h2>
+              <span className="text-[9px] text-[#858792]">Optional</span>
+            </div>
+
+            <div className="relative">
+              <select
+                id="image2-camera-position"
+                value={cameraPresetId}
+                onChange={(event) =>
+                  setCameraPresetId(
+                    event.target.value as Image2CameraPositionId | "",
+                  )
+                }
+                className="h-11 w-full appearance-none rounded-lg border border-white/[0.10] bg-[#1c1d22] px-3 pr-10 text-xs text-[#e5e5ec] outline-none transition-colors hover:border-[#aaa7ff]/40 focus:border-[#aaa7ff]/70"
+              >
+                <option value="">No camera position — Follow prompt</option>
+                {(["Exterior", "Aerial", "Interior"] as const).map(
+                  (group) => (
+                    <optgroup key={group} label={group}>
+                      {IMAGE2_CAMERA_POSITIONS.filter(
+                        (item) => item.group === group,
+                      ).map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ),
+                )}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#92949f]" />
+            </div>
+
+            {selectedCameraPosition ? (
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-[#aaa7ff]/20 bg-[#aaa7ff]/[0.06] px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-[#dedcff]">
+                    {selectedCameraPosition.label}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-4 text-[#a1a1ad]">
+                    {selectedCameraPosition.description}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCameraPresetId("")}
+                  className="shrink-0 rounded-md px-2 py-1 text-[10px] text-[#aaa7ff] hover:bg-white/[0.06]"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <p className="text-[10px] leading-4 text-[#858893]">
+                Optional. Leave it unset to let your written prompt determine
+                the camera viewpoint.
+              </p>
+            )}
+          </section>
+
           <section className="mt-5 space-y-2" aria-label="Style filters">
             <div className="flex h-6 items-center justify-between gap-2">
               <h2 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#91939e]">
@@ -1401,20 +1675,14 @@ export function Image2Workspace() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-xs font-medium text-[#e5e5ec]">
-                  {selectedStyleFilters.length
-                    ? selectedStyleFilters
-                        .map(
-                          (id) =>
-                            IMAGE2_STYLE_FILTERS.find((item) => item.id === id)
-                              ?.tag,
-                        )
-                        .filter(Boolean)
-                        .join(" · ")
-                    : "Choose a visual style"}
+                  {[
+                    ...selectedStyleFilters.map((id) => IMAGE2_STYLE_FILTERS.find((item) => item.id === id)?.tag),
+                    selectedWeather ? `Weather: ${IMAGE2_WEATHER_OPTIONS.find((item) => item.id === selectedWeather)?.label}` : null,
+                    selectedSeason ? `Season: ${IMAGE2_SEASON_OPTIONS.find((item) => item.id === selectedSeason)?.label}` : null,
+                  ].filter(Boolean).join(" · ") || "Choose style, weather or season"}
                 </span>
                 <span className="mt-1 block text-[10px] leading-4 text-[#858893]">
-                  Style presets change the visual treatment, not the subject or
-                  background.
+                  Style filters modify visual treatment. Weather and Seasons modify the environment independently.
                 </span>
               </span>
               <span className="shrink-0 rounded-md bg-white/[0.06] px-2.5 py-1.5 text-[10px] font-medium text-[#d8d7e2] group-hover:bg-[#aaa7ff]/15 group-hover:text-[#dad8ff]">
@@ -2677,183 +2945,295 @@ export function Image2Workspace() {
         </div>
       </section>
 
-      {stylePickerOpen && (
-        <div
-          className="fixed inset-0 z-[205] flex items-center justify-center bg-black/70 p-3 backdrop-blur-[2px] sm:p-6"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setStylePickerOpen(false);
-          }}
+{stylePickerOpen &&
+  (() => {
+    const sectionItems = IMAGE2_STYLE_FILTERS.filter(
+      (item) => item.section === styleSection,
+    );
+    const categories: string[] =
+      styleSection === "style"
+        ? [...IMAGE2_STYLE_CATEGORIES]
+        : ["All", ...Array.from(new Set(sectionItems.map((i) => i.category)))];
+    const visibleItems = sectionItems.filter(
+      (item) =>
+        (styleFilterCategory === "All" ||
+          item.category === styleFilterCategory) &&
+        `${item.tag} ${item.label} ${item.description}`
+          .toLowerCase()
+          .includes(styleFilterSearch.trim().toLowerCase()),
+    );
+    const activeSection = IMAGE2_STYLE_SECTIONS.find(
+      (section) => section.id === styleSection,
+    )!;
+
+    return (
+      <div
+        className="fixed inset-0 z-[205] flex items-center justify-center bg-black/70 p-3 backdrop-blur-[2px] sm:p-6"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setStylePickerOpen(false);
+        }}
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="image2-style-picker-title"
+          className="flex h-[min(800px,92vh)] w-full max-w-[1000px] flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-[#23242a] text-[#eeeef2] shadow-2xl"
         >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="image2-style-picker-title"
-            className="flex max-h-[min(800px,92vh)] w-full max-w-[900px] flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-[#23242a] text-[#eeeef2] shadow-2xl"
-          >
-            <div className="border-b border-white/[0.08] p-4 sm:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2
-                    id="image2-style-picker-title"
-                    className="text-lg font-medium"
-                  >
-                    Styles
-                  </h2>
-                  <p className="mt-1 text-[11px] text-[#858893]">
-                    Choose up to 3 filters. These references are visual examples
-                    only and are never sent to the generation model.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStylePickerOpen(false)}
-                  aria-label="Close style picker"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#9b9da7] hover:bg-white/[0.06] hover:text-white"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div
-                  className="flex min-w-0 flex-wrap gap-1.5"
-                  role="group"
-                  aria-label="Filter style categories"
-                >
-                  {IMAGE2_STYLE_CATEGORIES.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => setStyleFilterCategory(category)}
-                      aria-pressed={styleFilterCategory === category}
-                      className={cn(
-                        "h-7 rounded-lg px-3 text-[10px] font-medium transition-colors",
-                        styleFilterCategory === category
-                          ? "bg-[#3a3b43] text-white"
-                          : "text-[#92949f] hover:bg-white/[0.05] hover:text-white",
-                      )}
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative w-full sm:max-w-[250px]">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#777a85]" />
-                  <input
-                    value={styleFilterSearch}
-                    onChange={(event) =>
-                      setStyleFilterSearch(event.target.value)
-                    }
-                    placeholder="Search styles…"
-                    aria-label="Search style filters"
-                    className="h-8 w-full rounded-lg border border-white/[0.09] bg-[#191a1f] pl-9 pr-3 text-xs outline-none placeholder:text-[#70727d] focus:border-[#8c88ff]"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {IMAGE2_STYLE_FILTERS.filter(
-                  (item) =>
-                    (styleFilterCategory === "All" ||
-                      item.category === styleFilterCategory) &&
-                    `${item.tag} ${item.label} ${item.description}`
-                      .toLowerCase()
-                      .includes(styleFilterSearch.trim().toLowerCase()),
-                ).map((item) => {
-                  const active = selectedStyleFilters.includes(item.id);
-                  const canAdd = active || selectedStyleFilters.length < 3;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleStyleFilter(item.id)}
-                      aria-pressed={active}
-                      title={item.description}
-                      className={cn(
-                        "group relative min-w-0 overflow-hidden rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a09cff]",
-                        active
-                          ? "border-[#aaa7ff] bg-[#aaa7ff]/10"
-                          : "border-white/[0.08] bg-[#1a1b20] hover:border-white/[0.20]",
-                        !canAdd && "opacity-55",
-                      )}
-                    >
-                      <div className="relative aspect-square overflow-hidden bg-[#15161a]">
-                        <img
-                          src={item.previewUrl}
-                          alt={`${item.tag} style preview`}
-                          loading="lazy"
-                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.025]"
-                        />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/65 to-transparent" />
-                        <span className="absolute left-2 top-2 rounded-md border border-white/15 bg-black/55 px-1.5 py-1 text-[9px] font-semibold text-white backdrop-blur">
-                          {item.tag}
-                        </span>
-                        <span
-                          className={cn(
-                            "absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border",
-                            active
-                              ? "border-[#d0ceff] bg-[#aaa7ff] text-[#17171b]"
-                              : "border-white/55 bg-black/25 text-transparent",
-                          )}
-                        >
-                          <Check className="h-3 w-3" />
-                        </span>
-                      </div>
-                      <span className="block px-2.5 pb-2.5 pt-2">
-                        <span className="block truncate text-[11px] font-medium text-[#e8e8ef]">
-                          {item.label}
-                        </span>
-                        <span className="mt-1 block line-clamp-2 min-h-8 text-[9px] leading-4 text-[#858893]">
-                          {item.description}
-                        </span>
-                        <span className="mt-1 block text-[8px] text-[#686b75]">
-                          Preview source: linked image source page
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {IMAGE2_STYLE_FILTERS.filter(
-                (item) =>
-                  (styleFilterCategory === "All" ||
-                    item.category === styleFilterCategory) &&
-                  `${item.tag} ${item.label} ${item.description}`
-                    .toLowerCase()
-                    .includes(styleFilterSearch.trim().toLowerCase()),
-              ).length === 0 && (
-                <div className="py-12 text-center text-xs text-[#858893]">
-                  No matching styles.
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] bg-[#1b1c20] px-4 py-3">
-              <p className="text-[10px] text-[#92949f]">
-                {selectedStyleFilters.length}/3 selected
+          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+            {/* Sidebar */}
+            <nav
+              aria-label="Reference sections"
+              className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/[0.08] bg-[#1b1c20] p-2 sm:w-52 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r sm:p-3"
+            >
+              <p className="hidden px-2 pb-1 pt-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7d808b] sm:block">
+                All references
               </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedStyleFilters([]);
-                    setStyleFilterNotice(null);
-                  }}
-                  className="h-8 rounded-lg px-3 text-[10px] text-[#9c9eaa] hover:bg-white/[0.06] hover:text-white"
-                >
-                  Clear selection
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStylePickerOpen(false)}
-                  className="h-8 rounded-lg bg-[#f2f0ff] px-4 text-[10px] font-semibold text-[#17171b] hover:bg-white"
-                >
-                  Done
-                </button>
+              {IMAGE2_STYLE_SECTIONS.map((section) => {
+                const Icon = IMAGE2_SECTION_ICONS[section.id];
+                const count =
+                  section.id === "weather-seasons"
+                    ? Number(Boolean(selectedWeather)) + Number(Boolean(selectedSeason))
+                    : selectedStyleFilters.filter(
+                        (id) =>
+                          IMAGE2_STYLE_FILTERS.find((item) => item.id === id)
+                            ?.section === section.id,
+                      ).length;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => {
+                      setStyleSection(section.id);
+                      setStyleFilterCategory("All");
+                      setStyleFilterSearch("");
+                    }}
+                    aria-pressed={styleSection === section.id}
+                    className={cn(
+                      "flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-xs transition-colors",
+                      styleSection === section.id
+                        ? "bg-[#3a3b43] font-medium text-white"
+                        : "text-[#9c9eaa] hover:bg-white/[0.05] hover:text-white",
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1 text-left">{section.label}</span>
+                    {count > 0 && (
+                      <span className="rounded-full bg-[#aaa7ff] px-1.5 text-[9px] font-semibold text-[#17171b]">
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Content */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <div className="border-b border-white/[0.08] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2
+                      id="image2-style-picker-title"
+                      className="text-lg font-medium"
+                    >
+                      {activeSection.label}
+                    </h2>
+                    <p className="mt-1 text-[11px] text-[#858893]">
+                      {styleSection === "weather-seasons" ? (
+                        "Choose one weather condition and one season. Both are optional."
+                      ) : (
+                        <>Choose up to 3 visual filters in total across the style sections. Weather and Seasons are selected independently.</>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStylePickerOpen(false)}
+                    aria-label="Close style picker"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#9b9da7] hover:bg-white/[0.06] hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {styleSection !== "weather-seasons" && (
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div
+                    className="flex min-w-0 flex-wrap gap-1.5"
+                    role="group"
+                    aria-label="Filter categories"
+                  >
+                    {categories.map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        onClick={() =>
+                          setStyleFilterCategory(
+                            category as (typeof IMAGE2_STYLE_CATEGORIES)[number],
+                          )
+                        }
+                        aria-pressed={styleFilterCategory === category}
+                        className={cn(
+                          "h-7 rounded-lg px-3 text-[10px] font-medium transition-colors",
+                          styleFilterCategory === category
+                            ? "bg-[#3a3b43] text-white"
+                            : "text-[#92949f] hover:bg-white/[0.05] hover:text-white",
+                        )}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative w-full sm:max-w-[250px]">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#777a85]" />
+                    <input
+                      value={styleFilterSearch}
+                      onChange={(event) =>
+                        setStyleFilterSearch(event.target.value)
+                      }
+                      placeholder={`Search ${activeSection.label.toLowerCase()}…`}
+                      aria-label="Search options"
+                      className="h-8 w-full rounded-lg border border-white/[0.09] bg-[#191a1f] pl-9 pr-3 text-xs outline-none placeholder:text-[#70727d] focus:border-[#8c88ff]"
+                    />
+                  </div>
+                </div>
+                )}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+                {styleSection === "weather-seasons" ? (
+                  <div className="space-y-8">
+                    {([
+                      { title: "Weather", hint: "Select one condition or leave it unselected.", options: IMAGE2_WEATHER_OPTIONS, selected: selectedWeather, setSelected: setSelectedWeather },
+                      { title: "Season", hint: "Select one season or leave it unselected.", options: IMAGE2_SEASON_OPTIONS, selected: selectedSeason, setSelected: setSelectedSeason },
+                    ] as const).map((group) => (
+                      <section key={group.title}>
+                        <div className="mb-3">
+                          <h3 className="text-sm font-semibold text-[#e8e8ef]">{group.title}</h3>
+                          <p className="mt-1 text-[10px] text-[#858893]">{group.hint}</p>
+                        </div>
+                        <div className={cn("grid grid-cols-2 gap-3", group.title === "Weather" ? "sm:grid-cols-3" : "sm:grid-cols-4")}>
+                          {group.options.map((item) => {
+                            const active = group.selected === item.id;
+                            return (
+                              <button key={item.id} type="button" onClick={() => {
+                                if (group.title === "Weather") {
+                                  setSelectedWeather(active ? null : item.id as Image2WeatherId);
+                                } else {
+                                  setSelectedSeason(active ? null : item.id as Image2SeasonId);
+                                }
+                              }} aria-pressed={active} className={cn("relative overflow-hidden rounded-xl border text-left transition-colors", active ? "border-[#aaa7ff] bg-[#aaa7ff]/10" : "border-white/[0.08] bg-[#1a1b20] hover:border-white/[0.20]")}>
+                                <div className="h-20 w-full" style={{ background: item.gradient }} />
+                                {active && <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#aaa7ff] text-[#17171b]"><Check className="h-3 w-3" /></span>}
+                                <div className="p-2.5">
+                                  <p className="text-[11px] font-medium text-[#e8e8ef]">{item.label}</p>
+                                  <p className="mt-1 text-[9px] leading-4 text-[#858893]">{item.description}</p>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : (
+                <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  {visibleItems.map((item) => {
+                    const active = selectedStyleFilters.includes(item.id);
+                    const canAdd = active || selectedStyleFilters.length < 3;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => toggleStyleFilter(item.id)}
+                        aria-pressed={active}
+                        title={item.description}
+                        className={cn(
+                          "group relative min-w-0 overflow-hidden rounded-xl border text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#a09cff]",
+                          active
+                            ? "border-[#aaa7ff] bg-[#aaa7ff]/10"
+                            : "border-white/[0.08] bg-[#1a1b20] hover:border-white/[0.20]",
+                          !canAdd && "opacity-55",
+                        )}
+                      >
+                        <div className="relative aspect-square overflow-hidden bg-[#15161a]">
+                          <img
+                            src={item.previewUrl}
+                            alt={`${item.tag} preview`}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.025]"
+                          />
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/65 to-transparent" />
+                          <span className="absolute left-2 top-2 rounded-md border border-white/15 bg-black/55 px-1.5 py-1 text-[9px] font-semibold text-white backdrop-blur">
+                            {item.tag}
+                          </span>
+                          <span
+                            className={cn(
+                              "absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border",
+                              active
+                                ? "border-[#d0ceff] bg-[#aaa7ff] text-[#17171b]"
+                                : "border-white/55 bg-black/25 text-transparent",
+                            )}
+                          >
+                            <Check className="h-3 w-3" />
+                          </span>
+                        </div>
+                        <span className="block px-2.5 pb-2.5 pt-2">
+                          <span className="block truncate text-[11px] font-medium text-[#e8e8ef]">
+                            {item.label}
+                          </span>
+                          <span className="mt-1 block line-clamp-2 min-h-8 text-[9px] leading-4 text-[#858893]">
+                            {item.description}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {visibleItems.length === 0 && (
+                  <div className="py-12 text-center text-xs text-[#858893]">
+                    No matching options.
+                  </div>
+                )}
+                </>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] bg-[#1b1c20] px-4 py-3">
+                {styleSection === "weather-seasons" ? (
+                  <p className="text-[10px] text-[#92949f]">Weather: {selectedWeather ? 1 : 0}/1{" · "}Season: {selectedSeason ? 1 : 0}/1</p>
+                ) : <p className="text-[10px] text-[#92949f]">{selectedStyleFilters.length}/3 selected</p>}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (styleSection === "weather-seasons") {
+                        setSelectedWeather(null);
+                        setSelectedSeason(null);
+                      } else {
+                        setSelectedStyleFilters([]);
+                        setStyleFilterNotice(null);
+                      }
+                    }}
+                    className="h-8 rounded-lg px-3 text-[10px] text-[#9c9eaa] hover:bg-white/[0.06] hover:text-white"
+                  >
+                    Clear selection
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStylePickerOpen(false)}
+                    className="h-8 rounded-lg bg-[#f2f0ff] px-4 text-[10px] font-semibold text-[#17171b] hover:bg-white"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
-          </section>
-        </div>
-      )}
+          </div>
+        </section>
+      </div>
+    );
+  })()}
 
       {modelPickerOpen && (
         <div

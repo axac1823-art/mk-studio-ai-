@@ -4,7 +4,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from prompts import add_image_reference_map, build_text_to_image_prompt
+from prompts import (
+    IMAGE2_CAMERA_POSITION_PROMPTS,
+    IMAGE2_STYLE_FILTER_PROMPTS,
+    add_image_reference_map,
+    build_feature_prompt,
+    build_text_to_image_prompt,
+)
 from workflows.video import _reference_map
 
 
@@ -102,5 +108,59 @@ def test_image2_frame_size_prompts_are_included():
         {"sceneDetails": "A glass pavilion.", "aspectRatio": "16:9"},
     )
     assert IMAGE2_FRAME_SIZE_PROMPTS["16:9"] in feature_prompt
+
+
+def test_image2_camera_position_is_optional():
+    prompt = build_text_to_image_prompt(
+        scene_details="A modern two-storey architectural villa."
+    )
+    assert "CAMERA POSITION PRESET" not in prompt
+    assert "Top-Down / Nadir" not in prompt
+
+
+def test_image2_all_camera_presets_have_prompt_instructions():
+    assert len(IMAGE2_CAMERA_POSITION_PROMPTS) == 9
+    for preset_id, instruction in IMAGE2_CAMERA_POSITION_PROMPTS.items():
+        prompt = build_text_to_image_prompt(
+            scene_details="A modern architectural villa.",
+            camera_preset_id=preset_id,
+        )
+        assert "CAMERA POSITION PRESET" in prompt
+        assert instruction in prompt
+        assert "user's written description has priority" in prompt
+
+
+def test_image2_unknown_camera_preset_is_ignored():
+    prompt = build_text_to_image_prompt(
+        scene_details="A modern architectural villa.",
+        camera_preset_id="unknown_camera",
+    )
+    assert "CAMERA POSITION PRESET" not in prompt
+    assert "unknown_camera" not in prompt
+
+
+def test_image2_camera_preset_passes_through_feature_prompt():
+    prompt = build_feature_prompt(
+        "text_to_image",
+        {
+            "sceneDetails": "A modern villa in a landscaped site.",
+            "cameraPresetId": "high_aerial",
+        },
+    )
+    assert "CAMERA POSITION PRESET" in prompt
+    assert "high and distant aerial camera viewpoint" in prompt
+
+
+def test_image2_camera_does_not_consume_style_filter_slots():
+    assert not set(IMAGE2_CAMERA_POSITION_PROMPTS).intersection(
+        IMAGE2_STYLE_FILTER_PROMPTS
+    )
+    prompt = build_text_to_image_prompt(
+        scene_details="A modern architectural villa.",
+        style_filters=["inkprint", "dark", "3d"],
+        camera_preset_id="high_aerial",
+    )
+    assert "#inkprint, #dark, #3d" in prompt
+    assert "CAMERA POSITION PRESET" in prompt
 
 

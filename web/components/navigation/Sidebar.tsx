@@ -14,6 +14,7 @@ import {
   Plus,
   Settings,
   Trash2,
+  Type,
   Upload,
   Video,
 } from "lucide-react";
@@ -209,6 +210,13 @@ export function AppSidebar({
             <ToolCategoryLink category="video" pathname={pathname} icon={Video} label="Video" />
             <ToolCategoryLink category="3d" pathname={pathname} icon={Box} label="3D" />
             <ToolCategoryLink category="audio" pathname={pathname} icon={Mic} label="Audio" />
+            <NavLink
+              href="/app/image2"
+              icon={Type}
+              label="Image 2"
+              active={pathname.startsWith("/app/image2")}
+              collapsed={collapsed}
+            />
           </section>
         )}
 

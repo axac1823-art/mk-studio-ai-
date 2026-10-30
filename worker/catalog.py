@@ -423,7 +423,8 @@ IMAGE_EDIT_CANDIDATES: list[Candidate] = [
     Candidate("flux-kontext-max", "Flux Kontext Max", "Best for photorealistic architectural renders", "bfl", "flux-kontext-max", 8, 6, 0, IMAGE_TIMEOUT_MS, ("pro",), bfl_edit_input, extract_image_urls),
     Candidate("gemini-3-pro", "Gemini 3 Pro Image", "Best for detailed edits with many references", "google", "gemini-3-pro-image", 6, 10, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_edit_input, extract_image_urls),
     Candidate("flux-kontext-pro", "Flux Kontext Pro", "Reliable photorealistic edits", "bfl", "flux-kontext-pro", 4, 3, 0, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_edit_input, extract_image_urls),
-    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast image edits at lower cost", "google", "gemini-2.5-flash-image", 2, 3, 13, IMAGE_TIMEOUT_MS, ("standard",), google_edit_input, extract_image_urls),
+    Candidate("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite Image", "Cost-efficient 1K image edits", "google", "gemini-3.1-flash-lite-image", 2, 4, 13, IMAGE_TIMEOUT_MS, ("standard",), google_edit_input, extract_image_urls),
+    Candidate("gemini-3.1-flash", "Nano Banana 2", "High-quality image edits at 1K resolution", "google", "gemini-3.1-flash-image", 3, 7, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_edit_input, extract_image_urls),
     Candidate("gpt-image-1.5", "GPT Image 1.5", "High quality architectural edits", "openai", "gpt-image-1.5", 7, 15, 13, IMAGE_TIMEOUT_MS, ("pro",), openai_edit_input, extract_image_urls),
     Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI image edits", "openai", "gpt-image-1", 5, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_edit_input, extract_image_urls),
     # Agrégateur (exception assumée, AGENTS.md §1) : flux-2-klein ÉPINGLÉ
@@ -625,7 +626,8 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
     Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls),
     Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls),
     Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True),
-    Candidate("gemini-2.5-flash", "Gemini 2.5 Flash Image", "Fast text-to-image with Style and content references", "google", "gemini-2.5-flash-image", 3, 3, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True),
+    Candidate("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite Image", "Cost-efficient 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-lite-image", 3, 4, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True),
+    Candidate("gemini-3.1-flash", "Nano Banana 2", "High-quality 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-image", 3, 7, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_text_to_image_input, extract_image_urls, supports_style_reference=True),
     # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
     # image de référence est fournie, car l'API Magic Hour exige une image
     # d'entrée.

@@ -58,8 +58,28 @@ const IMAGE2_STYLE_FILTER_IDS = new Set([
   "inkprint", "oilpainting", "traditional-japan", "fantasy", "cartoon", "3d",
   "cartoonfun", "digital-art", "comic", "painting", "dark", "sketch", "mock",
   "2000s-phone", "cyberpunk",
+  "character-studio-portrait", "character-heroic-pose", "character-elegant-fashion",
+  "character-stylized-character", "character-fantasy-creature", "character-robot-android",
+  "element-glass", "element-brushed-metal", "element-natural-wood", "element-soft-fabric",
+  "element-water-and-liquid", "element-smoke-and-mist", "element-botanical",
+  "location-modern-interior", "location-photo-studio", "location-city-street",
+  "location-forest", "location-beach-and-coast", "location-desert", "location-outer-space",
+  "color-warm-sunset", "color-earth-tones", "color-cool-blue", "color-neon-palette",
+  "color-pastel", "color-black-and-white",
+  "effects-soft-glow", "effects-bokeh", "effects-lens-flare", "effects-film-grain",
+  "effects-glitch", "effects-motion-blur",
 ]);
 const MAX_IMAGE2_STYLE_FILTERS = 3;
+const IMAGE2_CAMERA_POSITION_IDS = new Set([
+  "front_view", "three_quarter_view", "low_angle", "elevated_view",
+  "aerial_three_quarter", "high_aerial", "low_altitude_aerial",
+  "top_down_nadir", "interior_corner",
+]);
+const ALLOWED_WEATHER = new Set([
+  "clear_sunny", "partly_cloudy", "overcast", "dark_clouds", "thunderstorm",
+  "rain", "fog_mist", "snow", "dust_haze",
+]);
+const ALLOWED_SEASONS = new Set(["spring", "summer", "autumn", "winter"]);
 const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
 const MAX_REFERENCE_SIZE = MAX_REFERENCE_SIZE_BYTES;
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
@@ -149,6 +169,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid style filters for this image feature." }, { status: 400 });
   }
   const styleFilters = rawStyleFilterValues as string[];
+
+  const rawWeatherValues = form.getAll("weather");
+  const rawSeasonValues = form.getAll("season");
+  const validWeatherValues = rawWeatherValues.length <= 1 && rawWeatherValues.every(
+    (value) => typeof value === "string" && ALLOWED_WEATHER.has(value),
+  );
+  const validSeasonValues = rawSeasonValues.length <= 1 && rawSeasonValues.every(
+    (value) => typeof value === "string" && ALLOWED_SEASONS.has(value),
+  );
+  const weather = validWeatherValues && rawWeatherValues.length === 1
+    ? (rawWeatherValues[0] as string)
+    : undefined;
+  const season = validSeasonValues && rawSeasonValues.length === 1
+    ? (rawSeasonValues[0] as string)
+    : undefined;
+  if (
+    !validWeatherValues ||
+    !validSeasonValues ||
+    ((rawWeatherValues.length > 0 || rawSeasonValues.length > 0) && feature !== "text_to_image")
+  ) {
+    return NextResponse.json({ error: "Invalid weather or season selection." }, { status: 400 });
+  }
+
+  const rawCameraPresetId = form.get("cameraPresetId");
+  const cameraPresetId = typeof rawCameraPresetId === "string"
+    ? rawCameraPresetId.trim() || undefined
+    : undefined;
+  if (
+    rawCameraPresetId !== null &&
+    (typeof rawCameraPresetId !== "string" ||
+      (cameraPresetId !== undefined &&
+        (feature !== "text_to_image" || !IMAGE2_CAMERA_POSITION_IDS.has(cameraPresetId))))
+  ) {
+    return NextResponse.json({ error: "Invalid camera position." }, { status: 400 });
+  }
 
   const { dbUser: user } = await requireAuth();
 
@@ -403,6 +458,9 @@ export async function POST(req: NextRequest) {
       quantity,
       sceneDetails,
       styleFilters: styleFilters.length > 0 ? styleFilters : undefined,
+      weather,
+      season,
+      cameraPresetId,
       cameraState: cameraState ?? undefined,
       optionId: optionalString(form, "optionId"),
       sceneTypeId: optionalString(form, "sceneTypeId"),
