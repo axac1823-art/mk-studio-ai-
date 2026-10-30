@@ -54,6 +54,12 @@ const SUPPORTED_FEATURES: Feature[] = [
   "text_to_image",
 ];
 const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const IMAGE2_STYLE_FILTER_IDS = new Set([
+  "inkprint", "oilpainting", "traditional-japan", "fantasy", "cartoon", "3d",
+  "cartoonfun", "digital-art", "comic", "painting", "dark", "sketch", "mock",
+  "2000s-phone", "cyberpunk",
+]);
+const MAX_IMAGE2_STYLE_FILTERS = 3;
 const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
 const MAX_REFERENCE_SIZE = MAX_REFERENCE_SIZE_BYTES;
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
@@ -128,6 +134,20 @@ export async function POST(req: NextRequest) {
   if (typeof feature !== "string" || !SUPPORTED_FEATURES.includes(feature as Feature)) {
     return NextResponse.json({ error: "This feature is not available yet." }, { status: 400 });
   }
+
+  const rawStyleFilterValues = form.getAll("styleFilter");
+  const validStyleFilterValues = rawStyleFilterValues.every(
+    (value): value is string => typeof value === "string" && IMAGE2_STYLE_FILTER_IDS.has(value),
+  );
+  if (
+    rawStyleFilterValues.length > MAX_IMAGE2_STYLE_FILTERS
+    || !validStyleFilterValues
+    || new Set(rawStyleFilterValues).size !== rawStyleFilterValues.length
+    || (rawStyleFilterValues.length > 0 && feature !== "text_to_image")
+  ) {
+    return NextResponse.json({ error: "Invalid style filters for this image feature." }, { status: 400 });
+  }
+  const styleFilters = rawStyleFilterValues as string[];
 
   const { dbUser: user } = await requireAuth();
 
@@ -377,6 +397,7 @@ export async function POST(req: NextRequest) {
       resolution,
       quantity,
       sceneDetails,
+      styleFilters: styleFilters.length > 0 ? styleFilters : undefined,
       cameraState: cameraState ?? undefined,
       optionId: optionalString(form, "optionId"),
       sceneTypeId: optionalString(form, "sceneTypeId"),

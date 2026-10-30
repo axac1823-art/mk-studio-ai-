@@ -889,8 +889,31 @@ OUTPUT:
 - Clean, natural, anti-aliased edges without visible cutout artifacts."""
 
 
-def build_text_to_image_prompt(scene_details=None, has_style_reference=False) -> str:
-    """Text-to-image prompt with no baked-in bright/daylight aesthetic."""
+
+# Text-only Image2 style filters. The external thumbnail URLs are UI previews only;
+# only these stable IDs are passed to the worker. The filter modifies rendering
+# treatment, never the requested subject, composition, background, or object count.
+IMAGE2_STYLE_FILTER_PROMPTS: dict[str, str] = {
+    "inkprint": "Apply a handcrafted linocut / relief-print treatment: carved confident contour lines, bold ink shapes, simplified value groups, purposeful crosshatching, limited spot colors, and subtle print texture. Keep the subject legible. Do not add text, symbols, or a new paper background.",
+    "oilpainting": "Apply a convincing oil-on-canvas treatment with layered pigments, controlled visible brush strokes, subtle glazing, painterly edge transitions, rich midtones, and natural canvas tooth. Preserve geometry and key details; do not blur the subject, force swirling strokes, or add warm sunset lighting unless requested.",
+    "traditional-japan": "Use a traditional Japanese woodblock-print language inspired by ukiyo-e: clear ink contours, flat layered color, deliberate negative space, elegant asymmetry, simplified atmospheric depth, and restrained indigo, mineral blue, vermilion and earth tones where suitable. Do not add Japanese motifs or replace the scene unless requested.",
+    "fantasy": "Apply polished fantasy concept-art treatment through atmospheric depth, evocative value design, layered color, selective luminous accents, and painterly detail hierarchy. Preserve the actual subject and scene; do not invent dragons, castles, magical creatures, runes, portals, or props.",
+    "cartoon": "Use a clean 2D cartoon style with confident outlines, simplified but accurate silhouettes, readable shape language, flat color blocks, restrained cel shading, and intentional highlights. Keep the subject recognizable and do not add speech bubbles, props, or childish exaggeration unless requested.",
+    "3d": "Give the existing subject a designed 3D-rendered appearance: coherent volume, believable material response, physically plausible shading, controlled ambient occlusion, soft contact shadows, and readable geometry. Preserve all shapes, proportions, viewpoint, and composition. Do not assume bright white studio lighting, glossy plastic, or extra objects.",
+    "cartoonfun": "Apply a playful, energetic cartoon-illustration finish with expressive rounded shapes, lively curves, rhythmic color blocking, coordinated cheerful colors, and a fun graphic finish. Keep the original subject and object count. Do not add confetti, stars, characters, toys, emojis, or decorative clutter.",
+    "digital-art": "Apply refined digital-art treatment with controlled digital brushwork, nuanced shading, intentional edge control, layered color transitions, crisp focal details, and a cohesive art-directed palette. Do not impose neon, holograms, fantasy props, excess glow, or a new environment.",
+    "comic": "Apply professional comic-book rendering: bold controlled inking, expressive contour weights, graphic shadow shapes, selective halftone texture, clear focal hierarchy, and purposeful highlights. Preserve the scene. Do not add panels, speech bubbles, captions, sound effects, or lettering unless requested.",
+    "painting": "Translate the subject into a versatile fine-art painting treatment with intentional brushwork, layered pigment-like color, expressive but controlled edges, surface texture, and painterly light transitions. Do not force oil, watercolor, gouache, or acrylic unless specified, and do not add scenery.",
+    "dark": "Apply a deliberate dark, low-key treatment with deeper shadow values, restrained highlights, controlled contrast, subdued color, and selective local illumination. Preserve the user's setting and time of day; do not brighten the image, add golden-hour light, neon, fog, or a new night background unless asked.",
+    "sketch": "Render the subject as a refined hand-drawn sketch using graphite-like strokes, varied line weight, light construction marks, deliberate hatching, and restrained paper texture. Preserve perspective and geometry. Do not add labels, measurements, arrows, grids, annotations, or blueprint symbols.",
+    "mock": "Treat #mock as an early-stage rough concept draft, not as a polished presentation mockup. Establish primary masses and silhouettes first; use loose exploratory strokes and light construction guides; simplify secondary details; keep materials partially resolved; and use rough shading or broad color blocking instead of final polish. Preserve the user's subject, object count, essential geometry, spatial relationships, camera, perspective, and composition. For architecture, retain existing building masses, levels, openings, and circulation cues; roughen the finish without redesigning the architecture. Do not create a product-on-background mockup, device frame, poster, presentation board, CAD wireframe, blueprint grid, notes, labels, dimensions, logos, watermarks, extra objects, or a new background. The result should read as a first-pass concept explored by a designer, less finished than a polished sketch or render.",
+    "2000s-phone": "Apply an authentic early-2000s compact digital-camera / phone snapshot look: modest sensor detail, limited dynamic range, slightly imperfect white balance, subtle chroma noise, mild JPEG compression, gentle softness, and direct flash only where the scene supports it. Preserve the original subject and background. Do not add VHS lines, film scratches, date stamps, camera UI, frames, or a new party setting.",
+    "cyberpunk": "Apply a restrained cyberpunk treatment through controlled cyan-and-magenta color, selective neon-like accents, cinematic contrast, cooler shadow colors, and edge reflections only where materials support them. Preserve the current scene, subject, architecture, object count, camera, and setting. Do not add neon signs, holograms, vehicles, rain, wet pavement, sci-fi buildings, or a new city background unless requested.",
+}
+
+
+def build_text_to_image_prompt(scene_details=None, has_style_reference=False, style_filters=None) -> str:
+    """Subject-first text-to-image prompt with optional text-only style filters."""
     parts = [
         (
             "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
@@ -902,25 +925,39 @@ def build_text_to_image_prompt(scene_details=None, has_style_reference=False) ->
             "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
         ),
     ]
-    if has_style_reference:
+    user_description = _sanitize_scene_details(scene_details)
+    if user_description:
+        parts.append(user_description)
+
+    selected_filters: list[str] = []
+    if isinstance(style_filters, (list, tuple)):
+        for value in style_filters:
+            if isinstance(value, str) and value in IMAGE2_STYLE_FILTER_PROMPTS and value not in selected_filters:
+                selected_filters.append(value)
+
+    if selected_filters:
+        parts.append("Apply these text-only visual style filters after interpreting the user's subject: " + ", ".join(f"#{item}" for item in selected_filters) + ".")
+        parts.extend(IMAGE2_STYLE_FILTER_PROMPTS[item] for item in selected_filters)
+        parts.append(
+            "Style filters modify rendering technique, linework, texture, color treatment, shading and finish only. They are not source images, "
+            "subjects, objects, scene descriptions, backgrounds, overlays, or separate layers. Preserve the user's requested subject, composition, "
+            "object count, architectural geometry and setting. If selected styles conflict, prioritize the first selected style and keep the image readable."
+        )
+    elif has_style_reference:
+        # Backward compatibility for older clients that still submit a separate style image.
         parts.extend([
             (
-                "A dedicated Style/Filter reference is attached. Its visual appearance takes priority over generic image-quality defaults. "
-                "Reproduce its actual tonal range, brightness, contrast, shadow density, highlight behavior, saturation, palette, color cast, "
-                "surface finish, texture, edge quality and art direction. The result may be dark, subdued, cool, low-key, matte, stylized or "
-                "illustrative when that is what the reference shows."
+                "A separate Style reference image is attached. Treat it only as an aesthetic guide and preserve its tonal range, contrast, palette, "
+                "texture and rendering medium without copying its subject or composition unless requested."
             ),
             (
-                "Do not automatically make the image bright, airy, warm, sunlit, glossy, clean-white, saturated or conventionally photorealistic. "
-                "Do not add soft natural daylight, golden-hour light, ambient glow, glossy reflections or lifted shadows unless the Style image "
-                "or user's written prompt calls for them."
+                "Do not automatically brighten, warm, whiten, add gloss or force a photorealistic architectural look when the reference does not show those traits."
             ),
         ])
     else:
         parts.append(
             "Let the user's prompt decide the lighting and mood. Do not add default daylight, high-key exposure, warm color grading, glossy materials or artificial glow when they were not requested."
         )
-    parts.append(_sanitize_scene_details(scene_details))
     return _join(parts)
 
 
@@ -953,7 +990,7 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
         return build_background_remover_prompt()
     if feature == "text_to_image":
         return add_image_reference_map(
-            build_text_to_image_prompt(scene_details=details, has_style_reference=bool(fields.get("styleReferenceUrl"))),
+            build_text_to_image_prompt(scene_details=details, has_style_reference=bool(fields.get("styleReferenceUrl")), style_filters=fields.get("styleFilters")),
             fields,
         )
     return build_print_render_prompt(
