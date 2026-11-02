@@ -1,0 +1,749 @@
+From cf4f8a67bb92a85106b9c4e46a2948bcbdba6ffa Mon Sep 17 00:00:00 2001
+From: Arena Agent <agent@arena.ai>
+Date: Mon, 2 Nov 2026 14:18:25 +0000
+Subject: [PATCH] fix(image2): deliver the requested frame end-to-end
+
+- OpenAI gpt-image-2 sizes now respect the documented custom-size rules
+  (multiple of 16, 655,360-8,294,400 px). The old table (1024x576, 960x640,
+  1008x432, ...) was rejected with HTTP 400, so every non-4:3 frame failed.
+- frame_ratio: documented 8% gate (Magic Hour 640x384 is 6.25% off 16:9) and
+  a new crop_to_frame() that trims the provider approximation to the exact
+  ratio instead of discarding the generation.
+- image_render: crop stored output before inserting the asset; drop the dead
+  _crop_stored_image_to_ratio helper.
+- image2 UI resets an unsupported frame instead of disabling Generate;
+  /api/generate rejects unknown frames instead of silently returning 1:1.
+- Add frame regression tests and an offline diagnostic script.
+
+Co-authored-by: arena-agent <297053741+arena-agent@users.noreply.github.com>
+---
+ IMAGE2_FRAME_DIAGNOSIS.ar.md               | 149 +++++++++++++++++++++
+ web/app/api/generate/route.ts              |  23 +++-
+ web/components/studio/image2-workspace.tsx |  10 ++
+ worker/catalog.py                          |  31 +++--
+ worker/frame_ratio.py                      |  99 ++++++++++++--
+ worker/scripts/diagnose_image2_frames.py   | 120 +++++++++++++++++
+ worker/tests/test_image2_frame_delivery.py | 117 ++++++++++++++++
+ worker/workflows/image_render.py           |  45 ++-----
+ 8 files changed, 532 insertions(+), 62 deletions(-)
+ create mode 100644 IMAGE2_FRAME_DIAGNOSIS.ar.md
+ create mode 100644 worker/scripts/diagnose_image2_frames.py
+ create mode 100644 worker/tests/test_image2_frame_delivery.py
+
+diff --git a/IMAGE2_FRAME_DIAGNOSIS.ar.md b/IMAGE2_FRAME_DIAGNOSIS.ar.md
+new file mode 100644
+index 0000000..239af29
+--- /dev/null
++++ b/IMAGE2_FRAME_DIAGNOSIS.ar.md
+@@ -0,0 +1,149 @@
++# تشخيص: لماذا لا يستطيع Image2 (`/app/image2`) إنتاج صورة بإطار مختلف؟
++
++مراجعة GitHub + تحليل commit `8c4ac3b` + مقارنة مع الكود الحالي في فرع `codex` (`0e152d4`).
++تاريخ المراجعة: 2026-11-02 — الفرع الحالي: `arena/9e96fba3-mk-studio-ai`.
++
++---
++
++## 1. حالة GitHub
++
++| العنصر | الحالة |
++|---|---|
++| `origin/main` | `e410b3b` (2026-10-08) — متأخر جدًا |
++| `origin/codex` | `0e152d4` "Sync current CODEX work" (2026-11-02) — **هو الكود الحالي** |
++| `8c4ac3b` | "Sync current work to CODEX" (2026-10-28) — **commit معلّق (orphan)** |
++| فروع تحتوي `8c4ac3b` | **لا شيء**. أصلُه `bad4e555` = رأس فرع `image2-classic`، لكنه لم يُدمج ولا يُدفع به إلى أي فرع |
++| Pull requests | 3 مغلقة (#3، #2، #1) — لا مفتوح |
++| `main...codex` | 84 commit متقدّم، 269 ملف |
++
++**الخلاصة المهمة:** `8c4ac3b` **ليس** الكود الذي يعمل عندك. هو نسخة "إطار (frame)" كاملة كُتبت في 28 أكتوبر ثم أُعيدت كتابتها بشكل أبسط في `0e152d4` (فرع codex، 2 نوفمبر)، وفقدت معظم منطق الإطار. لذلك أي إصلاح يُبنى على افتراض أن `8c4ac3b` هو الحالي سيكون خاطئًا.
++
++### ما الذي احتواه `8c4ac3b` وخسره الكود الحالي
++
++| في `8c4ac3b` | في الكود الحالي (`0e152d4`) |
++|---|---|
++| `worker/frame_ratio.py` = 214 سطرًا: مصفوفة `resolution_ratios` لكل نموذج، `GPT_IMAGE_SIZES_BY_RESOLUTION` (1K/2K/4K)، `filter_by_resolution`، `filter_by_frame`، `check_delivered_ratio` بتسامح **7%**، `check_delivered_resolution` | `worker/frame_ratio.py` = 78 سطرًا: `filter_candidates_by_frame` + `validate_image_output_frame` بتسامح **2.5%** فقط |
++| `_stage_text_to_image_outputs` (تحميل + تحقّق قبل اعتماد النموذج الفائز) | حُذف؛ التحقّق يحدث على URLs قبل التخزين |
++| مقاسات GPT Image 2.5 معرّفة ومصفوفة لكل دقة | أرقام مكتوبة يدويًا وخاطئة (انظر §3) |
++| قائمة `frame_ratios` لكل نموذج | `IMAGE2_FRAME_RATIOS` واحدة تُنسخ لكل النماذج (مبالغة في القدرات) |
++
++---
++
++## 2. مسار الإطار (frame) في الكود الحالي
++
++```
++UI  web/components/studio/image2-workspace.tsx
++    ├─ IMAGE2_ASPECT_RATIOS (auto,1:1,16:9,9:16,4:3,3:4,3:2,2:3,21:9)
++    ├─ availableAspectRatios = تصفية حسب frameRatios للنماذج المُهيّأة
++    ├─ canGenerate = ... && selectedModelCanHandleFrame
++    └─ form.append("aspectRatio", aspectRatio)
++            ↓
++API web/app/api/generate/route.ts:335  →  job.input.aspectRatio
++            ↓
++Worker worker/workflows/image_render.py
++    ├─ feature_candidates: تصفية بعدد المرجعيات + النموذج
++    ├─ filter_candidates_by_frame(...)            (frame_ratio.py:45)
++    ├─ order_candidates(...)   ← يُعيد النموذج المختار فقط إن اختار المستخدم نموذجًا
++    ├─ output_validator = validate_image_output_frame(...)  (frame_ratio.py:81)
++    └─ store_output() → insert_asset()
++            ↓
++Adapters worker/catalog.py: bfl / openai / google / magichour
++```
++
++نقطة الفشل الحقيقية في ثلاث حلقات: **ما يُرسل إلى المزوّد**، **قبول مخرجات المزوّد**، و**عدم وجود تصحيح نهائي للإطار**.
++
++---
++
++## 3. الأسباب الجذرية (بدليل قابل للتشغيل)
++
++سكربت التشخيص الجديد `worker/scripts/diagnose_image2_frames.py` يشغّل نفس كود الإنتاج بدون أي استدعاء شبكي:
++
++```
++python worker/scripts/diagnose_image2_frames.py
++```
++
++### السبب ① — مقاسات OpenAI غير صالحة ⇒ المزوّد يرفض 5 إطارات من 8
++
++قاعدة `gpt-image-2` الموثّقة: كل ضلع من مضاعفات 16، النسبة بين 1:3 و3:1، مجموع البكسلات بين **655,360** و**8,294,400**.
++
++| الإطار | المقاس القديم | البكسلات | الحكم |
++|---|---|---|---|
++| 16:9 | 1024x576 | 589,824 | ❌ أقل من الحد الأدنى |
++| 9:16 | 576x1024 | 589,824 | ❌ |
++| 3:2 | 960x640 | 614,400 | ❌ |
++| 2:3 | 640x960 | 614,400 | ❌ |
++| 21:9 | 1008x432 | 435,456 | ❌ + 1008 غير قابل للقسمة على 16 |
++| 1:1 / 4:3 / 3:4 | 1024x1024 / 1024x768 / 768x1024 | ضمن الحدود | ✅ |
++
++النتيجة: `POST /v1/images/generations` يرجع 400، والاستثناء يبتلعه `execute_with_fallback`؛ فإذا كان النموذج مختارًا يدويًا (`order_candidates` يُعيد نموذجًا واحدًا فقط) لا يوجد بديل ⇒ **المهمة تفشل كاملة**. ولهذا تحديدًا الإطار الافتراضي 4:3 يعمل وباقي الإطارات لا تعمل.
++
++### السبب ② — عتبة التحقّق 2.5% ترفض إطارات المزوّدين الموثّقة
++
++| الخرج الحقيقي | المطلوب | الانحراف | 2.5% (قديم) | 8% (جديد) |
++|---|---|---|---|---|
++| Magic Hour 640x384 | 16:9 | 6.25% | ❌ مرفوض | ✅ |
++| Magic Hour 384x640 | 9:16 | 6.67% | ❌ مرفوض | ✅ |
++| Gemini 1K 1584x672 | 21:9 | 1.02% | ✅ | ✅ |
++| Gemini 2.5 1536x672 | 21:9 | 2.04% | ✅ (بالحافة) | ✅ |
++| 3:2 عرضًا مقابل 16:9 | 16:9 | 15.6% | ❌ | ❌ (صحيح) |
++
++`8c4ac3b` نفسه كان يشرح في تعليقه أن Magic Hour يعيد 640x384 لـ16:9 (≈6.25%) وأن التسامح 7% مطلوب؛ لكن إعادة الكتابة خفّضته إلى 2.5% ⇒ كل مخرجات Magic Hour غير المربّعة تُرفض.
++
++### السبب ③ — لا يوجد تصحيح نهائي للإطار (وظيفة ميتة)
++
++`_crop_stored_image_to_ratio` كانت **مُعرّفة وغير مُستدعاة أبدًا** في `image_render.py`، وتدعم 5 إطارات فقط. أي انحراف صغير لم يكن له مسار تصحيح: إما أن يُرفض الطلب أو تُحفظ صورة بإطار مختلف عمّا اختاره المستخدم.
++
++### السبب ④ — المبالغة في القدرات (capability over-claim)
++
++`catalog.py:661` يعرّف `IMAGE2_FRAME_RATIOS` = كل الإطارات الثمانية ويمنحها **لكل** النماذج، بينما الواقع:
++
++* Magic Hour Flux 2 Klein: فقط `1:1, 16:9, 9:16` (مضبوط بشكل صحيح).
++* OpenAI: حسب القيود أعلاه.
++* Google: يمرّر `imageConfig.aspectRatio` — الثمانية مدعومة فعلًا.
++* BFL: `width/height` من مضاعفات 32 و256–1440 — القيم الحالية صحيحة.
++
++لذلك تُفعّل الواجهة إطارات لا يستطيع النموذج تسليمها، ثم يفشل الطلب عند الحدود.
++
++### السبب ⑤ — الواجهة تُبقي إطارًا غير مدعوم ولا تُعيد التوليد
++
++`availableAspectRatios` تُحسب من النماذج المُهيّأة، لكن **لا يوجد effect يُعيد ضبط `aspectRatio`** عند تغيير النموذج (بخلاف `quality` و`resolution` اللذين لهما effect). فإذا اختار المستخدم 21:9 ثم بدّل إلى Magic Hour: زر الإطار يُعطّل و`canGenerate` يصبح `false` مع تنبيه صغير فقط ⇒ إحساس بأن "الإطار لا يعمل".
++
++### السبب ⑥ — الـ API يحوّل أي إطار غير معروف إلى 1:1 بصمت
++
++`web/app/api/generate/route.ts:335` كان:
++```ts
++: ASPECT_RATIOS.includes(rawAspect) ? rawAspect : "1:1"
++```
++أي إطار غير موجود في القائمة يُستبدل بمربّع تلقائيًا بدل رفض الطلب — فيظهر للمستخدم أنه حصل على إطار مختلف عمّا طلب.
++
++---
++
++## 4. ما تم إصلاحه في هذا الفرع
++
++| الملف | التغيير |
++|---|---|
++| `worker/catalog.py:405` | `GPT_IMAGE_SIZES` بمقاسات صالحة ومطابقة تمامًا للنسبة: `1280x720`, `720x1280`, `1248x832`, `832x1248`, `1680x720`, `1024x768`, `768x1024`, `1024x1024` (كل الأضلاع من مضاعفات 16 والبكسلات داخل الحد). |
++| `worker/frame_ratio.py:42` | `FRAME_TOLERANCE = 0.08` موثّق (يقبل شبكات المزوّدين الموثّقة ويرفض الإطار المختلف فعلًا). |
++| `worker/frame_ratio.py:117` | `crop_to_frame(storage_path, aspect_ratio)` — قصّ مركزي إلى النسبة الدقيقة، بلا تكبير ولا تمديد، لكل الإطارات الثمانية. |
++| `worker/workflows/image_render.py:168-181` | استدعاء `crop_to_frame` بعد `store_output` وقبل `insert_asset`؛ حذف الدالة الميتة `_crop_stored_image_to_ratio`. |
++| `web/components/studio/image2-workspace.tsx:1141` | effect يُعيد الإطار إلى أول إطار مدعوم (أو `auto`) عند تغيير النموذج بدل تعطيل التوليد. |
++| `web/app/api/generate/route.ts:337` | رفض الإطار غير المعروف بـ400 بدل تحويله الصامت إلى 1:1، ومنع إطارات Image2 على الميزات الأخرى. |
++| `worker/tests/test_image2_frame_delivery.py` | 27 اختبارًا: قواعد مقاسات OpenAI، قبول شبكة Magic Hour، رفض الإطار الخاطئ فعلًا، دقة القصّ، تصفية النماذج. |
++| `worker/scripts/diagnose_image2_frames.py` | سكربت تشخيص دائم (بدون شبكة) يطبع ما يُرسل لكل إطار وهل يقبله المزوّد. |
++
++التحقق:
++```bash
++cd worker && python -m pytest tests/test_image2_frame_delivery.py -q   # 27 passed
++python worker/scripts/diagnose_image2_frames.py                        # تقرير كامل
++```
++ملاحظة: 7 اختبارات قديمة (`test_reference_mapping`، `test_weather_season_prompts`) تفشل **قبل** هذه التغييرات أيضًا — بقايا إعادة كتابة codex، وليست ناتجة عن هذا العمل.
++
++---
++
++## 5. مخاطر متبقية / توصيات
++
++1. **الدقة (resolution) مُهمَلة بالكامل:** `resolutions` مثبّتة على `("1K",)`، وGoogle لا يمرّر `imageConfig.imageSize`، وOpenAI/BFL يعملان على ~1K ثابت. مصفوفة `GPT_IMAGE_SIZES_BY_RESOLUTION` من `8c4ac3b` غير موجودة. النتيجة: 2K/4K غير متاح، و"إطار + دقة" لا يمكن ضمانهما معًا.
++2. **القدرات مبالغ فيها:** يجب أن تصبح `frame_ratios` لكل نموذج مبنية على قيود المزوّد (مثل قائمة مقاسات OpenAI أعلاه) بدلًا من ثابت عام واحد.
++3. **`8c4ac3b` لم يُدمج:** يحتوي منطقًا (تصفية بالإطار + الدقة، تحقّق قبل اعتماد النموذج) أفضل من الحالي. المشكلة أنه يحمل أيضًا ملفات نسخ احتياطية و`.next-dev` داخل المستودع؛ إن أردت استرجاعه فالأفضل cherry-pick لملفات `worker/frame_ratio.py`, `worker/catalog.py`, `worker/workflows/image_render.py` فقط، لا الدمج الكامل.
++4. **تنظيف المستودع:** ملفات `*.bak.image2-frame-fix` و`web/.next-dev/**` و`*.pre-image2-complete.bak` مرفوعة إلى Git؛ تزيد الضجيج وتُربك أي مراجعة مستقبلية.
++5. **قياس قبل/بعد:** بعد نشر التعديل، اختبر الإطارات الثمانية على مزوّد واحد مُهيّأ؛ السكربت التشخيصي يعطي القيم المتوقّعة لكل مزوّد حتى تقارنها بالخرج الفعلي.
+diff --git a/web/app/api/generate/route.ts b/web/app/api/generate/route.ts
+index e2d572b..8f94d29 100644
+--- a/web/app/api/generate/route.ts
++++ b/web/app/api/generate/route.ts
+@@ -333,12 +333,25 @@ export async function POST(req: NextRequest) {
+     ? (rawQuality as QualityTier)
+     : "standard";
+   const rawAspect = form.get("aspectRatio");
++  const requestedAspect = typeof rawAspect === "string" ? rawAspect : "";
++  const isImage2Aspect =
++    requestedAspect === "auto" || IMAGE2_ADDITIONAL_ASPECT_RATIOS.includes(requestedAspect);
++  if (isImage2Aspect && !isTextToImage) {
++    return NextResponse.json(
++      { error: `${requestedAspect} is only available for text-to-image generation.` },
++      { status: 400 }
++    );
++  }
++  // Never silently fall back to 1:1: an unknown frame used to be coerced to a
++  // square image, which looked like the app ignoring the selected frame.
++  if (requestedAspect && !isImage2Aspect && !ASPECT_RATIOS.includes(requestedAspect as AspectRatio)) {
++    return NextResponse.json({ error: `Unsupported aspect ratio: ${requestedAspect}.` }, { status: 400 });
++  }
+   const aspectRatio: string =
+-    rawAspect === "auto" ||
+-    (typeof rawAspect === "string" && IMAGE2_ADDITIONAL_ASPECT_RATIOS.includes(rawAspect))
+-      ? (rawAspect as string)
+-      : ASPECT_RATIOS.includes(rawAspect as AspectRatio)
+-        ? (rawAspect as AspectRatio)
++    requestedAspect === "auto" || isImage2Aspect
++      ? requestedAspect
++      : ASPECT_RATIOS.includes(requestedAspect as AspectRatio)
++        ? (requestedAspect as AspectRatio)
+         : "1:1";
+   const rawResolution = form.get("resolution");
+   const resolution: Resolution = RESOLUTIONS.includes(rawResolution as Resolution)
+diff --git a/web/components/studio/image2-workspace.tsx b/web/components/studio/image2-workspace.tsx
+index f19b4be..7512d66 100644
+--- a/web/components/studio/image2-workspace.tsx
++++ b/web/components/studio/image2-workspace.tsx
+@@ -1135,6 +1135,16 @@ export function Image2Workspace() {
+       setResolution(availableResolutions[0] ?? "1K");
+     }
+   }, [availableResolutions, resolution]);
++
++  // Switching model (or adding a reference image) can invalidate the frame that
++  // was already selected. Without this reset the Generate button stayed
++  // disabled with only a small hint, which reads as "Image2 cannot generate
++  // this frame". Fall back to the first frame the current model really supports.
++  useEffect(() => {
++    if (!availableAspectRatios.includes(aspectRatio)) {
++      setAspectRatio(availableAspectRatios[0] ?? "auto");
++    }
++  }, [availableAspectRatios, aspectRatio]);
+   // Résolution locale du mode Auto : le serveur choisit le candidat
+   // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
+   // catalogue en tie-break). On reproduit cette logique ici pour afficher
+diff --git a/worker/catalog.py b/worker/catalog.py
+index 38ee7bd..cd51f78 100644
+--- a/worker/catalog.py
++++ b/worker/catalog.py
+@@ -394,19 +394,30 @@ def bfl_text_to_image_input(req: dict) -> dict:
+     return payload
+ 
+ 
++# OpenAI gpt-image custom sizes must respect ALL of these documented rules:
++# - both edges divisible by 16,
++# - aspect ratio between 1:3 and 3:1,
++# - no edge above 3840 px,
++# - total pixels between 655,360 and 8,294,400.
++# The previous table (1024x576, 960x640, 1008x432, ...) violated the pixel floor
++# (and 1008 is not a multiple of 16), so every non-4:3 frame was rejected with
++# HTTP 400 and the whole generation failed. These values keep each ratio exact.
++GPT_IMAGE_SIZES: dict[str, str] = {
++    "1:1": "1024x1024",   # 1,048,576 px
++    "16:9": "1280x720",   #   921,600 px
++    "9:16": "720x1280",   #   921,600 px
++    "4:3": "1024x768",    #   786,432 px
++    "3:4": "768x1024",    #   786,432 px
++    "3:2": "1248x832",    # 1,038,336 px
++    "2:3": "832x1248",    # 1,038,336 px
++    "21:9": "1680x720",   # 1,209,600 px
++}
++
++
+ def openai_text_to_image_input(req: dict) -> dict:
+     """GPT Image 2: send dimensions matching the selected frame exactly."""
+     ratio = req.get("aspectRatio") or "auto"
+-    size = {
+-        "1:1": "1024x1024",
+-        "16:9": "1024x576",
+-        "9:16": "576x1024",
+-        "4:3": "1024x768",
+-        "3:4": "768x1024",
+-        "3:2": "960x640",
+-        "2:3": "640x960",
+-        "21:9": "1008x432",
+-    }.get(ratio, "auto")
++    size = GPT_IMAGE_SIZES.get(ratio, "auto")
+     images: list[str] = []
+     style_image = req.get("styleReferenceUrl")
+     if isinstance(style_image, str) and style_image:
+diff --git a/worker/frame_ratio.py b/worker/frame_ratio.py
+index 513b528..5ef68cb 100644
+--- a/worker/frame_ratio.py
++++ b/worker/frame_ratio.py
+@@ -1,11 +1,20 @@
+-"""Per-model Image2 frame filtering and output-dimension verification.
+-
+-No cropping is performed here: a provider that returns the wrong frame is
+-rejected so Auto can try the next compatible provider.
++"""Per-model Image2 frame filtering, delivery verification and exact-frame fit.
++
++Two independent steps:
++
++1. `filter_candidates_by_frame` keeps only models whose adapter declares the
++   requested native frame, so a provider is never asked for a ratio it cannot
++   produce.
++2. After a provider answers, `validate_image_output_frame` rejects materially
++   wrong frames (so Auto can try the next provider) and
++   `crop_to_frame` trims the small provider-side approximation to the exact
++   requested ratio. Cropping is center-based and never upscales, so the
++   delivered asset always has the frame the user asked for.
+ """
+ from __future__ import annotations
+ 
+ import io
++from pathlib import Path
+ from urllib.parse import urlparse
+ 
+ from PIL import Image
+@@ -24,6 +33,14 @@ FRAME_RATIOS = {
+     "21:9": 21 / 9,
+ }
+ 
++# Providers document approximate pixel grids for some frames: Magic Hour's
++# 16:9 output is 640x384 (6.25% away from 16:9) and its 9:16 output is 384x640
++# (6.67% away), and Gemini's 21:9 profile is 4.5% away from 21:9 at 2K.
++# A 2.5% tolerance treated those documented, usable outputs as hard failures,
++# so the frame was never delivered. 8% accepts every documented grid while
++# still rejecting a genuinely different frame (e.g. 3:2 for 16:9 is 15.6% away).
++FRAME_TOLERANCE = 0.08
++
+ 
+ def filter_candidates_by_frame(candidates, aspect_ratio: str):
+     """Return only models whose catalog explicitly advertises this frame."""
+@@ -51,28 +68,82 @@ def _read_image_bytes(value: str) -> bytes:
+     return data
+ 
+ 
+-def validate_image_output_frame(output_urls: list[str], aspect_ratio: str, tolerance: float = 0.025) -> None:
+-    """Raise if any output differs from the requested frame by >2.5%.
+-
+-    This check protects users from silently receiving a different aspect ratio.
+-    The tolerance allows minor provider-side pixel rounding without masking a
+-    real frame mismatch.
+-    """
++def frame_deviation(width: int, height: int, aspect_ratio: str) -> float:
++    """Relative distance between the delivered frame and the requested one."""
+     expected = FRAME_RATIOS.get(aspect_ratio)
+     if expected is None:
+         raise ValueError(f"Unsupported Image2 frame ratio: {aspect_ratio}")
++    if height <= 0:
++        raise ValueError("Output image has no height")
++    return abs((width / height) / expected - 1.0)
++
++
++def validate_image_output_frame(output_urls: list[str], aspect_ratio: str, tolerance: float = FRAME_TOLERANCE) -> None:
++    """Raise if any output is further than `tolerance` from the requested frame.
++
++    This gate only stops grossly wrong frames (a provider ignoring the ratio
++    completely). Small provider-grid deviations pass and are corrected by
++    `crop_to_frame` before the asset is stored.
++    """
++    if aspect_ratio not in FRAME_RATIOS:
++        raise ValueError(f"Unsupported Image2 frame ratio: {aspect_ratio}")
+ 
+     for index, url in enumerate(output_urls, start=1):
+         data = _read_image_bytes(url)
+         try:
+             with Image.open(io.BytesIO(data)) as image:
+-                actual = image.width / image.height
+                 width, height = image.size
+         except Exception as exc:
+             raise ValueError(f"Could not inspect output image {index} dimensions: {exc}") from exc
+ 
+-        if abs(actual / expected - 1.0) > tolerance:
++        deviation = frame_deviation(width, height, aspect_ratio)
++        if deviation > tolerance:
+             raise ValueError(
+-                f"Output image {index} returned {width}x{height} ({actual:.4f}:1), "
++                f"Output image {index} returned {width}x{height} ({width / height:.4f}:1), "
+                 f"not the requested {aspect_ratio} frame."
+             )
++
++
++def _save_options(image: Image.Image, image_format: str) -> dict:
++    options: dict = {"format": image_format}
++    if image_format.upper() in {"JPEG", "JPG"}:
++        options["quality"] = 95
++        options["optimize"] = True
++    elif image_format.upper() == "WEBP":
++        options["quality"] = 95
++    return options
++
++
++def crop_to_frame(storage_path: str, aspect_ratio: str) -> bool:
++    """Center-crop a stored image to the exact requested frame, in place.
++
++    Returns True when the file was rewritten. Never upscales: the shorter axis
++    is kept and the longer axis is trimmed, so no pixels are invented and no
++    content is stretched. Unknown/`auto` frames are left untouched.
++    """
++    target_ratio = FRAME_RATIOS.get(aspect_ratio)
++    if target_ratio is None:
++        return False
++
++    path = Path(storage.resolve(storage_path))
++    with Image.open(path) as original:
++        image = original.copy()
++        image_format = original.format or "PNG"
++
++    current_ratio = image.width / image.height
++    if abs(current_ratio / target_ratio - 1.0) < 0.002:
++        return False
++
++    if current_ratio > target_ratio:
++        crop_width = max(1, min(image.width, round(image.height * target_ratio)))
++        left = (image.width - crop_width) // 2
++        image = image.crop((left, 0, left + crop_width, image.height))
++    else:
++        crop_height = max(1, min(image.height, round(image.width / target_ratio)))
++        top = (image.height - crop_height) // 2
++        image = image.crop((0, top, image.width, top + crop_height))
++
++    if image_format.upper() in {"JPEG", "JPG"} and image.mode not in {"RGB", "L"}:
++        image = image.convert("RGB")
++    image.save(path, **_save_options(image, image_format))
++    return True
+diff --git a/worker/scripts/diagnose_image2_frames.py b/worker/scripts/diagnose_image2_frames.py
+new file mode 100644
+index 0000000..632afb0
+--- /dev/null
++++ b/worker/scripts/diagnose_image2_frames.py
+@@ -0,0 +1,120 @@
++#!/usr/bin/env python3
++"""Diagnostic: why does Image2 fail (or silently degrade) for non-default frames?
++
++Read-only script. It reuses the real catalog adapters and the real
++`frame_ratio.validate_image_output_frame` so the numbers below are exactly
++what the worker does at generation time — no provider call is made.
++
++Run from the repository root:
++    python worker/scripts/diagnose_image2_frames.py
++"""
++from __future__ import annotations
++
++import io
++import sys
++from pathlib import Path
++
++WORKER_DIR = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(WORKER_DIR))
++
++import catalog  # noqa: E402
++from frame_ratio import FRAME_RATIOS, validate_image_output_frame  # noqa: E402
++
++FRAMES = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9")
++
++# Documented gpt-image-2 custom-size rules (OpenAI Images API reference):
++# both edges divisible by 16, 1:3 <= ratio <= 3:1, 655,360 <= w*h <= 8,294,400.
++GPT_MIN_PIXELS = 655_360
++GPT_MAX_PIXELS = 8_294_400
++GPT_MAX_EDGE = 3840
++
++
++def gpt_size_errors(size: str) -> list[str]:
++    try:
++        width, height = (int(part) for part in size.lower().split("x"))
++    except Exception:
++        return ["size is not WIDTHxHEIGHT"]
++    problems: list[str] = []
++    if width % 16 or height % 16:
++        problems.append("edge not divisible by 16")
++    if max(width, height) > GPT_MAX_EDGE:
++        problems.append("edge above 3840")
++    if max(width, height) / min(width, height) > 3:
++        problems.append("aspect ratio beyond 3:1")
++    if not GPT_MIN_PIXELS <= width * height <= GPT_MAX_PIXELS:
++        problems.append(f"pixel count {width * height:,} outside {GPT_MIN_PIXELS:,}-{GPT_MAX_PIXELS:,}")
++    return problems
++
++
++def bfl_size_errors(width: int, height: int) -> list[str]:
++    # FLUX.1 Pro 1.1 / Dev: 256 <= edge <= 1440 and both edges multiples of 32.
++    problems: list[str] = []
++    if width % 32 or height % 32:
++        problems.append("edge not divisible by 32")
++    if not (256 <= width <= 1440 and 256 <= height <= 1440):
++        problems.append("edge outside 256-1440")
++    return problems
++
++
++def frame_tolerance_report() -> None:
++    """Show which real provider output grids survive the 2.5% output check."""
++    from PIL import Image
++
++    grids = {
++        "FLUX (exact) 16:9": ("16:9", (1024, 576)),
++        "Gemini 1K 21:9": ("21:9", (1584, 672)),
++        "Gemini 2.5 21:9": ("21:9", (1536, 672)),
++        "Magic Hour 16:9": ("16:9", (640, 384)),
++        "Magic Hour 9:16": ("9:16", (384, 640)),
++        "Gemini 4:3": ("4:3", (1024, 768)),
++    }
++    print("\n== output-frame validator (tolerance 8%) ==")
++    for label, (frame, size) in grids.items():
++        buffer = io.BytesIO()
++        Image.new("RGB", size, (20, 20, 20)).save(buffer, format="PNG")
++        uri = "data:image/png;base64," + __import__("base64").b64encode(buffer.getvalue()).decode()
++        deviation = abs((size[0] / size[1]) / FRAME_RATIOS[frame] - 1.0)
++        try:
++            validate_image_output_frame([uri], frame)
++            verdict = "ACCEPTED"
++        except ValueError as err:
++            verdict = f"REJECTED -> {err}"
++        print(f"  {label:<18} {size[0]}x{size[1]} requested {frame:<5} off by {deviation:6.2%}  {verdict}")
++
++
++def main() -> None:
++    print("== per-model frame claims in the catalog ==")
++    for candidate in catalog.TEXT_TO_IMAGE_CANDIDATES:
++        print(f"  {candidate.key:<32} {candidate.provider:<10} frames: {', '.join(candidate.frame_ratios) or '-'}")
++
++    print("\n== what each adapter sends per requested frame ==")
++    for frame in FRAMES:
++        req = {"prompt": "x", "aspectRatio": frame, "quality": "standard", "quantity": 1}
++        openai_size = catalog.openai_text_to_image_input(req)["size"]
++        bfl_payload = catalog.bfl_text_to_image_input(req)
++        google_payload = catalog.google_text_to_image_input(req)
++        gpt_problems = gpt_size_errors(openai_size)
++        bfl_problems = bfl_size_errors(bfl_payload["width"], bfl_payload["height"])
++        print(f"  {frame:<5}")
++        print(f"    GPT Image 2 : {openai_size:<10} {'OK' if not gpt_problems else 'REJECTED by API: ' + ', '.join(gpt_problems)}")
++        print(f"    FLUX        : {bfl_payload['width']}x{bfl_payload['height']:<8} {'OK' if not bfl_problems else 'REJECTED by API: ' + ', '.join(bfl_problems)}")
++        print(f"    Gemini      : imageConfig.aspectRatio={google_payload.get('aspectRatio')!r} {'OK (documented)' if google_payload.get('aspectRatio') in FRAMES else 'NOT SENT -> provider default frame'}")
++        try:
++            catalog.magichour_text_to_image_input(req)
++            magic = "OK (1:1 / 16:9 / 9:16 only)"
++        except ValueError as err:
++            magic = f"REJECTED: {err}"
++        print(f"    Magic Hour  : {magic}")
++
++    frame_tolerance_report()
++
++    print("\n== candidates left after frame filtering (no provider keys needed) ==")
++    from frame_ratio import filter_candidates_by_frame
++
++    for frame in FRAMES:
++        keys = [c.key for c in filter_candidates_by_frame(catalog.TEXT_TO_IMAGE_CANDIDATES, frame)]
++        print(f"  {frame:<5} -> {', '.join(keys)}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/worker/tests/test_image2_frame_delivery.py b/worker/tests/test_image2_frame_delivery.py
+new file mode 100644
+index 0000000..c2ccca4
+--- /dev/null
++++ b/worker/tests/test_image2_frame_delivery.py
+@@ -0,0 +1,117 @@
++"""Offline regression tests for Image2 frame delivery.
++
++    cd worker && python -m pytest tests/test_image2_frame_delivery.py
++
++Covers the three defects that stopped Image2 from delivering a non-default
++frame:
++- GPT Image 2 sizes must satisfy OpenAI's documented custom-size rules,
++  otherwise the API rejects every non-4:3 request;
++- the output-frame gate must accept documented provider pixel grids
++  (Magic Hour 640x384 for 16:9) while still rejecting a really different frame;
++- the stored asset must end up exactly at the requested ratio.
++"""
++from __future__ import annotations
++
++import io
++from pathlib import Path
++
++import pytest
++from PIL import Image
++
++import catalog
++from frame_ratio import (
++    FRAME_RATIOS,
++    crop_to_frame,
++    filter_candidates_by_frame,
++    validate_image_output_frame,
++)
++
++FRAMES = tuple(FRAME_RATIOS)
++
++# OpenAI gpt-image custom-size rules (Images API reference).
++MIN_PIXELS = 655_360
++MAX_PIXELS = 8_294_400
++MAX_EDGE = 3_840
++
++
++def _png(size: tuple[int, int]) -> bytes:
++    buffer = io.BytesIO()
++    Image.new("RGB", size, (30, 30, 30)).save(buffer, format="PNG")
++    return buffer.getvalue()
++
++
++def _data_uri(size: tuple[int, int]) -> str:
++    import base64
++
++    return "data:image/png;base64," + base64.b64encode(_png(size)).decode()
++
++
++@pytest.mark.parametrize("frame", FRAMES)
++def test_gpt_image_sizes_respect_documented_limits(frame: str) -> None:
++    size = catalog.GPT_IMAGE_SIZES[frame]
++    width, height = (int(part) for part in size.split("x"))
++
++    assert width % 16 == 0 and height % 16 == 0, f"{frame} edges must be multiples of 16"
++    assert MIN_PIXELS <= width * height <= MAX_PIXELS, f"{frame} pixel count out of range"
++    assert max(width, height) <= MAX_EDGE
++    assert 1 / 3 <= width / height <= 3
++
++    payload = catalog.openai_text_to_image_input(
++        {"prompt": "p", "aspectRatio": frame, "quality": "standard", "quantity": 1}
++    )
++    assert payload["size"] == size
++
++
++@pytest.mark.parametrize("frame", FRAMES)
++def test_gpt_image_size_matches_requested_ratio(frame: str) -> None:
++    width, height = (int(part) for part in catalog.GPT_IMAGE_SIZES[frame].split("x"))
++    assert abs((width / height) / FRAME_RATIOS[frame] - 1.0) < 0.005
++
++
++def test_magichour_native_grid_is_accepted() -> None:
++    # Magic Hour documents 640x384 for 16:9 and 384x640 for 9:16.
++    validate_image_output_frame([_data_uri((640, 384))], "16:9")
++    validate_image_output_frame([_data_uri((384, 640))], "9:16")
++
++
++def test_grossly_wrong_frame_is_still_rejected() -> None:
++    # A 3:2 image returned for a 16:9 request is 15.6% off and must fail so the
++    # engine can fall back to another provider.
++    with pytest.raises(ValueError):
++        validate_image_output_frame([_data_uri((960, 640))], "16:9")
++    with pytest.raises(ValueError):
++        validate_image_output_frame([_data_uri((1024, 1024))], "21:9")
++
++
++@pytest.mark.parametrize("frame", FRAMES)
++def test_crop_math_is_exact_and_center_based(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, frame: str) -> None:
++    import frame_ratio
++
++    storage_dir = tmp_path / "storage"
++    storage_dir.mkdir()
++    source = storage_dir / "out.png"
++    source.write_bytes(_png((1600, 900)))
++
++    monkeypatch.setattr(frame_ratio.storage, "resolve", lambda _path: source)
++
++    changed = frame_ratio.crop_to_frame("/storage/out.png", frame)
++
++    with Image.open(source) as image:
++        ratio = image.width / image.height
++        width, height = image.size
++
++    expected = FRAME_RATIOS[frame]
++    assert abs(ratio / expected - 1.0) < 0.01, f"{frame} not delivered exactly ({width}x{height})"
++    # Cropping never enlarges the image.
++    assert width <= 1600 and height <= 900
++    if frame not in {"4:3", "16:9"}:
++        assert changed is True
++
++
++def test_frame_filter_keeps_declared_models_only() -> None:
++    keys = {candidate.key for candidate in filter_candidates_by_frame(catalog.TEXT_TO_IMAGE_CANDIDATES, "21:9")}
++    assert "magichour-flux-2-klein-text" not in keys
++    assert {"flux-pro", "gemini-3.1-flash"} <= keys
++
++    with pytest.raises(ValueError):
++        filter_candidates_by_frame(catalog.TEXT_TO_IMAGE_CANDIDATES, "32:9")
+diff --git a/worker/workflows/image_render.py b/worker/workflows/image_render.py
+index d17d601..e74cc45 100644
+--- a/worker/workflows/image_render.py
++++ b/worker/workflows/image_render.py
+@@ -15,7 +15,7 @@ import db
+ import storage
+ from PIL import Image
+ from catalog import MODEL_CATALOG
+-from frame_ratio import filter_candidates_by_frame, validate_image_output_frame
++from frame_ratio import crop_to_frame, filter_candidates_by_frame, validate_image_output_frame
+ from providers import is_provider_configured
+ from prompts import add_image_reference_map, build_feature_prompt
+ from workflows.common import (
+@@ -70,38 +70,6 @@ def _infer_aspect_ratio(value: str | None) -> str:
+         return "4:3"
+ 
+ 
+-def _crop_stored_image_to_ratio(storage_path: str, aspect_ratio: str) -> None:
+-    """Center-crop stored image pixels to the chosen ratio without upscaling."""
+-    ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4}
+-    target_ratio = ratios.get(aspect_ratio)
+-    if target_ratio is None:
+-        return
+-    path = storage.resolve(storage_path)
+-    with Image.open(path) as original:
+-        image = original.copy()
+-        image_format = original.format or "PNG"
+-    current_ratio = image.width / image.height
+-    if abs(current_ratio - target_ratio) < 0.002:
+-        return
+-    if current_ratio > target_ratio:
+-        crop_width = max(1, min(image.width, round(image.height * target_ratio)))
+-        left = (image.width - crop_width) // 2
+-        image = image.crop((left, 0, left + crop_width, image.height))
+-    else:
+-        crop_height = max(1, min(image.height, round(image.width / target_ratio)))
+-        top = (image.height - crop_height) // 2
+-        image = image.crop((0, top, image.width, top + crop_height))
+-    options = {"format": image_format}
+-    if image_format.upper() in {"JPEG", "JPG"}:
+-        if image.mode not in {"RGB", "L"}:
+-            image = image.convert("RGB")
+-        options["quality"] = 95
+-        options["optimize"] = True
+-    elif image_format.upper() == "WEBP":
+-        options["quality"] = 95
+-    image.save(path, **options)
+-
+-
+ def run(job: dict) -> None:
+     """Exécute le job image : prompt serveur -> candidats (filtré par modèle
+     sélectionné si fourni) -> stockage des sorties -> assets + completion.
+@@ -197,8 +165,19 @@ def run(job: dict) -> None:
+             outcome = execute_with_fallback(feature, candidates, req, output_validator=output_validator)
+ 
+             result_asset_id = None
++            requested_frame = (
++                input_.get("aspectRatio")
++                if feature == "text_to_image" and input_.get("aspectRatio") not in (None, "", "auto")
++                else None
++            )
+             for url in outcome["output_urls"]:
+                 path, _ext = store_output(url)
++                if requested_frame:
++                    # Providers document slightly rounded pixel grids for some
++                    # frames (Magic Hour 640x384 for 16:9, ...). Trim that small
++                    # approximation so the stored asset is the exact frame the
++                    # user selected instead of failing the whole generation.
++                    crop_to_frame(path, requested_frame)
+                 asset_id = insert_asset(conn, job, "image", path)
+                 result_asset_id = result_asset_id or asset_id
+ 
+-- 
+2.39.5
+
