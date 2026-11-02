@@ -89,14 +89,19 @@ export function ToolPickerPopover({
 
   const filteredTools = useMemo<ToolDefinition[]>(() => {
     const normalized = query.trim().toLowerCase();
-    const categoryTools = toolsByCategory(activeTab);
+    const allCategoryTools = toolsByCategory(activeTab);
+    const categoryTools = category === "image"
+      ? allCategoryTools.filter((tool) => tool.id === "image-generator" || tool.id === "upscale")
+      : category === "video"
+        ? allCategoryTools.filter((tool) => tool.id === "video-generator" || tool.id === "video-upscaler")
+        : allCategoryTools;
     if (!normalized) return categoryTools;
     return categoryTools.filter(
       (tool) =>
         tool.name.toLowerCase().includes(normalized) ||
         tool.description.toLowerCase().includes(normalized)
     );
-  }, [activeTab, query]);
+  }, [activeTab, category, query]);
 
   const position = useMemo(() => {
     if (!rect) return { top: 0, left: 0 };

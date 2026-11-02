@@ -37,7 +37,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "Image Generator",
     description: "Generate photorealistic architectural images from a text prompt",
     icon: Wand2,
-    route: "/app/image-generator",
+    route: "/app/image2",
   },
   {
     id: "screenshot-to-render",

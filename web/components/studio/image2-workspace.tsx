@@ -444,6 +444,7 @@ type Image2ModelOption = ModelOption & {
   maxReferences?: number;
   tiers?: string[];
   resolutions?: string[];
+  frameRatios?: string[];
   costPerGeneration?: number;
   service?: string;
 };
@@ -1078,10 +1079,34 @@ export function Image2Workspace() {
       model.configured && imageInputCount <= (model.maxReferences ?? 0),
     [imageInputCount],
   );
-  const compatibleConfiguredModels = useMemo(
-    () => modelOptions.filter(isCompatibleWithSelectedInputs),
-    [modelOptions, isCompatibleWithSelectedInputs],
+  const inputCompatibleModels = useMemo(
+    () => modelOptions.filter((model) => imageInputCount <= (model.maxReferences ?? 0)),
+    [modelOptions, imageInputCount],
   );
+  const configuredInputCompatibleModels = useMemo(
+    () => inputCompatibleModels.filter((model) => model.configured),
+    [inputCompatibleModels],
+  );
+  const compatibleConfiguredModels = useMemo(
+    () => configuredInputCompatibleModels.filter(
+      (model) => aspectRatio === "auto" || (model.frameRatios ?? []).includes(aspectRatio),
+    ),
+    [configuredInputCompatibleModels, aspectRatio],
+  );
+  const frameCapabilityModels = useMemo(() => {
+    if (selectedModelOption) return [selectedModelOption];
+    return configuredInputCompatibleModels.length > 0
+      ? configuredInputCompatibleModels
+      : inputCompatibleModels;
+  }, [selectedModelOption, configuredInputCompatibleModels, inputCompatibleModels]);
+  const availableAspectRatios = useMemo<Image2AspectRatio[]>(() => {
+    if (modelOptions.length === 0) return [...IMAGE2_ASPECT_RATIOS];
+    return IMAGE2_ASPECT_RATIOS.filter(
+      (ratio) => ratio === "auto" || frameCapabilityModels.some(
+        (model) => (model.frameRatios ?? []).includes(ratio),
+      ),
+    );
+  }, [modelOptions.length, frameCapabilityModels]);
   // Show only settings genuinely exposed by the selected model. Auto uses the
   // intersection across configured models that can handle the selected inputs.
   const availableQualityTiers = useMemo(() => {
@@ -1125,9 +1150,13 @@ export function Image2Workspace() {
   const selectedModelCanHandleImages = selectedModelOption
     ? isCompatibleWithSelectedInputs(selectedModelOption)
     : !selectedModel;
+  const selectedModelCanHandleFrame = selectedModelOption
+    ? aspectRatio === "auto" || (selectedModelOption.frameRatios ?? []).includes(aspectRatio)
+    : true;
   const canGenerate =
     prompt.trim().length > 0 &&
     selectedModelCanHandleImages &&
+    selectedModelCanHandleFrame &&
     (Boolean(selectedModel) ||
       modelOptions.length === 0 ||
       compatibleConfiguredModels.length > 0);
@@ -1551,21 +1580,24 @@ export function Image2Workspace() {
           </button>
           <p className="mt-1.5 text-[9px] leading-4 text-[#737680]">
             {selectedModelOption
-              ? `${selectedModelOption.service ?? "Text-to-image"} · up to ${selectedModelOption.maxReferences ?? 0} image inputs`
+              ? `${selectedModelOption.service ?? "Text-to-image"} · up to ${selectedModelOption.maxReferences ?? 0} image inputs · frames: ${(selectedModelOption.frameRatios ?? []).join(", ") || "not reported"}`
               : resolvedAutoModel
-                ? `Auto will use ${resolvedAutoModel.name} · up to ${resolvedAutoModel.maxReferences ?? 0} image inputs`
+                ? `Auto will use ${resolvedAutoModel.name} · ${aspectRatio === "auto" ? "automatic frame" : `supports ${aspectRatio}`} `
                 : "Select the AI model and provider used by this service."}
           </p>
           {selectedModelOption &&
             (!selectedModelOption.configured ||
-              imageInputCount > (selectedModelOption.maxReferences ?? 0)) && (
+              imageInputCount > (selectedModelOption.maxReferences ?? 0) ||
+              !selectedModelCanHandleFrame) && (
               <p
                 role="status"
                 className="mt-2 rounded-md border border-amber-300/20 bg-amber-300/[0.06] px-2 py-1.5 text-[10px] leading-4 text-amber-200"
               >
                 {!selectedModelOption.configured
                   ? `${selectedModelOption.name} is not configured on the worker.`
-                  : `This model supports ${selectedModelOption.maxReferences ?? 0} content image inputs, but ${imageInputCount} are selected.`}
+                  : imageInputCount > (selectedModelOption.maxReferences ?? 0)
+                    ? `This model supports ${selectedModelOption.maxReferences ?? 0} content image inputs, but ${imageInputCount} are selected.`
+                    : `This model does not support ${aspectRatio}. Supported frames: ${(selectedModelOption.frameRatios ?? []).join(", ") || "not reported"}.`}
               </p>
             )}
 
@@ -2166,12 +2198,14 @@ export function Image2Workspace() {
                     <button
                       key={ratio}
                       type="button"
+                      disabled={!availableAspectRatios.includes(ratio)}
+                      title={availableAspectRatios.includes(ratio) ? undefined : "Not supported by the selected model or configured Auto models."}
                       onClick={() => {
                         setAspectRatio(ratio);
                         setAspectPickerOpen(false);
                       }}
                       className={cn(
-                        "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] transition-colors",
+                        "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-35",
                         ratio === aspectRatio
                           ? "bg-[#aaa7ff]/15 text-[#d1cfff]"
                           : "text-[#d4d4db] hover:bg-white/[0.06]",
@@ -3385,6 +3419,8 @@ export function Image2Workspace() {
                     const provider = providerLabel(model.provider, model);
                     const maxRefs = model.maxReferences ?? 0;
                     const fitsReferences = imageInputCount <= maxRefs;
+                    const supportedFrames = model.frameRatios ?? [];
+                    const supportsCurrentFrame = aspectRatio === "auto" || supportedFrames.includes(aspectRatio);
                     return (
                       <button
                         key={model.key}
@@ -3429,6 +3465,9 @@ export function Image2Workspace() {
                                 ? `${maxRefs} content images max`
                                 : "Prompt only"}
                             </span>
+                            <span className="rounded bg-[#aaa7ff]/10 px-1.5 py-0.5 text-[8px] text-[#c2bfff]" title={`Supported output frames: ${supportedFrames.join(", ") || "not reported"}`}>
+                              {supportedFrames.length > 0 ? `Frames: ${supportedFrames.join(" · ")}` : "Frames not reported"}
+                            </span>
                           </span>
                           {model.description && (
                             <span className="mt-1.5 block line-clamp-3 text-[10px] leading-4 text-[#858892]">
@@ -3439,6 +3478,11 @@ export function Image2Workspace() {
                             <span className="mt-1 block text-[9px] text-rose-200">
                               Needs fewer image inputs ({imageInputCount}{" "}
                               selected).
+                            </span>
+                          )}
+                          {!supportsCurrentFrame && (
+                            <span className="mt-1 block text-[9px] text-amber-200">
+                              Does not support {aspectRatio}. Choose: {supportedFrames.join(", ") || "no verified frame"}.
                             </span>
                           )}
                         </span>

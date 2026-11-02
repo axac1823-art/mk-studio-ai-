@@ -15,6 +15,7 @@ import db
 import storage
 from PIL import Image
 from catalog import MODEL_CATALOG
+from frame_ratio import filter_candidates_by_frame, validate_image_output_frame
 from providers import is_provider_configured
 from prompts import add_image_reference_map, build_feature_prompt
 from workflows.common import (
@@ -63,7 +64,7 @@ def _infer_aspect_ratio(value: str | None) -> str:
                 return "4:3"
             with Image.open(storage.resolve(path_value)) as image:
                 source_ratio = image.width / image.height
-        ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4}
+        ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4, "3:2": 3 / 2, "2:3": 2 / 3, "21:9": 21 / 9}
         return min(ratios, key=lambda key: abs(math.log(source_ratio / ratios[key])))
     except Exception:
         return "4:3"
@@ -162,18 +163,38 @@ def run(job: dict) -> None:
                     if has_style_reference:
                         raise ValueError(
                             "No configured Text-to-Image provider supports the selected Style and content inputs. "
-                            "Configure a supported provider (for example OpenAI GPT Image 1 or Google Gemini 2.5 Flash Image), "
-                            "reduce the number of images, or remove Style."
+                            "Configure a supported provider, reduce the number of images, or remove Style."
                         )
                     raise ValueError(
                         "No configured Text-to-Image provider supports the selected image inputs. Configure a provider or remove references."
                     )
+
+                # Explicit frames are filtered before model ordering. Auto remains provider-selected.
+                if requested_ratio != "auto":
+                    selected_candidate = next(
+                        (candidate for candidate in feature_candidates if candidate.key == selected_model),
+                        None,
+                    )
+                    if selected_candidate and requested_ratio not in selected_candidate.frame_ratios:
+                        supported = ", ".join(selected_candidate.frame_ratios) or "none reported"
+                        raise ValueError(
+                            f"{selected_candidate.name} does not support {requested_ratio}. Supported frames: {supported}."
+                        )
+                    feature_candidates = filter_candidates_by_frame(feature_candidates, requested_ratio)
+                    if not feature_candidates:
+                        raise ValueError(
+                            f"No configured Text-to-Image model supports {requested_ratio}. Choose a supported frame or another model."
+                        )
             if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
                 feature_candidates = [candidate for candidate in feature_candidates if candidate.max_references > 0]
             candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
-            outcome = execute_with_fallback(feature, candidates, req)
+            output_validator = None
+            if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
+                expected_frame = input_.get("aspectRatio") or "4:3"
+                output_validator = lambda urls, _candidate: validate_image_output_frame(urls, expected_frame)
+            outcome = execute_with_fallback(feature, candidates, req, output_validator=output_validator)
 
             result_asset_id = None
             for url in outcome["output_urls"]:

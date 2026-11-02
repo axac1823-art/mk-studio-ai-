@@ -58,6 +58,8 @@ class Candidate:
     # Current text-to-image adapters expose approximately 1K output only.
     # Do not advertise 2K/4K until an adapter really requests those sizes.
     resolutions: tuple[str, ...] = ("1K",)
+    # Native output aspect ratios accepted by this candidate adapter. Empty means unverified.
+    frame_ratios: tuple[str, ...] = ()
 
 
 # --- Helpers d'exposition des modèles disponibles ---
@@ -86,6 +88,7 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "maxReferences": c.max_references,
             "supportsStyleReference": c.supports_style_reference,
             "resolutions": c.resolutions,
+            "frameRatios": list(c.frame_ratios),
             "configured": is_provider_configured(c.provider),
             "tiers": c.tiers,
             "supportsTextToVideo": c.supports_text_to_video,
@@ -248,17 +251,12 @@ def magichour_edit_input(req: dict) -> dict:
 
 
 def magichour_text_to_image_input(req: dict) -> dict:
-    """Magic Hour image generation/editing : gère à la fois le text-to-image
-    pur et les générations avec images de référence / Style."""
-    ratio = (
-        "auto"
-        if req["aspectRatio"] == "auto"
-        else "16:9"
-        if req["aspectRatio"] in ("16:9", "4:3", "3:2", "21:9")
-        else "9:16"
-        if req["aspectRatio"] in ("9:16", "3:4", "2:3")
-        else "1:1"
-    )
+    """Magic Hour Flux 2 Klein: pass only ratios supported by this model's generator API."""
+    ratio = req.get("aspectRatio") or "auto"
+    if ratio not in {"auto", "1:1", "16:9", "9:16"}:
+        raise ValueError(
+            f"Magic Hour Flux 2 Klein does not support {ratio}; use auto, 1:1, 16:9, or 9:16."
+        )
     images: list[str] = []
     style_image = req.get("styleReferenceUrl")
     if isinstance(style_image, str) and style_image:
@@ -367,15 +365,17 @@ def google_background_removal_input(req: dict) -> dict:
 def bfl_text_to_image_input(req: dict) -> dict:
     """BFL text-to-image: pass actual dimensions so the selected frame is honored."""
     ratio = req.get("resolvedAspectRatio") if req.get("aspectRatio") == "auto" else req.get("aspectRatio")
+    # FLUX.1 Pro 1.1 / Dev endpoints require dimensions in multiples of 32.
+    # These pairs preserve each requested ratio exactly and remain below 1440 px.
     width, height = {
         "1:1": (1024, 1024),
         "16:9": (1024, 576),
         "9:16": (576, 1024),
         "4:3": (1024, 768),
         "3:4": (768, 1024),
-        "3:2": (1024, 683),
-        "2:3": (683, 1024),
-        "21:9": (1024, 439),
+        "3:2": (960, 640),
+        "2:3": (640, 960),
+        "21:9": (1344, 576),
     }.get(ratio, (1024, 768))
     payload: dict = {
         "prompt": req["prompt"],
@@ -395,16 +395,18 @@ def bfl_text_to_image_input(req: dict) -> dict:
 
 
 def openai_text_to_image_input(req: dict) -> dict:
-    """OpenAI image generation/edit with a dedicated Style input when supplied."""
-    size = (
-        "auto"
-        if req["aspectRatio"] == "auto"
-        else "1536x1024"
-        if req["aspectRatio"] in ("16:9", "4:3", "3:2", "21:9")
-        else "1024x1536"
-        if req["aspectRatio"] in ("9:16", "3:4", "2:3")
-        else "1024x1024"
-    )
+    """GPT Image 2: send dimensions matching the selected frame exactly."""
+    ratio = req.get("aspectRatio") or "auto"
+    size = {
+        "1:1": "1024x1024",
+        "16:9": "1024x576",
+        "9:16": "576x1024",
+        "4:3": "1024x768",
+        "3:4": "768x1024",
+        "3:2": "960x640",
+        "2:3": "640x960",
+        "21:9": "1008x432",
+    }.get(ratio, "auto")
     images: list[str] = []
     style_image = req.get("styleReferenceUrl")
     if isinstance(style_image, str) and style_image:
@@ -645,16 +647,16 @@ THREED_CANDIDATES: list[Candidate] = [
 # référence optionnelle. Les modèles image-to-image du catalogue édition
 # peuvent aussi servir quand une image est fournie ; ici on privilégie les
 # modèles natifs text-to-image.
+IMAGE2_FRAME_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9")
+
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
-    Candidate("flux-pro", "Flux Pro", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls),
-    Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls),
-    Candidate("gpt-image-1", "GPT Image 1", "Versatile OpenAI text-to-image with Style and content references", "openai", "gpt-image-1", 6, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True),
-    Candidate("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite Image", "Cost-efficient 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-lite-image", 3, 4, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True),
-    Candidate("gemini-3.1-flash", "Nano Banana 2", "High-quality 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-image", 3, 7, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_text_to_image_input, extract_image_urls, supports_style_reference=True),
-    # Agrégateur (exception assumée, AGENTS.md §1) : utilisable quand une
-    # image de référence est fournie, car l'API Magic Hour exige une image
-    # d'entrée.
-    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly text-to-image and style reference edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls, supports_style_reference=True),
+    Candidate("flux-pro", "Flux Pro 1.1", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro-1.1", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls, frame_ratios=IMAGE2_FRAME_RATIOS),
+    Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls, frame_ratios=IMAGE2_FRAME_RATIOS),
+    Candidate("gpt-image-2", "GPT Image 2", "OpenAI image generation with exact custom dimensions, Style and content references", "openai", "gpt-image-2", 6, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
+    Candidate("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite Image", "Cost-efficient 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-lite-image", 3, 4, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
+    Candidate("gemini-3.1-flash", "Nano Banana 2", "High-quality 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-image", 3, 7, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
+    # The current Flux 2 Klein generator endpoint exposes only these three ratios.
+    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly text-to-image and style reference edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("1:1", "16:9", "9:16")),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {
