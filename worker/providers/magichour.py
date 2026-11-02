@@ -21,7 +21,6 @@ Env : MAGIC_HOUR_API_KEY (https://magichour.ai/developer?tab=api-keys) —
 lue à l'appel, jamais à l'import (échec vite -> fallback).
 """
 import base64
-import mimetypes
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -38,6 +37,22 @@ from providers.http_helpers import (
 )
 
 BASE_URL = "https://api.magichour.ai"
+_MIME_TYPES_BY_EXTENSION = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "avif": "image/avif",
+    "heic": "image/heic",
+    "heif": "image/heif",
+    "bmp": "image/bmp",
+    "tif": "image/tiff",
+    "tiff": "image/tiff",
+    "mp4": "video/mp4",
+    "m4v": "video/mp4",
+    "mov": "video/quicktime",
+    "webm": "video/webm",
+}
 
 
 def account_tier() -> str:
@@ -63,8 +78,10 @@ def _ensure_file_path(uri: str) -> str:
         content = base64.b64decode(data)
     elif local_path := storage.local_path_from_url(uri):
         content = local_path.read_bytes()
-        ext = local_path.suffix.lstrip(".") or "mp4"
-        mime = mimetypes.guess_type(f"file.{ext}")[0] or "video/mp4"
+        ext = local_path.suffix.lstrip(".").lower()
+        mime = _MIME_TYPES_BY_EXTENSION.get(ext)
+        if not mime:
+            raise ProviderError(f"magichour: unsupported local file extension '.{ext}'")
     else:
         return uri
 

@@ -275,13 +275,29 @@ def magichour_text_to_image_input(req: dict) -> dict:
     }
 
 
+def _magichour_video_prompt(req: dict, *, video_to_video: bool = False) -> str:
+    """Construit un prompt concis respectant la limite Magic Hour de 2000 caractères."""
+    if video_to_video:
+        prefix = (
+            "Modify the architectural video only as requested. Preserve its geometry, identity, framing, camera path, "
+            "timing, and temporal consistency. Apply these scene directions: "
+        )
+    else:
+        prefix = (
+            "Create a photorealistic architectural video from the reference image. Preserve geometry, materials, and "
+            "lighting. Use smooth natural camera motion and stable details. Scene directions: "
+        )
+    scene = str(req.get("userPrompt") or req.get("prompt") or "").strip()
+    return (prefix + scene)[:2000]
+
+
 def magichour_video_input(req: dict) -> dict:
     """Magic Hour image-to-video : durées transmises telles quelles.
 
     Le tier standard utilise 480p car 720p n'est pas disponible sur tous les
     plans Magic Hour (notamment le free tier)."""
     payload = {
-        "prompt": req["prompt"],
+        "prompt": _magichour_video_prompt(req),
         "image": req["imageUrl"],
         "endSeconds": req.get("durationSeconds") or 4,
         "resolution": "1080p" if req["quality"] == "pro" else "480p",
@@ -304,7 +320,7 @@ def magichour_video_to_video_input(req: dict) -> dict:
     Le tier standard utilise 480p pour rester compatible avec les plans Magic Hour
     qui ne proposent pas 720p (free tier)."""
     return {
-        "prompt": req["prompt"],
+        "prompt": _magichour_video_prompt(req, video_to_video=True),
         "videoUrl": req["videoUrl"],
         "endSeconds": req.get("durationSeconds") or 4,
         "resolution": "1080p" if req["quality"] == "pro" else "480p",

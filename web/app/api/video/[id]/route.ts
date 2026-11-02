@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getVideoJobForUser } from "@/lib/db/queries";
 import { requireAuth } from "@/lib/auth";
+import { publicUrl } from "@/lib/worker-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     status: job.status,
     mode: job.mode,
     modelUsed: job.model_used,
-    resultUrl: job.result_url,
+    resultUrl: job.result_url?.startsWith("/storage/") ? publicUrl(job.result_url) : job.result_url,
     progress: job.progress,
     error: job.error_message,
     creditsCharged: job.credits_charged,

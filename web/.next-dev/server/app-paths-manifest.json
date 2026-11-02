@@ -1,11 +1,11 @@
 {
   "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
-  "/api/video/generate/route": "app/api/video/generate/route.js",
-  "/api/video/[id]/route": "app/api/video/[id]/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/config/costs/route": "app/api/config/costs/route.js",
-  "/api/models/route": "app/api/models/route.js",
-  "/api/assets/route": "app/api/assets/route.js",
+  "/api/generate/route": "app/api/generate/route.js",
   "/api/credits/balance/route": "app/api/credits/balance/route.js",
-  "/app/ai-video-generator/page": "app/app/ai-video-generator/page.js"
+  "/api/assets/route": "app/api/assets/route.js",
+  "/api/generate/[id]/route": "app/api/generate/[id]/route.js",
+  "/app/image2/page": "app/app/image2/page.js",
+  "/app/ai-video-generator/page": "app/app/ai-video-generator/page.js",
+  "/app/image-generator/page": "app/app/image-generator/page.js",
+  "/app/projects/page": "app/app/projects/page.js"
 }

@@ -24,12 +24,21 @@ interface MediaAttachmentsProps {
 export function MediaAttachments({ media, onAdd, onRemove, disabled, max = 9 }: MediaAttachmentsProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pendingType, setPendingType] = useState<"image" | "video" | "all">("all");
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const type = pendingType === "video" || file.type.startsWith("video/") ? "video" : "image";
-    onAdd(file, type);
+    const type = file.type.startsWith("video/") ? "video" : file.type.startsWith("image/") ? "image" : null;
+    const supported = ["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime"];
+    if (!type || !supported.includes(file.type)) {
+      setFileError("Choose a supported PNG, JPEG, WebP, MP4, WebM, or MOV file.");
+    } else if (pendingType !== "all" && pendingType !== type) {
+      setFileError(`This is a ${type} file. Choose the ${type === "image" ? "Image" : "Video"} button to attach it.`);
+    } else {
+      setFileError(null);
+      onAdd(file, type);
+    }
     e.target.value = "";
   };
 
@@ -94,6 +103,7 @@ export function MediaAttachments({ media, onAdd, onRemove, disabled, max = 9 }: 
           onChange={handleFileChange}
         />
       </div>
+      {fileError && <p className="text-xs text-destructive">{fileError}</p>}
       <p className="text-xs text-muted-foreground">
         Up to {max} attached images or videos. Each gets an auto tag like @img1 or @vid1.
       </p>

@@ -20,6 +20,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import db
 import storage
@@ -49,6 +50,30 @@ VideoMode = Literal[
 ]
 
 _TAG_RE = re.compile(r"@(?P<type>img|vid)(?P<idx>\d+)")
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".heic", ".heif", ".bmp", ".tif", ".tiff"}
+_VIDEO_EXTENSIONS = {".mp4", ".m4v", ".mov", ".webm"}
+
+
+def _normalize_media_types(media_references: list[dict]) -> list[dict]:
+    """Corrige les types d'anciens assets à partir de leur extension réelle."""
+    normalized = []
+    for ref in media_references or []:
+        item = dict(ref)
+        asset_url = item.get("asset_url")
+        extension = Path(urlsplit(asset_url).path).suffix.lower() if isinstance(asset_url, str) else ""
+        actual_type = (
+            "image" if extension in _IMAGE_EXTENSIONS
+            else "video" if extension in _VIDEO_EXTENSIONS
+            else None
+        )
+        if actual_type and item.get("type") != actual_type:
+            log.warning(
+                "Correcting media type for %s from %s to %s based on %s",
+                item.get("tag"), item.get("type"), actual_type, extension,
+            )
+            item["type"] = actual_type
+        normalized.append(item)
+    return normalized
 
 
 def _count_tagged_media(prompt: str) -> int:
@@ -128,8 +153,8 @@ def resolve_video_mode(input_: dict) -> VideoMode:
     6. Sinon -> text_to_video.
     """
     hinted = input_.get("mode")
-    if hinted in {"video_to_video", "relight"}:
-        return hinted  # type: ignore[return-value]
+    if hinted == "relight":
+        return "relight"
 
     shots = input_.get("shots") or []
     if len(shots) > 1:
@@ -443,6 +468,7 @@ def run_multi_shot(
             "imageUrl": start_image,
             "endImageUrl": job.get("end_image_url"),
             "referenceUrls": tagged_urls[1:] if len(tagged_urls) > 1 else [],
+            "userPrompt": prompt,
         })
 
         # Premier shot : choix du modèle gagnant (ou modèle imposé).
@@ -496,6 +522,7 @@ def run_multi_shot(
 
 def run(job: dict, adapter_override=None) -> None:
     """Point d'entrée unique d'un video_job."""
+    job["media_references"] = _normalize_media_types(job.get("media_references") or [])
     with db.connect() as conn:
         mark_video_processing(conn, job["id"])
         mode = resolve_video_mode(job)
@@ -525,12 +552,13 @@ def run(job: dict, adapter_override=None) -> None:
             else build_video_relight_prompt(scene_details=stripped)
         )
         prompt += _reference_map(first_prompt, media_refs)
-        req = _build_request(job, prompt, {"videoUrl": video_url})
+        req = _build_request(job, prompt, {"videoUrl": video_url, "userPrompt": stripped})
     else:
         candidates = MODEL_CATALOG.get("animate", [])
         prompt = build_animate_prompt(scene_details=stripped) + _reference_map(first_prompt, media_refs)
         req = _build_request(job, prompt, {
             "referenceUrls": _tagged_media_urls(first_prompt, media_refs, "image"),
+            "userPrompt": stripped,
         })
         # Si aucune image de départ n'est fournie mais qu'un média est tagué,
         # on l'utilise comme frame de départ (image_to_video / multi_reference).
