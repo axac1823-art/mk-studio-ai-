@@ -1135,6 +1135,16 @@ export function Image2Workspace() {
       setResolution(availableResolutions[0] ?? "1K");
     }
   }, [availableResolutions, resolution]);
+
+  // Switching model (or adding a reference image) can invalidate the frame that
+  // was already selected. Without this reset the Generate button stayed
+  // disabled with only a small hint, which reads as "Image2 cannot generate
+  // this frame". Fall back to the first frame the current model really supports.
+  useEffect(() => {
+    if (!availableAspectRatios.includes(aspectRatio)) {
+      setAspectRatio(availableAspectRatios[0] ?? "auto");
+    }
+  }, [availableAspectRatios, aspectRatio]);
   // Résolution locale du mode Auto : le serveur choisit le candidat
   // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
   // catalogue en tie-break). On reproduit cette logique ici pour afficher
