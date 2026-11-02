@@ -73,7 +73,11 @@ def _lookup_media(media_references: list[dict], tag: str) -> dict | None:
     return None
 
 
-def _tagged_media_urls(prompt: str, media_references: list[dict]) -> list[str]:
+def _tagged_media_urls(
+    prompt: str,
+    media_references: list[dict],
+    media_type: str | None = None,
+) -> list[str]:
     """URLs des médias référencés par tags dans un prompt, dans l'ordre d'apparition."""
     seen = set()
     urls: list[str] = []
@@ -83,7 +87,7 @@ def _tagged_media_urls(prompt: str, media_references: list[dict]) -> list[str]:
             continue
         seen.add(key)
         ref = _lookup_media(media_references, f"@{key}")
-        if ref and ref.get("asset_url"):
+        if ref and ref.get("asset_url") and (media_type is None or ref.get("type") == media_type):
             urls.append(ref["asset_url"])
     return urls
 
@@ -168,6 +172,10 @@ def _get_action_costs(conn) -> dict[str, int]:
 
 def compute_video_cost(conn, mode: VideoMode, shot_count: int) -> int:
     """Coût d'un job vidéo depuis la table de config."""
+    # Image-to-video est offert dans l'application. Ne dépend pas de la
+    # migration SQL pour éviter un refus ou un débit sur une base ancienne.
+    if mode == "image_to_video":
+        return 0
     costs = _get_action_costs(conn)
     if mode == "multi_shot":
         per_shot = costs.get("multi_shot", 0)
@@ -422,7 +430,7 @@ def run_multi_shot(
 
         prompt = _strip_tags(shot.get("prompt", ""))
         wrapped = build_animate_prompt(scene_details=prompt) + _reference_map(shot.get("prompt", ""), media_refs)
-        tagged_urls = _tagged_media_urls(shot.get("prompt", ""), media_refs)
+        tagged_urls = _tagged_media_urls(shot.get("prompt", ""), media_refs, "image")
 
         # Détermine l'image de départ pour ce shot.
         start_image = job.get("start_image_url")
@@ -522,7 +530,7 @@ def run(job: dict, adapter_override=None) -> None:
         candidates = MODEL_CATALOG.get("animate", [])
         prompt = build_animate_prompt(scene_details=stripped) + _reference_map(first_prompt, media_refs)
         req = _build_request(job, prompt, {
-            "referenceUrls": _tagged_media_urls(first_prompt, media_refs),
+            "referenceUrls": _tagged_media_urls(first_prompt, media_refs, "image"),
         })
         # Si aucune image de départ n'est fournie mais qu'un média est tagué,
         # on l'utilise comme frame de départ (image_to_video / multi_reference).

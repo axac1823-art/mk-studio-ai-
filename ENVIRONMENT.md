@@ -48,6 +48,8 @@ KLING_SECRET_KEY=
 RUNWAY_API_KEY=
 OPENAI_API_KEY=
 MAGIC_HOUR_API_KEY=
+HITPAW_API_KEY=
+TOPAZ_API_KEY=  # Test Video Upscaler; MP4 clips up to 5 seconds
 
 # Audio / voix (ElevenLabs)
 ELEVENLABS_API_KEY=

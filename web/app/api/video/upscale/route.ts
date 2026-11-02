@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { computeCost, getBalance } from "@/lib/credits";
-import { ensureDefaultProject, getAsset, getProject, insertJob, insertSourceAsset } from "@/lib/db/queries";
+import { ensureDefaultProject, getAsset, getProject, insertJob, insertSourceAsset, markJobFailed } from "@/lib/db/queries";
 import { VIDEO_UPSCALE_RESOLUTIONS, type VideoUpscaleProvider } from "@/lib/video-upscale-options";
 import {
   WorkerNotConfiguredError,
@@ -55,25 +55,16 @@ export async function POST(req: NextRequest) {
 
   const { dbUser: user } = await requireAuth();
   const provider = optionalString(form, "provider") ?? "hitpaw";
-  if (!["runway_magnific", "magichour", "hitpaw"].includes(provider)) {
+  if (!["runway_magnific", "magichour", "hitpaw", "topaz"].includes(provider)) {
     return NextResponse.json({ error: "Select a supported video upscaling AI." }, { status: 400 });
   }
-  if (provider === "magichour") {
-    const providers = await getVideoUpscaleProviders();
-    const magicHour = providers?.find((option) => option.key === "magichour");
-    if (!magicHour?.configured) {
-      return NextResponse.json({ error: "Magic Hour is not configured on the worker." }, { status: 503 });
-    }
-    if (!magicHour.available) {
-      return NextResponse.json({ error: "Magic Hour Video Upscaler requires a paid Magic Hour API plan. Upgrade the plan linked to your API key, or choose another AI provider." }, { status: 403 });
-    }
+  const providers = await getVideoUpscaleProviders();
+  const selectedProvider = providers?.find((option) => option.key === provider);
+  if (!selectedProvider?.configured) {
+    return NextResponse.json({ error: `${provider} is not configured on the worker. Restart the worker or choose another provider.` }, { status: 503 });
   }
-  if (provider === "hitpaw") {
-    const providers = await getVideoUpscaleProviders();
-    const hitpaw = providers?.find((option) => option.key === "hitpaw");
-    if (!hitpaw?.configured) {
-      return NextResponse.json({ error: "HitPaw is not configured on the worker. Set HITPAW_API_KEY to enable it." }, { status: 503 });
-    }
+  if (provider === "magichour" && !selectedProvider.available) {
+    return NextResponse.json({ error: "Magic Hour Video Upscaler requires a paid Magic Hour API plan. Upgrade the plan linked to your API key, or choose another AI provider." }, { status: 403 });
   }
   const projectIdField = optionalString(form, "projectId");
 
@@ -142,6 +133,7 @@ export async function POST(req: NextRequest) {
     type: "video_upscale",
     parentGenerationId: asset.generation_id ?? undefined,
     jobInput: {
+      feature: "video_upscale",
       assetId: asset.id,
       provider,
       resolution, creativity, sharpen, smartGrain, flavor, fpsBoost,
@@ -152,6 +144,11 @@ export async function POST(req: NextRequest) {
   try {
     await startVideoUpscaleJob(jobId);
   } catch (err) {
+    try {
+      await markJobFailed(jobId);
+    } catch (markError) {
+      console.error(`Failed to mark video upscale job ${jobId} as failed:`, markError);
+    }
     if (err instanceof WorkerNotConfiguredError) {
       return NextResponse.json({ error: "Video processing is not configured yet — please try again later." }, { status: 503 });
     }

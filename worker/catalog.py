@@ -286,8 +286,15 @@ def magichour_video_input(req: dict) -> dict:
         "endSeconds": req.get("durationSeconds") or 4,
         "resolution": "1080p" if req["quality"] == "pro" else "480p",
     }
-    if req.get("endImageUrl"):
-        payload["endImage"] = req["endImageUrl"]
+    end_image = req.get("endImageUrl")
+    # Magic Hour image-to-video accepts a start image and an optional end
+    # image. Use a single extra tagged reference as the end frame when the
+    # user has not supplied one explicitly.
+    if not end_image:
+        references = req.get("referenceUrls") or []
+        end_image = references[0] if references else None
+    if end_image:
+        payload["endImage"] = end_image
     return payload
 
 
@@ -497,7 +504,7 @@ ANIMATE_CANDIDATES: list[Candidate] = [
     # sur tiers payants, ltx-2.3 en gratuit.
     Candidate(
         "magichour-video", "Magic Hour Video", "Aggregated video models, free tier available",
-        "magichour", "default", 16, 30, 0, VIDEO_TIMEOUT_MS, ("standard", "pro"),
+        "magichour", "default", 16, 30, 1, VIDEO_TIMEOUT_MS, ("standard", "pro"),
         magichour_video_input, extract_video_url,
         supports_image_to_video=True, supports_video_to_video=True, supports_relight=True,
     ),

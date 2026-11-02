@@ -298,7 +298,7 @@ ON CONFLICT (key) DO NOTHING;
 INSERT INTO video_action_costs (mode, credit_cost, margin_multiplier) VALUES
   -- Coûts recalculés : provider vidéo le moins cher ~ 30¢ -> 60 crédits (margin 2.0).
   ('text_to_video', 60, 2.0),
-  ('image_to_video', 60, 2.0),
+  ('image_to_video', 0, 2.0),
   ('start_end_frame', 60, 2.0),
   ('multi_reference', 60, 2.0),
   ('multi_shot', 60, 2.0),

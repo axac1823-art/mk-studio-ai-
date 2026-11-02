@@ -50,6 +50,8 @@ export default function VideoUpscalerPage() {
   const [fpsBoost, setFpsBoost] = useState(false);
   const [upscaleAIs, setUpscaleAIs] = useState<UpscaleAIOption[]>([]);
   const [selectedAI, setSelectedAI] = useState<UpscaleAIOption["key"]>("hitpaw");
+  const [isLoadingProviders, setIsLoadingProviders] = useState(true);
+  const [providerLoadError, setProviderLoadError] = useState<string | null>(null);
   const [costsConfig, setCostsConfig] = useState<CostsConfig | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -71,12 +73,20 @@ export default function VideoUpscalerPage() {
 
   useEffect(() => {
     fetch("/api/models")
-      .then((res) => (res.ok ? res.json() : { video_upscale: [] }))
+      .then((res) => {
+        if (!res.ok) throw new Error("The video upscaler could not load its AI providers.");
+        return res.json();
+      })
       .then((data: { video_upscale?: UpscaleAIOption[] }) => {
         const options = Array.isArray(data.video_upscale) ? data.video_upscale : [];
         setUpscaleAIs(options);
+        setProviderLoadError(options.length ? null : "The worker returned no video upscaling AI providers. Restart the worker and try again.");
       })
-      .catch(() => setUpscaleAIs([]));
+      .catch((err: unknown) => {
+        setUpscaleAIs([]);
+        setProviderLoadError(err instanceof Error ? err.message : "The video upscaler could not load its AI providers.");
+      })
+      .finally(() => setIsLoadingProviders(false));
   }, []);
 
   useEffect(() => {
@@ -275,18 +285,21 @@ export default function VideoUpscalerPage() {
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
-                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 200 MB{selectedAI === "magichour" ? " · up to 133 seconds" : selectedAI === "runway_magnific" ? " · up to 30 seconds" : selectedAI === "hitpaw" ? " · up to 1 hour" : ""}</p>
+                <p className="text-xs text-muted-foreground">MP4, WebM or QuickTime — max 200 MB{selectedAI === "magichour" ? " · up to 133 seconds" : selectedAI === "runway_magnific" ? " · up to 30 seconds" : selectedAI === "hitpaw" ? " · up to 1 hour" : selectedAI === "topaz" ? " · MP4 only, up to 5 seconds; Topaz may bill API usage" : ""}</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="flex flex-col gap-1.5 text-sm font-medium">AI provider
                   <select aria-label="AI provider" value={selectedAI} onChange={(e) => { const nextAI = e.target.value as VideoUpscaleProvider; setSelectedAI(nextAI); setResolution((current) => VIDEO_UPSCALE_RESOLUTIONS[nextAI].includes(current) ? current : DEFAULT_VIDEO_UPSCALE_RESOLUTION[nextAI]); }} disabled={isBusy} className="h-10 rounded-md border bg-background px-3 text-sm font-normal">
+                    {isLoadingProviders && <option value={selectedAI}>Loading AI providers…</option>}
+                    {!isLoadingProviders && upscaleAIs.length === 0 && <option value={selectedAI}>No AI providers available</option>}
                     {upscaleAIs.map((option) => {
                       const available = option.available ?? option.configured;
                       return <option key={option.key} value={option.key} disabled={!available}>{option.name}{available ? ` · ${option.provider}` : option.configured ? " · paid API plan required" : " · not configured"}</option>;
                     })}
                   </select>
                 </label>
+                {providerLoadError && <p role="status" className="text-xs text-amber-500">{providerLoadError}</p>}
                 {selectedAIOption && <p className="text-xs text-muted-foreground">{selectedAIOption.description}</p>}
                 {selectedAIOption && !aiConfigured && <p role="status" className="text-xs text-amber-500">{selectedAIOption.availabilityMessage ?? "Configure this provider on the worker to use it."}</p>}
                 {upscaleAIs.filter((option) => !(option.available ?? option.configured) && option.availabilityMessage).map((option) => <p key={option.key} role="status" className="text-xs text-amber-500">{option.name}: {option.availabilityMessage}</p>)}

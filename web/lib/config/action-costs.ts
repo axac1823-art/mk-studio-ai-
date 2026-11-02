@@ -51,6 +51,9 @@ export function computeVideoDisplayCost(
   shotCount: number,
   selectedModel?: string
 ): number {
+  // Image-to-video est offert dans l'application ; le fournisseur peut
+  // néanmoins appliquer les limites et crédits de son propre compte API.
+  if (mode === "image_to_video") return 0;
   const base = computeVideoCost(config.videoCosts, mode, shotCount);
   if (!selectedModel) return base;
   const perModel = modelCreditCost(config, "animate", selectedModel);

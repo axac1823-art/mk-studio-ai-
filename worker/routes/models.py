@@ -10,7 +10,7 @@ import os
 from fastapi import APIRouter, HTTPException
 
 from catalog import list_feature_models
-from providers import elevenlabs, hitpaw, magichour, upscale
+from providers import elevenlabs, hitpaw, magichour, topaz_video_upscale, upscale
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -53,6 +53,7 @@ def list_models() -> dict:
             {"key": "runway_magnific", "name": "Magnific Video Upscaler", "provider": "Runway", "description": "Creative detail reconstruction with FPS boost.", "configured": bool(os.environ.get("RUNWAYML_API_SECRET") or os.environ.get("RUNWAY_API_KEY"))},
             {"key": "magichour", "name": "Magic Hour Video Upscaler", "provider": "Magic Hour", "description": "AI video upscaling with 720p, 1080p, 2K, or 4K output.", "configured": magic_hour_configured, "available": magic_hour_configured and magic_hour_tier in {"creator", "pro", "business"}, "availabilityMessage": "Requires a paid Magic Hour API plan." if magic_hour_tier == "free" else ("Could not verify Magic Hour plan access." if magic_hour_tier == "unknown" else None)},
             {"key": "hitpaw", "name": "HitPaw Video Enhancer", "provider": "HitPaw", "description": "General Restore AI enhancement up to 4K.", "configured": hitpaw.is_configured()},
+            {"key": "topaz", "name": "Topaz Video Upscaler (Test)", "provider": "Topaz Labs", "description": "Test integration using Proteus enhancement; MP4 clips up to 5 seconds, API usage may be billed by Topaz.", "configured": topaz_video_upscale.is_configured()},
         ],
         "audio": audio_models,
         "threed": list_feature_models("3d_generator", include_costs=True),

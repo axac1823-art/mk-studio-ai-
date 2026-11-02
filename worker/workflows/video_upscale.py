@@ -3,7 +3,7 @@ import logging
 
 import db
 import storage
-from providers import hitpaw, magichour, runway_video_upscale
+from providers import hitpaw, magichour, runway_video_upscale, topaz_video_upscale
 from workflows.common import complete_job, fail_job, insert_asset, mark_processing, store_output
 from moviepy import VideoFileClip
 
@@ -35,7 +35,7 @@ def run(job: dict) -> None:
         with VideoFileClip(str(source_path)) as clip:
             duration = float(clip.duration or 0)
             original_width, original_height = int(clip.w), int(clip.h)
-            max_duration = {"runway_magnific": 30, "magichour": 133, "hitpaw": 3600}.get(provider)
+            max_duration = {"runway_magnific": 30, "magichour": 133, "hitpaw": 3600, "topaz": 5}.get(provider)
             if not duration:
                 raise ValueError("Video duration could not be determined.")
             if max_duration is not None and duration > max_duration:
@@ -51,6 +51,19 @@ def run(job: dict) -> None:
                 str(source_path), options["resolution"], original_width, original_height
             )
             model_used = result.get("model") or "general_restore"
+        elif provider == "topaz":
+            frame_rate = float(clip.fps or 0)
+            frame_count = int(getattr(clip.reader, "nframes", 0) or round(duration * frame_rate))
+            result = topaz_video_upscale.upscale(
+                str(source_path),
+                options["resolution"],
+                original_width,
+                original_height,
+                duration,
+                frame_rate,
+                frame_count,
+            )
+            model_used = result.get("model") or "prob-4"
         else:
             raise ValueError("Unsupported video upscaling provider.")
         stored, _ = store_output(result["url"])

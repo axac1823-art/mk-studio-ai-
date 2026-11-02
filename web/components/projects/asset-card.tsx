@@ -2,7 +2,7 @@
 
 // Asset card shared by Projects, Favorites, Uploads and Trash.
 // Preview and selection are deliberately separate interactions.
-import { useCallback, useState } from "react";
+import { useCallback, useState, type MouseEvent } from "react";
 import Link from "next/link";
 import {
   ArchiveRestore,
@@ -52,6 +52,11 @@ interface AssetCardProps {
   /** Library selection stays separate from opening the preview. */
   selected?: boolean;
   onSelect?: () => void;
+  /** Enables click-to-select while a multi-selection is already active. */
+  selectionActive?: boolean;
+  onToggleSelected?: (assetId: string, shiftKey?: boolean) => void;
+  /** Lets a containing library provide its own preview dialog. */
+  onPreview?: () => void;
 }
 
 export const IMAGE_SERVICES = [
@@ -83,12 +88,30 @@ export function AssetCard({
   layout = "grid",
   selected = false,
   onSelect,
+  selectionActive = false,
+  onToggleSelected,
+  onPreview,
 }: AssetCardProps) {
   const [busy, setBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<PreviewAsset | null>(null);
   const closePreview = useCallback(() => setPreviewAsset(null), []);
-  const openPreview = () => setPreviewAsset(asset);
+  const openPreview = () => {
+    if (selectionActive && onToggleSelected) {
+      onToggleSelected(asset.id);
+      return;
+    }
+    if (onPreview) {
+      onPreview();
+      return;
+    }
+    setPreviewAsset(asset);
+  };
+  const toggleSelection = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (onToggleSelected) onToggleSelected(asset.id, event.shiftKey);
+    else onSelect?.();
+  };
 
   const patch = async (body: { isFavorite?: boolean; isTrashed?: boolean }) => {
     if (busy) return;
@@ -200,12 +223,12 @@ export function AssetCard({
             </span>
           )}
 
-          {onSelect && !trashed && (
+          {(onSelect || onToggleSelected) && !trashed && (
             <button
               type="button"
               aria-label={selected ? "Deselect asset" : "Select asset for a workflow"}
               aria-pressed={selected}
-              onClick={(event) => { event.stopPropagation(); onSelect(); }}
+              onClick={toggleSelection}
               className={cn(
                 "absolute right-2.5 top-2.5 z-20 flex h-8 w-8 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 selected ? "border-primary text-primary" : "border-border hover:border-primary/50",

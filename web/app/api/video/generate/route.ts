@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuth } from "@/lib/auth";
 import { getBalance } from "@/lib/credits";
-import { computeVideoCost, resolveVideoMode, type VideoMode } from "@/lib/video-utils";
+import { computeVideoCost, resolveVideoMode } from "@/lib/video-utils";
 import {
   getDefaultProject,
   getAsset,
@@ -171,9 +171,11 @@ export async function POST(req: NextRequest) {
     shots: payload.shots,
     media: mediaMeta,
   });
-  const previewMode = (payload.mode as VideoMode | undefined) ?? detectedMode;
+  // Le mode et le tarif sont déterminés depuis les médias réellement fournis.
+  // Un hint UI périmé ne doit pas faire facturer un rendu image-to-video.
+  const previewMode = detectedMode;
   const videoCosts = await getVideoActionCosts();
-  const cost = computeVideoCost(videoCosts, previewMode, payload.shots.length);
+  const cost = previewMode === "image_to_video" ? 0 : computeVideoCost(videoCosts, previewMode, payload.shots.length);
   const balance = await getBalance();
   if (balance < cost) {
     return NextResponse.json({ error: "insufficient_credits", required: cost, balance }, { status: 402 });
@@ -182,7 +184,7 @@ export async function POST(req: NextRequest) {
   const jobId = await insertVideoJob({
     userId: user.id,
     projectId: project.id,
-    mode: payload.mode || null,
+    mode: previewMode,
     startImageUrl,
     endImageUrl,
     mediaReferences: attachedMedia,
