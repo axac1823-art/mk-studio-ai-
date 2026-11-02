@@ -1,3 +1,7 @@
+from dataclasses import fields
+
+from catalog import normalize_image2_reference_roles
+
 # """Templates de prompt — port de lib/ai/prompt-templates.ts.
 
 # Règle non négociable : tout le prompt engineering vit ici. Le texte libre
@@ -433,46 +437,181 @@ def _join(parts: list[str | None]) -> str:
     return ", ".join(part for part in parts if part)
 
 
+
 def add_image_reference_map(prompt: str, fields: dict) -> str:
-    """Describe independent visual inputs without assigning Style the subject role."""
+    """
+    Build an explicit, deterministic map between uploaded images and their
+    intended visual roles.
+
+    Supported roles:
+      - element: preserve and insert the actual object.
+      - base: preserve the destination scene and its architecture.
+      - style: transfer visual treatment only.
+      - detail: borrow only explicitly requested details.
+
+    Legacy requests without roles default to element for compatibility.
+    """
     references = fields.get("referenceUrls") or []
-    tags = fields.get("referenceTags") or [f"@img{index + 1}" for index in range(len(references))]
-    has_style = bool(fields.get("styleReferenceUrl"))
-    if not references and not has_style:
+    if not isinstance(references, (list, tuple)):
+        references = []
+
+    raw_tags = fields.get("referenceTags") or []
+    raw_roles = fields.get("referenceRoles") or []
+
+    if not isinstance(raw_tags, (list, tuple)):
+        raw_tags = []
+    if not isinstance(raw_roles, (list, tuple)):
+        raw_roles = []
+
+    valid_roles = {"element", "base", "style", "detail"}
+
+    tags: list[str] = []
+    roles: list[str] = []
+    used_tags: set[str] = set()
+
+    for index in range(len(references)):
+        tag = raw_tags[index] if index < len(raw_tags) else None
+
+        if (
+            not isinstance(tag, str)
+            or not tag.startswith("@img")
+            or tag in used_tags
+        ):
+            tag = f"@img{index + 1}"
+            suffix = index + 1
+            while tag in used_tags:
+                suffix += 1
+                tag = f"@img{suffix}"
+
+        role = raw_roles[index] if index < len(raw_roles) else "element"
+        if not isinstance(role, str) or role not in valid_roles:
+            role = "element"
+
+        tags.append(tag)
+        roles.append(role)
+        used_tags.add(tag)
+
+    style_url = fields.get("styleReferenceUrl")
+    has_style_reference = isinstance(style_url, str) and bool(style_url)
+
+    if not references and not has_style_reference:
         return prompt
 
-    lines: list[str] = []
-    if has_style:
-        lines.append(
-            "The separate Style/Filter image is input image 1 and is named @style. It is an aesthetic reference only, "
-            "not the subject image and not a composition to copy. Match its actual visual signature faithfully: overall "
-            "luminance, exposure, highlight roll-off, shadow depth, contrast curve, saturation, palette, color temperature, "
-            "texture character, material response, grain, edge treatment and rendering medium."
+    role_instructions = {
+        "element": (
+            "ELEMENT IDENTITY SOURCE: this is the actual object that must appear "
+            "in the final scene. Preserve its recognizable silhouette, proportions, "
+            "distinctive components, color distribution, materials, textures, "
+            "labels, logos and defining details. Do not replace it with a similar "
+            "generic object. Adapt perspective, exposure, shading and shadows only "
+            "as physically required by the destination scene."
+        ),
+        "base": (
+            "BASE SCENE / DESTINATION: use this image as the scene to preserve. "
+            "Maintain its architecture, geometry, openings, rooflines, camera "
+            "position, perspective, framing and unrelated surroundings. Modify "
+            "only the areas explicitly requested by the user."
+        ),
+        "style": (
+            "STYLE ONLY: use this image exclusively for visual treatment such as "
+            "palette, contrast, tonal range, lighting character, texture, grain "
+            "and rendering finish. Do not copy its subject, objects, architecture "
+            "or composition."
+        ),
+        "detail": (
+            "DETAIL REFERENCE: use only the specific details requested by the "
+            "user, such as a material, furniture detail, façade element or finish. "
+            "Do not import unrelated objects or its background."
+        ),
+    }
+
+    manifest = [
+        "IMAGE INPUT MAP: image order and user-declared roles are authoritative."
+    ]
+
+    provider_index = 1
+
+    if has_style_reference:
+        manifest.append(
+            "Input image 1 is @style. It is a separate aesthetic reference only. "
+            "Match its actual palette, exposure, contrast, highlight roll-off, "
+            "shadow depth, color temperature, texture, material response and "
+            "rendering finish. Do not copy its subject or composition."
         )
-    for index, tag in enumerate(tags[:len(references)]):
-        provider_index = index + (2 if has_style else 1)
-        lines.append(
-            f"{tag} is content/reference image {provider_index}; use its subject or details only as directed by the user's prompt."
+        provider_index += 1
+
+    for index, (tag, role) in enumerate(zip(tags, roles)):
+        manifest.append(
+            f"{tag} is provider input image {provider_index + index}. "
+            f"Declared role: {role.upper()}. "
+            f"{role_instructions[role]}"
         )
 
-    if fields.get("feature") == "text_to_image" and has_style:
-        guidance = (
-            "HIGHEST-PRIORITY STYLE TRANSFER: @style must control the final image's visual treatment. Keep the requested subject, "
-            "objects and scene from the written prompt and @img content references, but make the result look as though it was "
-            "created with the same art direction as @style. Do not copy @style's subject, objects, architecture or layout unless asked. "
-            "Do not brighten, warm, whiten, increase exposure, soften shadows, boost saturation, add gloss, or convert the result to "
-            "generic photorealistic / high-key architectural imagery unless those traits are visibly present in @style. If @style is dark, "
-            "muted, low-key, cool, monochrome, matte, grainy, painterly, graphic, cinematic or high-contrast, preserve that character. "
-            "Do not insert any unrequested default lighting or color-grade."
+    if fields.get("feature") == "text_to_image":
+        has_base = "base" in roles
+        has_element = "element" in roles
+        has_content_role = has_base or has_element
+
+        if has_base and has_element:
+            task_rule = (
+                "COMPOSITING TASK: place the actual element source into the base "
+                "scene. The base image defines the destination camera, architecture "
+                "and composition. The element image defines the object's identity. "
+                "Do not redesign either one. Integrate the element with physically "
+                "plausible scale, perspective, contact shadows, cast shadows and "
+                "lighting consistent with the base scene."
+            )
+        elif has_base:
+            task_rule = (
+                "SCENE EDIT TASK: preserve the base scene and its architecture. "
+                "Make only the changes explicitly requested in the user's description."
+            )
+        elif has_element:
+            task_rule = (
+                "ELEMENT INSERTION TASK: preserve the actual identity of the "
+                "element source while creating the new destination scene described "
+                "by the user. Do not retain its original background unless requested."
+            )
+        elif has_content_role:
+            task_rule = (
+                "REFERENCE-LED GENERATION: follow the declared image roles and "
+                "the user's written scene specification."
+            )
+        else:
+            task_rule = (
+                "STYLE/DETAIL-LED GENERATION: create the requested scene from the "
+                "written description. Style and detail references must not become "
+                "unrequested scene subjects."
+            )
+
+        style_rule = ""
+        if has_style_reference or "style" in roles:
+            style_rule = (
+                "STYLE PRIORITY: transfer only the visual characteristics of "
+                "the style reference. Do not let it override the requested "
+                "architecture, object identity, scene layout or camera."
+            )
+
+        final_rules = (
+            "FINAL FIDELITY: do not omit, duplicate, merge, replace or invent "
+            "requested objects. Preserve explicit quantities, proportions, "
+            "materials and spatial relationships. Keep perspective coherent. "
+            "Use realistic contact shadows and cast shadows. Do not add an "
+            "unrequested color grade, lighting setup or decorative elements."
         )
-    elif fields.get("feature") == "text_to_image":
-        guidance = (
-            "CONTENT REFERENCE RULE: the @img labels point to content images, not hidden fixed roles. Follow the user's prompt to decide "
-            "what to retain or borrow. Do not impose a default daylight, high-key, warm, glossy or bright visual style; follow the user's description."
+
+        return (
+            prompt
+            + "\n\n"
+            + task_rule
+            + ("\n\n" + style_rule if style_rule else "")
+            + "\n\n"
+            + final_rules
+            + "\n\n"
+            + "\n".join(manifest)
         )
-    else:
-        guidance = "REFERENCE INPUT RULE: the @img labels identify their corresponding content/reference images."
-    return prompt + "\n\n" + guidance + "\n" + "\n".join(lines)
+
+    return prompt + "\n\n" + "\n".join(manifest)
 
 
 def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:
@@ -949,7 +1088,7 @@ IMAGE2_CAMERA_POSITION_PROMPTS = {
     "low_angle": "Use a low camera looking upward, emphasizing height without distorting proportions.",
     "elevated_view": "Use an elevated view looking gently down while keeping facades visible.",
     "aerial_three_quarter": "Use an oblique aerial view showing the roof and two facades, not a top-down view.",
-    "high_aerial": "Use a distant oblique aerial view showing the building, plot and site context.",
+    "high_aerial": "Use a high and distant aerial camera viewpoint showing the building, plot and site context.",
     "low_altitude_aerial": "Use a close low-altitude aerial view emphasizing facade and immediate surroundings.",
     "top_down_nadir": "Use a true vertical top-down view showing roof, footprint and site arrangement.",
     "interior_corner": "Place the camera near an interior corner, looking diagonally across the room.",
@@ -977,7 +1116,7 @@ def build_camera_position_prompt(camera_preset_id=None) -> str:
     if not isinstance(camera_preset_id, str):
         return ""
     instruction = IMAGE2_CAMERA_POSITION_PROMPTS.get(camera_preset_id)
-    return f"CAMERA POSITION: {instruction} The user's written camera directions take priority." if instruction else ""
+    return f"CAMERA POSITION PRESET: {instruction} The user's written description has priority." if instruction else ""
 
 
 def build_weather_season_prompt(weather=None, season=None) -> str:
@@ -1063,6 +1202,7 @@ def build_text_to_image_prompt(
     camera_preset_id=None,
     weather=None,
     season=None,
+    reference_roles=None,
 ) -> str:
     """Subject-first text-to-image prompt with optional text-only style filters and aspect ratio framing."""
     parts = [
@@ -1076,6 +1216,20 @@ def build_text_to_image_prompt(
             "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
         ),
     ]
+    if has_composition_inputs:
+        parts.append(
+            "IMAGE COMPOSITION TASK: Compose the requested scene using the supplied Element and Base images as actual visual inputs. "
+            "Follow each image's declared role. The user's description controls placement, scene contents and requested changes."
+        )
+    if preserve_element_identity:
+        parts.append(
+            "ELEMENT IDENTITY: Preserve the actual source object, including its silhouette, proportions, distinctive components, "
+            "materials and recognizable details. Do not substitute a merely similar object or alter its defining features."
+        )
+    if has_reference_images and not has_composition_inputs:
+        parts.append(
+            "REFERENCE ROLE: Style and Detail images are not automatically scene subjects. Use each only for its declared role and follow the user's written subject and scene description."
+        )
     user_description = _sanitize_scene_details(scene_details)
     if user_description:
         parts.append(user_description)
@@ -1126,6 +1280,7 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
     """Dispatch par feature — l'`option_id` générique porte le preset de la fonction."""
     option_id = fields.get("optionId")
     details = fields.get("sceneDetails")
+    reference_roles = fields.get("referenceRoles")
     if feature == "animate":
         return build_animate_prompt(scene_details=details, motion_prompt=fields.get("motionPrompt"))
     if feature == "mood_swap":
@@ -1150,14 +1305,20 @@ def build_feature_prompt(feature: str, fields: dict) -> str:
     if feature == "background_remover":
         return build_background_remover_prompt()
     if feature == "text_to_image":
+        roles = normalize_image2_reference_roles(fields)
+        has_primary_element = bool(fields.get("imageUrl"))
+        has_composition_inputs = has_primary_element or any(role in {"element", "base"} for role in roles)
         return build_text_to_image_prompt(
             scene_details=details,
-            has_style_reference=bool(fields.get("styleReferenceUrl")),
+            has_style_reference=bool(fields.get("styleReferenceUrl")) or "style" in roles,
             style_filters=fields.get("styleFilters"),
             aspect_ratio=fields.get("aspectRatio"),
             camera_preset_id=fields.get("cameraPresetId"),
             weather=fields.get("weather"),
             season=fields.get("season"),
+            has_reference_images=bool(fields.get("imageUrl") or fields.get("styleReferenceUrl") or fields.get("referenceUrls")),
+            preserve_element_identity=has_primary_element or "element" in roles,
+            has_composition_inputs=has_composition_inputs,
         )
     return build_print_render_prompt(
         scene_details=details,

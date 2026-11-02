@@ -14,7 +14,11 @@ import mimetypes
 import db
 import storage
 from PIL import Image
-from catalog import MODEL_CATALOG
+from catalog import (
+    MODEL_CATALOG,
+    normalize_image2_reference_roles,
+    text_to_image_images,
+)
 from frame_ratio import filter_candidates_by_frame, validate_image_output_frame
 from providers import is_provider_configured
 from prompts import add_image_reference_map, build_feature_prompt
@@ -108,6 +112,8 @@ def run(job: dict) -> None:
     Aucune exception ne sort : toute erreur termine le job en 'failed'."""
     input_ = job["input"]
     feature = input_["feature"]
+    if feature == "text_to_image":
+        input_["referenceRoles"] = normalize_image2_reference_roles(input_)
     with db.connect() as conn:
         mark_processing(conn, job["id"])
         try:
@@ -143,9 +149,8 @@ def run(job: dict) -> None:
                 req["imageUrl"] = storage.image_data_uri_if_local(req["imageUrl"])
             feature_candidates = MODEL_CATALOG[feature]
             if feature == "text_to_image":
-                content_count = len(input_.get("referenceUrls") or [])
-                has_style_reference = bool(input_.get("styleReferenceUrl"))
-                input_count = content_count + (1 if has_style_reference else 0)
+                has_style_reference = bool(input_.get("styleReferenceUrl")) or "style" in input_["referenceRoles"]
+                input_count = len(text_to_image_images(input_))
                 feature_candidates = [
                     candidate for candidate in feature_candidates
                     if candidate.max_references >= input_count

@@ -226,6 +226,7 @@ export async function POST(req: NextRequest) {
     .filter((value): value is string => typeof value === "string");
   const referenceItems: Array<{
     tag: string;
+    role?: "element" | "base" | "style" | "detail";
     file?: File;
     assetId?: string;
     storagePath?: string;
@@ -233,13 +234,20 @@ export async function POST(req: NextRequest) {
 
   if (rawReferenceMetadata.length > 0) {
     for (let position = 0; position < rawReferenceMetadata.length; position += 1) {
-      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown };
+      let metadata: { index?: unknown; source?: unknown; assetId?: unknown; tag?: unknown; role?: unknown };
       try {
         metadata = JSON.parse(rawReferenceMetadata[position]) as typeof metadata;
       } catch {
         return NextResponse.json({ error: "Invalid reference metadata." }, { status: 400 });
       }
       const tag = typeof metadata.tag === "string" ? metadata.tag : "";
+      const validRoles = ["element", "base", "style", "detail"] as const;
+      if (metadata.role !== undefined && !validRoles.includes(metadata.role as typeof validRoles[number])) {
+        return NextResponse.json({ error: "Invalid image reference role." }, { status: 400 });
+      }
+      const role = validRoles.includes(metadata.role as typeof validRoles[number])
+        ? metadata.role as typeof validRoles[number]
+        : "element";
       const itemIndex = typeof metadata.index === "number" && Number.isInteger(metadata.index)
         ? metadata.index
         : position;
@@ -252,13 +260,13 @@ export async function POST(req: NextRequest) {
         if (!(file instanceof File)) {
           return NextResponse.json({ error: "An image input is missing its file." }, { status: 400 });
         }
-        referenceItems.push({ tag, file });
+        referenceItems.push({ tag, role, file });
       } else if (metadata.source === "asset" && typeof metadata.assetId === "string") {
         const asset = await getAsset(user.id, metadata.assetId);
         if (!asset || asset.is_trashed || asset.type !== "image") {
           return NextResponse.json({ error: "One of the selected project images is unavailable." }, { status: 400 });
         }
-        referenceItems.push({ tag, assetId: metadata.assetId, storagePath: asset.storage_path });
+        referenceItems.push({ tag, role, assetId: metadata.assetId, storagePath: asset.storage_path });
       } else {
         return NextResponse.json({ error: "Invalid image input source." }, { status: 400 });
       }
@@ -273,7 +281,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Reference labels do not match the attached images." }, { status: 400 });
     }
     legacyFiles.forEach((file, index) => {
-      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, file });
+      referenceItems.push({ tag: submittedTags[index] ?? `@img${index + 1}`, role: "element", file });
     });
   }
 
@@ -324,6 +332,7 @@ export async function POST(req: NextRequest) {
     );
   }
   const referenceTags = referenceItems.map((item) => item.tag);
+  const referenceRoles = referenceItems.map((item) => item.role ?? "element");
   if (referenceTags.some((tag) => !/^@img[1-9]\d*$/.test(tag)) || new Set(referenceTags).size !== referenceTags.length) {
     return NextResponse.json({ error: "Invalid or repeated image input labels." }, { status: 400 });
   }
@@ -451,6 +460,7 @@ export async function POST(req: NextRequest) {
       imageUrl,
       referenceUrls,
       referenceTags,
+      referenceRoles,
       styleReferenceUrl: styleReferenceUrl ?? undefined,
       quality,
       aspectRatio,

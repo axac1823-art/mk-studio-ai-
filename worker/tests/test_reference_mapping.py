@@ -41,7 +41,7 @@ def test_image_generator_source_is_separate_from_tagged_references():
     )
 
     assert "CONTENT REFERENCE RULE" in prompt
-    assert "@img1 is content/reference image 1" in prompt
+    assert "@img1 is element reference image 2" in prompt
 
 
 def test_video_tags_are_preserved_and_explained_for_provider_prompt():

@@ -251,6 +251,52 @@ def magichour_edit_input(req: dict) -> dict:
 
 
 
+IMAGE2_REFERENCE_ROLES = {"element", "base", "style", "detail"}
+
+
+def normalize_image2_reference_roles(req: dict) -> list[str]:
+    """Return one validated role per content reference; legacy inputs default to Element."""
+    references = req.get("referenceUrls") or []
+    if not isinstance(references, (list, tuple)):
+        references = []
+    raw_roles = req.get("referenceRoles") or []
+    if not isinstance(raw_roles, (list, tuple)):
+        raw_roles = []
+    return [
+        role if isinstance(role, str) and role in IMAGE2_REFERENCE_ROLES else "element"
+        for role in (list(raw_roles) + ["element"] * len(references))[:len(references)]
+    ]
+
+
+def text_to_image_identity_locked(req: dict) -> bool:
+    """Only an Element or Base source locks identity/composition; Style alone does not."""
+    return bool(req.get("imageUrl")) or any(
+        role in {"element", "base"} for role in normalize_image2_reference_roles(req)
+    )
+
+
+def image2_identity_object_count(req: dict) -> int:
+    """Count identity-bearing objects, excluding Base, Style and Detail references."""
+    return (1 if req.get("imageUrl") else 0) + sum(
+        role == "element" for role in normalize_image2_reference_roles(req)
+    )
+
+
+def text_to_image_images(req: dict) -> list[str]:
+    """Return provider image inputs in manifest order: Style, primary Element, then references."""
+    images: list[str] = []
+    style_image = req.get("styleReferenceUrl")
+    if isinstance(style_image, str) and style_image.strip():
+        images.append(style_image)
+    primary_image = req.get("imageUrl")
+    if isinstance(primary_image, str) and primary_image.strip():
+        images.append(primary_image)
+    references = req.get("referenceUrls") or []
+    if isinstance(references, (list, tuple)):
+        images.extend(image for image in references if isinstance(image, str) and image.strip())
+    return images
+
+
 def magichour_text_to_image_input(req: dict) -> dict:
     """Magic Hour Flux 2 Klein: preserve the requested native frame ratio."""
     ratio = req.get("aspectRatio") or "auto"
@@ -262,17 +308,7 @@ def magichour_text_to_image_input(req: dict) -> dict:
             "use auto, 1:1, 16:9, or 9:16."
         )
 
-    images: list[str] = []
-
-    # Preserve the existing image order and reference roles.
-    style_image = req.get("styleReferenceUrl")
-    if isinstance(style_image, str) and style_image:
-        images.append(style_image)
-
-    if req.get("imageUrl"):
-        images.append(req["imageUrl"])
-
-    images.extend(req.get("referenceUrls", []))
+    images = text_to_image_images(req)
 
     return {
         "prompt": req["prompt"],
@@ -417,11 +453,7 @@ def openai_text_to_image_input(req: dict) -> dict:
         "2:3": "640x960",
         "21:9": "1008x432",
     }.get(ratio, "auto")
-    images: list[str] = []
-    style_image = req.get("styleReferenceUrl")
-    if isinstance(style_image, str) and style_image:
-        images.append(style_image)
-    images.extend(req.get("referenceUrls") or [])
+    images = text_to_image_images(req)
     return {
         "prompt": req["prompt"],
         "images": images,
@@ -432,11 +464,7 @@ def openai_text_to_image_input(req: dict) -> dict:
 
 def google_text_to_image_input(req: dict) -> dict:
     """Google multimodal generation: preserve Style order and pass a native ratio when selected."""
-    images: list[str] = []
-    style_image = req.get("styleReferenceUrl")
-    if isinstance(style_image, str) and style_image:
-        images.append(style_image)
-    images.extend(req.get("referenceUrls") or [])
+    images = text_to_image_images(req)
     payload = {
         "prompt": req["prompt"],
         "images": images,
