@@ -169,6 +169,36 @@ def run(job: dict) -> None:
                         "No configured Text-to-Image provider supports the selected image inputs. Configure a provider or remove references."
                     )
 
+                # Match candidates to the requested resolution so Auto never
+                # selects a provider whose plan/model cannot supply that size.
+                requested_resolution = str(input_.get("resolution") or "1K")
+                selected_candidate = next(
+                    (candidate for candidate in feature_candidates if candidate.key == selected_model),
+                    None,
+                )
+                if selected_candidate and requested_resolution not in selected_candidate.resolutions:
+                    # Magic Hour's free Flux 2 Klein tier only permits 640px.
+                    # Normalize a stale UI's default 1K request server-side.
+                    if selected_candidate.key == "magichour-flux-2-klein-text" and "640px" in selected_candidate.resolutions:
+                        requested_resolution = "640px"
+                        input_["resolution"] = requested_resolution
+                        req["resolution"] = requested_resolution
+                    else:
+                        supported = ", ".join(selected_candidate.resolutions) or "none reported"
+                        raise ValueError(
+                            f"{selected_candidate.name} does not support {requested_resolution}. "
+                            f"Supported resolutions: {supported}."
+                        )
+                feature_candidates = [
+                    candidate for candidate in feature_candidates
+                    if requested_resolution in candidate.resolutions
+                ]
+                if not feature_candidates:
+                    raise ValueError(
+                        f"No configured Text-to-Image model supports {requested_resolution}. "
+                        "Choose a supported resolution or another model."
+                    )
+
                 # Explicit frames are filtered before model ordering. Auto remains provider-selected.
                 if requested_ratio != "auto":
                     selected_candidate = next(
@@ -193,12 +223,21 @@ def run(job: dict) -> None:
             output_validator = None
             if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
                 expected_frame = input_.get("aspectRatio") or "4:3"
-                output_validator = lambda urls, _candidate: validate_image_output_frame(urls, expected_frame)
+                def validate_candidate_frame(urls, candidate):
+                    # Flux 2 Klein at 640px can return 384x640 for 9:16.
+                    # Allow this small provider-specific deviation; the stored
+                    # output is center-cropped to the exact frame below.
+                    tolerance = 0.075 if candidate.provider == "magichour" else 0.025
+                    validate_image_output_frame(urls, expected_frame, tolerance=tolerance)
+
+                output_validator = validate_candidate_frame
             outcome = execute_with_fallback(feature, candidates, req, output_validator=output_validator)
 
             result_asset_id = None
             for url in outcome["output_urls"]:
                 path, _ext = store_output(url)
+                if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
+                    _crop_stored_image_to_ratio(path, input_.get("aspectRatio") or "4:3")
                 asset_id = insert_asset(conn, job, "image", path)
                 result_asset_id = result_asset_id or asset_id
 

@@ -21,6 +21,7 @@ Env : MAGIC_HOUR_API_KEY (https://magichour.ai/developer?tab=api-keys) —
 lue à l'appel, jamais à l'import (échec vite -> fallback).
 """
 import base64
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -37,6 +38,7 @@ from providers.http_helpers import (
 )
 
 BASE_URL = "https://api.magichour.ai"
+logger = logging.getLogger(__name__)
 _MIME_TYPES_BY_EXTENSION = {
     "png": "image/png",
     "jpg": "image/jpeg",
@@ -152,19 +154,39 @@ def upscale_video(storage_path: str, duration: float, resolution: str) -> dict:
     return {"url": _poll_project("video", project_id, timeout_ms=3_600_000), "task_id": project_id}
 
 
+def _image_resolution(input_: dict) -> str:
+    """Return a documented Magic Hour image resolution."""
+    resolution = str(input_.get("resolution") or "640px").strip().lower()
+
+    allowed = {"640px", "1k", "2k"}
+
+    if resolution not in allowed:
+        raise ProviderError(
+            f"magichour: unsupported image resolution '{resolution}'. "
+            "Supported values: 640px, 1k, 2k."
+        )
+
+    return resolution
+
 def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
-    """Génération text-to-image pure via Magic Hour /v1/ai-image-generator."""
+    """Magic Hour image generator, including Image2 reference assets."""
+    payload: dict = {
+        "name": "renderstudio-image",
+        "model": model_id,
+        "image_count": 1,
+        "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
+        "resolution": str(input_.get("resolution") or "auto"),
+        "style": {"prompt": str(input_.get("prompt") or "")},
+    }
+    images = input_.get("images")
+    if isinstance(images, list) and images:
+        with ThreadPoolExecutor(max_workers=max(1, len(images))) as pool:
+            file_paths = list(pool.map(_ensure_file_path, images))
+        payload["assets"] = {"image_file_paths": file_paths}
     job = post_json(
         f"{BASE_URL}/v1/ai-image-generator",
         _headers(),
-        {
-            "name": "renderstudio-image",
-            "model": model_id,
-            "image_count": 1,
-            "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
-            "resolution": "auto",
-            "style": {"prompt": str(input_.get("prompt") or "")},
-        },
+        payload,
     )
     job_id = job.get("id")
     if not job_id:
@@ -173,9 +195,19 @@ def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
 
 
 def _run_image_edit(model_id: str, input_: dict, timeout_ms: int) -> str:
+    """Submit an image edit request using uploaded references."""
     images = input_.get("images")
     if not isinstance(images, list) or len(images) == 0:
         return _run_image_generator(model_id, input_, timeout_ms)
+    aspect_ratio = str(input_.get("aspectRatio") or "auto")
+    resolution = _image_resolution(input_)
+    logger.info(
+        "Magic Hour image submit: endpoint=editor model=%s aspect_ratio=%s resolution=%s image_count=%d",
+        model_id,
+        aspect_ratio,
+        resolution,
+        len(images),
+    )
     with ThreadPoolExecutor(max_workers=max(1, len(images))) as pool:
         file_paths = list(pool.map(_ensure_file_path, images))
     job = post_json(
@@ -184,8 +216,8 @@ def _run_image_edit(model_id: str, input_: dict, timeout_ms: int) -> str:
         {
             "model": model_id,
             "image_count": 1,
-            "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
-            "resolution": "auto",
+            "aspect_ratio": aspect_ratio,
+            "resolution": resolution,
             "style": {"prompt": str(input_.get("prompt") or "")},
             "assets": {"image_file_paths": file_paths},
         },
@@ -193,6 +225,7 @@ def _run_image_edit(model_id: str, input_: dict, timeout_ms: int) -> str:
     job_id = job.get("id")
     if not job_id:
         raise ProviderError("magichour: no image id in submit response")
+    logger.info("Magic Hour image submitted: endpoint=editor project_id=%s", job_id)
     return _poll_project("image", job_id, timeout_ms)
 
 
@@ -265,15 +298,15 @@ def _run_lip_sync(_model_id: str, input_: dict, timeout_ms: int) -> dict:
 
 
 def generate(model_id: str, input_: dict, timeout_ms: int) -> dict:
-    """Contrat provider : la FORME de l'input distingue l'endpoint (édition
-    d'image vs image-to-video vs video-to-video vs lip-sync) — pas le model_id."""
+    """Route Image2 through the generator and other image edits through the editor."""
     if isinstance(input_.get("images"), list):
         try:
             count = max(1, int(input_.get("quantity") or 1))
         except (TypeError, ValueError):
             count = 1
+        runner = _run_image_generator if input_.get("is_text_to_image") else _run_image_edit
         with ThreadPoolExecutor(max_workers=count) as pool:
-            urls = list(pool.map(lambda _: _run_image_edit(model_id, input_, timeout_ms), range(count)))
+            urls = list(pool.map(lambda _: runner(model_id, input_, timeout_ms), range(count)))
         return {"images": [{"url": url} for url in urls]}
     if input_.get("audioUrl"):
         return _run_lip_sync(model_id, input_, timeout_ms)

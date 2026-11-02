@@ -1120,7 +1120,7 @@ export function Image2Workspace() {
     const capabilityModels = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
     if (capabilityModels.length === 0) return ["1K"];
     return RESOLUTIONS.filter((value) =>
-      capabilityModels.every((model) => (model.resolutions ?? ["1K"]).includes(value)),
+      capabilityModels.some((model) => (model.resolutions ?? ["1K"]).includes(value)),
     );
   }, [selectedModelOption, compatibleConfiguredModels]);
 

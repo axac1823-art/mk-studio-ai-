@@ -245,33 +245,43 @@ def magichour_edit_input(req: dict) -> dict:
         "prompt": req["prompt"],
         "images": [req["imageUrl"], *req.get("referenceUrls", [])],
         "aspectRatio": ratio,
-        "resolution": "auto",
+        "resolution": str(req.get("resolution") or "640px"),
         "quantity": req["quantity"],
     }
 
 
+
 def magichour_text_to_image_input(req: dict) -> dict:
-    """Magic Hour Flux 2 Klein: pass only ratios supported by this model's generator API."""
+    """Magic Hour Flux 2 Klein: preserve the requested native frame ratio."""
     ratio = req.get("aspectRatio") or "auto"
-    if ratio not in {"auto", "1:1", "16:9", "9:16"}:
+
+    supported_ratios = {"auto", "1:1", "16:9", "9:16"}
+    if ratio not in supported_ratios:
         raise ValueError(
-            f"Magic Hour Flux 2 Klein does not support {ratio}; use auto, 1:1, 16:9, or 9:16."
+            f"Magic Hour Flux 2 Klein does not support {ratio}; "
+            "use auto, 1:1, 16:9, or 9:16."
         )
+
     images: list[str] = []
+
+    # Preserve the existing image order and reference roles.
     style_image = req.get("styleReferenceUrl")
     if isinstance(style_image, str) and style_image:
         images.append(style_image)
+
     if req.get("imageUrl"):
         images.append(req["imageUrl"])
+
     images.extend(req.get("referenceUrls", []))
+
     return {
         "prompt": req["prompt"],
         "images": images,
         "aspectRatio": ratio,
-        "resolution": "auto",
+        "resolution": str(req.get("resolution") or "640px"),
         "quantity": req["quantity"],
+        "is_text_to_image": True,
     }
-
 
 def _magichour_video_prompt(req: dict, *, video_to_video: bool = False) -> str:
     """Construit un prompt concis respectant la limite Magic Hour de 2000 caractères."""
@@ -656,7 +666,7 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
     Candidate("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite Image", "Cost-efficient 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-lite-image", 3, 4, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
     Candidate("gemini-3.1-flash", "Nano Banana 2", "High-quality 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-image", 3, 7, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
     # The current Flux 2 Klein generator endpoint exposes only these three ratios.
-    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly text-to-image and style reference edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=("1:1", "16:9", "9:16")),
+    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly 640px text-to-image and style reference edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls, supports_style_reference=True, resolutions=("640px",), frame_ratios=("1:1", "16:9", "9:16")),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {

@@ -20,4 +20,4 @@ export type Feature =
 
 export type QualityTier = "standard" | "pro";
 export type AspectRatio = "1:1" | "16:9" | "9:16" | "4:3" | "3:4";
-export type Resolution = "1K" | "2K" | "4K";
+export type Resolution = "640px" | "1K" | "2K" | "4K";
