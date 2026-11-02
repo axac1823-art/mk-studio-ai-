@@ -2,5 +2,10 @@
   "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
   "/api/video/generate/route": "app/api/video/generate/route.js",
   "/api/video/[id]/route": "app/api/video/[id]/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/config/costs/route": "app/api/config/costs/route.js",
+  "/api/models/route": "app/api/models/route.js",
+  "/api/assets/route": "app/api/assets/route.js",
+  "/api/credits/balance/route": "app/api/credits/balance/route.js",
   "/app/ai-video-generator/page": "app/app/ai-video-generator/page.js"
 }
