@@ -394,19 +394,30 @@ def bfl_text_to_image_input(req: dict) -> dict:
     return payload
 
 
+# OpenAI gpt-image custom sizes must respect ALL of these documented rules:
+# - both edges divisible by 16,
+# - aspect ratio between 1:3 and 3:1,
+# - no edge above 3840 px,
+# - total pixels between 655,360 and 8,294,400.
+# The previous table (1024x576, 960x640, 1008x432, ...) violated the pixel floor
+# (and 1008 is not a multiple of 16), so every non-4:3 frame was rejected with
+# HTTP 400 and the whole generation failed. These values keep each ratio exact.
+GPT_IMAGE_SIZES: dict[str, str] = {
+    "1:1": "1024x1024",   # 1,048,576 px
+    "16:9": "1280x720",   #   921,600 px
+    "9:16": "720x1280",   #   921,600 px
+    "4:3": "1024x768",    #   786,432 px
+    "3:4": "768x1024",    #   786,432 px
+    "3:2": "1248x832",    # 1,038,336 px
+    "2:3": "832x1248",    # 1,038,336 px
+    "21:9": "1680x720",   # 1,209,600 px
+}
+
+
 def openai_text_to_image_input(req: dict) -> dict:
     """GPT Image 2: send dimensions matching the selected frame exactly."""
     ratio = req.get("aspectRatio") or "auto"
-    size = {
-        "1:1": "1024x1024",
-        "16:9": "1024x576",
-        "9:16": "576x1024",
-        "4:3": "1024x768",
-        "3:4": "768x1024",
-        "3:2": "960x640",
-        "2:3": "640x960",
-        "21:9": "1008x432",
-    }.get(ratio, "auto")
+    size = GPT_IMAGE_SIZES.get(ratio, "auto")
     images: list[str] = []
     style_image = req.get("styleReferenceUrl")
     if isinstance(style_image, str) and style_image:

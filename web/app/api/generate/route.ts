@@ -333,12 +333,25 @@ export async function POST(req: NextRequest) {
     ? (rawQuality as QualityTier)
     : "standard";
   const rawAspect = form.get("aspectRatio");
+  const requestedAspect = typeof rawAspect === "string" ? rawAspect : "";
+  const isImage2Aspect =
+    requestedAspect === "auto" || IMAGE2_ADDITIONAL_ASPECT_RATIOS.includes(requestedAspect);
+  if (isImage2Aspect && !isTextToImage) {
+    return NextResponse.json(
+      { error: `${requestedAspect} is only available for text-to-image generation.` },
+      { status: 400 }
+    );
+  }
+  // Never silently fall back to 1:1: an unknown frame used to be coerced to a
+  // square image, which looked like the app ignoring the selected frame.
+  if (requestedAspect && !isImage2Aspect && !ASPECT_RATIOS.includes(requestedAspect as AspectRatio)) {
+    return NextResponse.json({ error: `Unsupported aspect ratio: ${requestedAspect}.` }, { status: 400 });
+  }
   const aspectRatio: string =
-    rawAspect === "auto" ||
-    (typeof rawAspect === "string" && IMAGE2_ADDITIONAL_ASPECT_RATIOS.includes(rawAspect))
-      ? (rawAspect as string)
-      : ASPECT_RATIOS.includes(rawAspect as AspectRatio)
-        ? (rawAspect as AspectRatio)
+    requestedAspect === "auto" || isImage2Aspect
+      ? requestedAspect
+      : ASPECT_RATIOS.includes(requestedAspect as AspectRatio)
+        ? (requestedAspect as AspectRatio)
         : "1:1";
   const rawResolution = form.get("resolution");
   const resolution: Resolution = RESOLUTIONS.includes(rawResolution as Resolution)

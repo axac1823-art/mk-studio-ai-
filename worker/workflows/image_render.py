@@ -15,7 +15,7 @@ import db
 import storage
 from PIL import Image
 from catalog import MODEL_CATALOG
-from frame_ratio import filter_candidates_by_frame, validate_image_output_frame
+from frame_ratio import crop_to_frame, filter_candidates_by_frame, validate_image_output_frame
 from providers import is_provider_configured
 from prompts import add_image_reference_map, build_feature_prompt
 from workflows.common import (
@@ -68,38 +68,6 @@ def _infer_aspect_ratio(value: str | None) -> str:
         return min(ratios, key=lambda key: abs(math.log(source_ratio / ratios[key])))
     except Exception:
         return "4:3"
-
-
-def _crop_stored_image_to_ratio(storage_path: str, aspect_ratio: str) -> None:
-    """Center-crop stored image pixels to the chosen ratio without upscaling."""
-    ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4}
-    target_ratio = ratios.get(aspect_ratio)
-    if target_ratio is None:
-        return
-    path = storage.resolve(storage_path)
-    with Image.open(path) as original:
-        image = original.copy()
-        image_format = original.format or "PNG"
-    current_ratio = image.width / image.height
-    if abs(current_ratio - target_ratio) < 0.002:
-        return
-    if current_ratio > target_ratio:
-        crop_width = max(1, min(image.width, round(image.height * target_ratio)))
-        left = (image.width - crop_width) // 2
-        image = image.crop((left, 0, left + crop_width, image.height))
-    else:
-        crop_height = max(1, min(image.height, round(image.width / target_ratio)))
-        top = (image.height - crop_height) // 2
-        image = image.crop((0, top, image.width, top + crop_height))
-    options = {"format": image_format}
-    if image_format.upper() in {"JPEG", "JPG"}:
-        if image.mode not in {"RGB", "L"}:
-            image = image.convert("RGB")
-        options["quality"] = 95
-        options["optimize"] = True
-    elif image_format.upper() == "WEBP":
-        options["quality"] = 95
-    image.save(path, **options)
 
 
 def run(job: dict) -> None:
@@ -197,8 +165,19 @@ def run(job: dict) -> None:
             outcome = execute_with_fallback(feature, candidates, req, output_validator=output_validator)
 
             result_asset_id = None
+            requested_frame = (
+                input_.get("aspectRatio")
+                if feature == "text_to_image" and input_.get("aspectRatio") not in (None, "", "auto")
+                else None
+            )
             for url in outcome["output_urls"]:
                 path, _ext = store_output(url)
+                if requested_frame:
+                    # Providers document slightly rounded pixel grids for some
+                    # frames (Magic Hour 640x384 for 16:9, ...). Trim that small
+                    # approximation so the stored asset is the exact frame the
+                    # user selected instead of failing the whole generation.
+                    crop_to_frame(path, requested_frame)
                 asset_id = insert_asset(conn, job, "image", path)
                 result_asset_id = result_asset_id or asset_id
 
