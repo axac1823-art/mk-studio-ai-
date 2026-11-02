@@ -12,7 +12,12 @@ import { requireAuth } from "../auth";
 import { getActionCosts, getLedgerBalance } from "../db/queries";
 
 export const QUALITY_MULTIPLIER = { standard: 1, pro: 2 } as const;
-export const RESOLUTION_SURCHARGE = { "1K": 0, "2K": 5, "4K": 10 } as const;
+export const RESOLUTION_SURCHARGE = {
+  "640px": 0,
+  "1K": 0,
+  "2K": 5,
+  "4K": 10,
+} as const;
 export const DURATION_MULTIPLIER = { 4: 1, 8: 1.5 } as const;
 
 /** Coût final d'une action = base (table) x multiplicateurs (ici). */

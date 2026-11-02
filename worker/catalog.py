@@ -13,8 +13,10 @@ Règles :
 - Les model_id sont INDICATIFS : vérifier la doc de chaque fournisseur
   avant la mise en production (les versions évoluent vite).
 """
+import re
 from dataclasses import dataclass
 from typing import Callable
+
 
 from providers.http_helpers import to_base64_or_url
 
@@ -254,18 +256,116 @@ def magichour_edit_input(req: dict) -> dict:
 IMAGE2_REFERENCE_ROLES = {"element", "base", "style", "detail"}
 
 
+def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str | None:
+    """Detect an explicit role assigned to one exact Image2 tag in the prompt."""
+    text = scene_details if isinstance(scene_details, str) else ""
+    if not text or not isinstance(tag, str) or not re.fullmatch(r"@img[1-9]\d*", tag):
+        return None
+    image_tag = re.escape(tag)
+    negative_patterns = (
+        rf"\b(?:do\s+not|don't|never|avoid)\s+(?:use|treat|assign|consider|interpret)\s+{image_tag}\s+(?:as|for)\b",
+        rf"{image_tag}\s+(?:is|should\s+be)\s+not\s+(?:the\s+)?(?:base|background|style|lighting|light|material|texture|detail|element|object)\b",
+        rf"(?:لا\s+تستخدم|لا\s+تعامل|لا\s+تعتبر)\s+{image_tag}\s+(?:ك|على\s+أنه|على\s+أنها)",
+    )
+    if any(re.search(pattern, text, re.IGNORECASE) for pattern in negative_patterns):
+        return None
+
+    # Arabic role declarations are matched independently so a negative
+    # declaration can still fall through to the saved metadata role.
+    arabic_patterns = {
+        "base": (
+            rf"{image_tag}[^.!?\n]{{0,45}}(?:\u0643\u062e\u0644\u0641\u064a\u0629|\u0643\u0642\u0627\u0639\u062f\u0629|\u0643\u0645\u0634\u0647\u062f\s+\u0623\u0633\u0627\u0633\u064a)",
+            rf"(?:\u0623\u062f\u062e\u0644|\u0636\u0639|\u0627\u062f\u0645\u062c)[^.!?\n]{{0,80}}\b(?:\u0641\u064a|\u062f\u0627\u062e\u0644|\u0636\u0645\u0646)\s+{image_tag}",
+            rf"\u0644\u0625\u062f\u062e\u0627\u0644\u0647\s+\u0641\u064a\s+{image_tag}",
+        ),
+        "style": (
+            rf"{image_tag}[^.!?\n]{{0,45}}(?:\u0644\u0644\u0625\u0636\u0627\u0621\u0629|\u0644\u0644\u0623\u0644\u0648\u0627\u0646|\u0643\u0645\u0631\u062c\u0639\s+\u0623\u0633\u0644\u0648\u0628\u064a)",
+            rf"(?:\u0627\u0633\u062a\u0644\u0647\u0645|\u062e\u0630|\u0637\u0627\u0628\u0642)[^.!?\n]{{0,80}}(?:\u0627\u0644\u0625\u0636\u0627\u0621\u0629|\u0627\u0644\u0623\u0644\u0648\u0627\u0646)[^.!?\n]{{0,50}}{image_tag}",
+        ),
+        "detail": (
+            rf"{image_tag}[^.!?\n]{{0,45}}(?:\u0644\u0644\u062e\u0627\u0645\u0629|\u0644\u0644\u0645\u0644\u0645\u0633|\u0644\u0644\u062a\u0641\u0627\u0635\u064a\u0644)",
+            rf"(?:\u0627\u0633\u062a\u0641\u062f|\u0627\u0642\u062a\u0628\u0633|\u062e\u0630)[^.!?\n]{{0,80}}(?:\u0627\u0644\u062e\u0627\u0645\u0629|\u0627\u0644\u0645\u0644\u0645\u0633|\u0627\u0644\u062a\u0641\u0627\u0635\u064a\u0644)[^.!?\n]{{0,40}}{image_tag}",
+            rf"\u0627\u0633\u062a\u0641\u062f\s+\u0645\u0646\s+(?:\u062e\u0627\u0645\u0629|\u0645\u0644\u0645\u0633|\u062a\u0641\u0627\u0635\u064a\u0644)\s+{image_tag}",
+        ),
+        "element": (
+            rf"{image_tag}[^.!?\n]{{0,45}}(?:\u0643\u0639\u0646\u0635\u0631|\u0643\u062c\u0633\u0645|\u0643\u0645\u0646\u062a\u062c)",
+            rf"(?:\u0627\u062d\u0641\u0638|\u0627\u062d\u062a\u0641\u0638)[^.!?\n]{{0,70}}(?:\u0647\u0648\u064a\u0629|\u0634\u0643\u0644|\u0646\u0633\u0628)[^.!?\n]{{0,40}}{image_tag}",
+        ),
+    }
+    for role in ("base", "style", "detail", "element"):
+        if any(re.search(pattern, text) for pattern in arabic_patterns[role]):
+            return role
+
+    role_patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
+        (
+            "base",
+            (
+                rf"{image_tag}\s+(?:as\s+)?(?:the\s+)?(?:base|background|backdrop|destination(?:\s+scene)?|existing\s+(?:room|scene|image)|room\s+background|scene\s+background)\b",
+                rf"\b(?:base|background|backdrop|destination(?:\s+scene)?|existing\s+(?:room|scene|image))\s+(?:image\s+)?(?:is|=|:)\s*{image_tag}\b",
+                rf"\b(?:insert|place|put|add|composite|integrate)\b[^.!?\n]{{0,120}}\b(?:into|onto|inside|within)\s+{image_tag}\b",
+                rf"{image_tag}\s+(?:كخلفية|كقاعدة|كمشهد\s+أساسي|كمشهد\s+مستقبِل)",
+                rf"(?:أدخل|ضع|ادمج)\b[^.!؟\n]{{0,100}}\b(?:في|داخل|ضمن)\s+{image_tag}\b",
+            ),
+        ),
+        (
+            "style",
+            (
+                rf"\b(?:use|treat|consider|use\s+only)\s+{image_tag}\s+(?:as|for)\s+(?:the\s+)?(?:style|lighting|light|color(?:\s+treatment)?|palette|visual\s+treatment)\b",
+                rf"\b(?:lighting|light|color(?:\s+treatment)?|palette|visual\s+treatment|style)\b[^.!?\n]{{0,80}}\bfrom\s+{image_tag}\b",
+                rf"{image_tag}\s+(?:للإضاءة|للضوء|للألوان|للمعالجة\s+البصرية|كمرجع\s+أسلوبي)(?:\s+فقط)?",
+                rf"(?:استلهم|خذ|طابق)\b[^.!؟\n]{{0,80}}\b(?:الإضاءة|الألوان|الأسلوب|المعالجة\s+البصرية)\b[^.!؟\n]{{0,40}}{image_tag}",
+            ),
+        ),
+        (
+            "detail",
+            (
+                rf"\b(?:borrow|take|use|match|copy)\b[^.!?\n]{{0,100}}\b(?:material|texture|detail|pattern|finish|surface)\b[^.!?\n]{{0,60}}\bfrom\s+{image_tag}\b",
+                rf"\b(?:use|take|borrow)\s+{image_tag}\s+(?:for|as)\s+(?:the\s+)?(?:material|texture|detail|pattern|finish|surface)\b",
+                rf"{image_tag}\s+(?:للخامة|للملمس|للتفاصيل|للنقش|للتشطيب)(?:\s+فقط)?",
+                rf"(?:استفد|اقتبس|خذ)\b[^.!؟\n]{{0,80}}\b(?:الخامة|الملمس|التفاصيل|النقش|التشطيب)\b[^.!؟\n]{{0,40}}{image_tag}",
+            ),
+        ),
+        (
+            "element",
+            (
+                rf"\b(?:use|treat|consider)\s+{image_tag}\s+(?:as\s+)?(?:the\s+)?(?:element|object|item|subject|product|person|building)\b",
+                rf"{image_tag}\s+(?:as\s+)?(?:the\s+)?(?:object|element|item|subject)\s+to\s+(?:insert|place|add|include)\b",
+                rf"\b(?:preserve|keep|retain)\b[^.!?\n]{{0,100}}\b(?:identity|silhouette|proportions|features)\b[^.!?\n]{{0,50}}{image_tag}\b",
+                rf"{image_tag}\s+(?:كعنصر|كجسم|كمنتج|كشخص|كعنصر\s+لإدخاله)",
+                rf"(?:حافظ|احتفظ)\b[^.!؟\n]{{0,100}}\b(?:هوية|شكل|نسب|تفاصيل)\b[^.!؟\n]{{0,50}}{image_tag}",
+            ),
+        ),
+    )
+    for role, patterns in role_patterns:
+        if any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns):
+            return role
+    return None
+
+
 def normalize_image2_reference_roles(req: dict) -> list[str]:
-    """Return one validated role per content reference; legacy inputs default to Element."""
+    """Resolve explicit prompt declarations before saved roles and legacy defaults."""
     references = req.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
     raw_roles = req.get("referenceRoles") or []
     if not isinstance(raw_roles, (list, tuple)):
         raw_roles = []
-    return [
-        role if isinstance(role, str) and role in IMAGE2_REFERENCE_ROLES else "element"
-        for role in (list(raw_roles) + ["element"] * len(references))[:len(references)]
-    ]
+    raw_tags = req.get("referenceTags") or []
+    if not isinstance(raw_tags, (list, tuple)):
+        raw_tags = []
+    scene_details = req.get("sceneDetails")
+    roles: list[str] = []
+    for index in range(len(references)):
+        tag = raw_tags[index] if index < len(raw_tags) else None
+        if not isinstance(tag, str) or not re.fullmatch(r"@img[1-9]\d*", tag):
+            tag = f"@img{index + 1}"
+        explicit_role = _explicit_image2_reference_role(scene_details, tag)
+        saved_role = raw_roles[index] if index < len(raw_roles) else None
+        role = explicit_role or (
+            saved_role if isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES else "element"
+        )
+        roles.append(role)
+    return roles
 
 
 def text_to_image_identity_locked(req: dict) -> bool:

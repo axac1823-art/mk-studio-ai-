@@ -1,8 +1,8 @@
-// File: C:\Users\Tarek\Desktop\PROJET 5 AI\mks-ai-agregator-main (1)\web\app\api\upscale\route.ts
-import * as entry from '../../../../../app/api/upscale/route.js'
+// File: C:\Users\Tarek\Desktop\PROJET 5 AI\mks-ai-agregator-main (1)\web\app\api\assets\[id]\route.ts
+import * as entry from '../../../../../../app/api/assets/[id]/route.js'
 import type { NextRequest } from 'next/server.js'
 
-type TEntry = typeof import('../../../../../app/api/upscale/route.js')
+type TEntry = typeof import('../../../../../../app/api/assets/[id]/route.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{

@@ -467,9 +467,12 @@ interface WorkspaceAsset {
   generationCreatedAt?: string | null;
 }
 
+type Image2ReferenceRole = "element" | "base" | "style" | "detail";
+
 interface ImageInput {
   id: string;
   tag: string;
+  role?: Image2ReferenceRole;
   name: string;
   previewUrl: string;
   file?: File;
@@ -1314,6 +1317,7 @@ export function Image2Workspace() {
           source: reference.file ? "upload" : "asset",
           assetId: reference.assetId,
           tag: reference.tag,
+          role: reference.role ?? "element",
         }),
       );
       if (reference.file) form.append(`referenceFile_${index}`, reference.file);

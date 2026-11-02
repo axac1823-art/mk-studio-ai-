@@ -1,17 +1,12 @@
 {
   "/api/assets/route": "app/api/assets/route.js",
-  "/api/credits/balance/route": "app/api/credits/balance/route.js",
-  "/api/config/costs/route": "app/api/config/costs/route.js",
-  "/api/models/route": "app/api/models/route.js",
-  "/api/projects/route": "app/api/projects/route.js",
-  "/api/upscale/route": "app/api/upscale/route.js",
-  "/api/generate/[id]/route": "app/api/generate/[id]/route.js",
   "/api/generate/route": "app/api/generate/route.js",
+  "/api/credits/balance/route": "app/api/credits/balance/route.js",
+  "/api/projects/route": "app/api/projects/route.js",
+  "/api/assets/[id]/route": "app/api/assets/[id]/route.js",
   "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
+  "/api/config/costs/route": "app/api/config/costs/route.js",
   "/api/models/[feature]/route": "app/api/models/[feature]/route.js",
-  "/app/projects/page": "app/app/projects/page.js",
-  "/app/image2/page": "app/app/image2/page.js",
-  "/app/ai-video-generator/page": "app/app/ai-video-generator/page.js",
-  "/app/upscale/page": "app/app/upscale/page.js",
-  "/app/video-upscaler/page": "app/app/video-upscaler/page.js"
+  "/api/generate/[id]/route": "app/api/generate/[id]/route.js",
+  "/app/image2/page": "app/app/image2/page.js"
 }

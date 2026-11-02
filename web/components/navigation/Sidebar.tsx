@@ -14,7 +14,6 @@ import {
   Plus,
   Settings,
   Trash2,
-  Type,
   Upload,
   Video,
 } from "lucide-react";

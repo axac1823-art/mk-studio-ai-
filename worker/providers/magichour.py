@@ -170,27 +170,68 @@ def _image_resolution(input_: dict) -> str:
 
 def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
     """Magic Hour image generator, including Image2 reference assets."""
+
+    aspect_ratio = str(
+        input_.get("aspectRatio") or "auto"
+    ).strip()
+
+    allowed_ratios = {"auto", "1:1", "16:9", "9:16"}
+
+    if aspect_ratio not in allowed_ratios:
+        raise ProviderError(
+            f"magichour: unsupported image ratio '{aspect_ratio}'."
+        )
+
+    resolution = _image_resolution(input_)
+
     payload: dict = {
         "name": "renderstudio-image",
         "model": model_id,
         "image_count": 1,
-        "aspect_ratio": str(input_.get("aspectRatio") or "auto"),
-        "resolution": str(input_.get("resolution") or "auto"),
-        "style": {"prompt": str(input_.get("prompt") or "")},
+        "aspect_ratio": aspect_ratio,
+        "resolution": resolution,
+        "style": {
+            "prompt": str(input_.get("prompt") or "")
+        },
     }
+
     images = input_.get("images")
+
     if isinstance(images, list) and images:
         with ThreadPoolExecutor(max_workers=max(1, len(images))) as pool:
             file_paths = list(pool.map(_ensure_file_path, images))
-        payload["assets"] = {"image_file_paths": file_paths}
+
+        payload["assets"] = {
+            "image_file_paths": file_paths
+        }
+
+    logger.info(
+        "Magic Hour image submit: endpoint=generator model=%s "
+        "aspect_ratio=%s resolution=%s reference_count=%d",
+        model_id,
+        aspect_ratio,
+        resolution,
+        len(images) if isinstance(images, list) else 0,
+    )
+
     job = post_json(
         f"{BASE_URL}/v1/ai-image-generator",
         _headers(),
         payload,
     )
+
     job_id = job.get("id")
+
     if not job_id:
-        raise ProviderError("magichour: no image id in submit response")
+        raise ProviderError(
+            "magichour: no image id in submit response"
+        )
+
+    logger.info(
+        "Magic Hour image submitted: endpoint=generator project_id=%s",
+        job_id,
+    )
+
     return _poll_project("image", job_id, timeout_ms)
 
 

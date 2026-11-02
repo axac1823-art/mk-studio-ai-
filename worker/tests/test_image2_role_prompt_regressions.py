@@ -101,3 +101,32 @@ def test_image2_provider_payloads_share_the_manifest_image_order():
     assert magichour_text_to_image_input(req)["images"] == expected
     assert openai_text_to_image_input(req)["images"] == expected
     assert google_text_to_image_input(req)["images"] == expected
+
+
+def test_explicit_prompt_roles_override_saved_metadata():
+    req = {
+        "referenceUrls": ["element.png", "base.png", "style.png", "detail.png"],
+        "referenceTags": ["@img1", "@img2", "@img3", "@img4"],
+        "referenceRoles": ["detail", "element", "element", "style"],
+        "sceneDetails": (
+            "Use @img1 as the object to insert into @img2. "
+            "Use @img3 for lighting and color treatment only. "
+            "Borrow the material texture from @img4, "
+            "but do not copy its objects or background."
+        ),
+    }
+    assert normalize_image2_reference_roles(req) == ["element", "base", "style", "detail"]
+
+
+def test_arabic_prompt_roles_are_recognized():
+    req = {
+        "referenceUrls": ["element.png", "background.png", "lighting.png", "material.png"],
+        "referenceTags": ["@img1", "@img2", "@img3", "@img4"],
+        "referenceRoles": ["detail", "element", "element", "style"],
+        "sceneDetails": (
+            "استخدم @img1 كعنصر لإدخاله في @img2. "
+            "استخدم @img3 للإضاءة والألوان فقط. "
+            "استفد من خامة @img4 فقط."
+        ),
+    }
+    assert normalize_image2_reference_roles(req) == ["element", "base", "style", "detail"]

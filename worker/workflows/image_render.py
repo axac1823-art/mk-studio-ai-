@@ -74,38 +74,6 @@ def _infer_aspect_ratio(value: str | None) -> str:
         return "4:3"
 
 
-def _crop_stored_image_to_ratio(storage_path: str, aspect_ratio: str) -> None:
-    """Center-crop stored image pixels to the chosen ratio without upscaling."""
-    ratios = {"1:1": 1.0, "16:9": 16 / 9, "9:16": 9 / 16, "4:3": 4 / 3, "3:4": 3 / 4}
-    target_ratio = ratios.get(aspect_ratio)
-    if target_ratio is None:
-        return
-    path = storage.resolve(storage_path)
-    with Image.open(path) as original:
-        image = original.copy()
-        image_format = original.format or "PNG"
-    current_ratio = image.width / image.height
-    if abs(current_ratio - target_ratio) < 0.002:
-        return
-    if current_ratio > target_ratio:
-        crop_width = max(1, min(image.width, round(image.height * target_ratio)))
-        left = (image.width - crop_width) // 2
-        image = image.crop((left, 0, left + crop_width, image.height))
-    else:
-        crop_height = max(1, min(image.height, round(image.width / target_ratio)))
-        top = (image.height - crop_height) // 2
-        image = image.crop((0, top, image.width, top + crop_height))
-    options = {"format": image_format}
-    if image_format.upper() in {"JPEG", "JPG"}:
-        if image.mode not in {"RGB", "L"}:
-            image = image.convert("RGB")
-        options["quality"] = 95
-        options["optimize"] = True
-    elif image_format.upper() == "WEBP":
-        options["quality"] = 95
-    image.save(path, **options)
-
-
 def run(job: dict) -> None:
     """Exécute le job image : prompt serveur -> candidats (filtré par modèle
     sélectionné si fourni) -> stockage des sorties -> assets + completion.
@@ -132,12 +100,33 @@ def run(job: dict) -> None:
             if isinstance(style_reference, str) and style_reference:
                 req["styleReferenceUrl"] = _image_reference_to_data_uri(style_reference)
             if feature == "text_to_image":
+                # OpenAI and Google need local primary assets converted just
+                # like tagged references before they build provider payloads.
+                primary_image = req.get("imageUrl")
+                if isinstance(primary_image, str) and primary_image.strip():
+                    req["imageUrl"] = _image_reference_to_data_uri(primary_image)
                 requested_ratio = input_.get("aspectRatio") or "4:3"
                 if requested_ratio == "auto":
                     source_for_ratio = req.get("imageUrl")
                     if not source_for_ratio:
                         references_for_ratio = req.get("referenceUrls") or []
-                        source_for_ratio = references_for_ratio[0] if references_for_ratio else None
+                        reference_roles = input_.get("referenceRoles") or []
+                        base_index = next(
+                            (index for index, role in enumerate(reference_roles) if role == "base"),
+                            None,
+                        )
+                        element_index = next(
+                            (index for index, role in enumerate(reference_roles) if role == "element"),
+                            None,
+                        )
+                        source_index = base_index if base_index is not None else element_index
+                        if source_index is None:
+                            source_index = 0 if references_for_ratio else None
+                        source_for_ratio = (
+                            references_for_ratio[source_index]
+                            if source_index is not None and source_index < len(references_for_ratio)
+                            else None
+                        )
                     req["resolvedAspectRatio"] = _infer_aspect_ratio(source_for_ratio)
                 else:
                     req["resolvedAspectRatio"] = requested_ratio
@@ -228,21 +217,12 @@ def run(job: dict) -> None:
             output_validator = None
             if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
                 expected_frame = input_.get("aspectRatio") or "4:3"
-                def validate_candidate_frame(urls, candidate):
-                    # Flux 2 Klein at 640px can return 384x640 for 9:16.
-                    # Allow this small provider-specific deviation; the stored
-                    # output is center-cropped to the exact frame below.
-                    tolerance = 0.075 if candidate.provider == "magichour" else 0.025
-                    validate_image_output_frame(urls, expected_frame, tolerance=tolerance)
-
-                output_validator = validate_candidate_frame
+                output_validator = lambda urls, _candidate: validate_image_output_frame(urls, expected_frame)
             outcome = execute_with_fallback(feature, candidates, req, output_validator=output_validator)
 
             result_asset_id = None
             for url in outcome["output_urls"]:
                 path, _ext = store_output(url)
-                if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
-                    _crop_stored_image_to_ratio(path, input_.get("aspectRatio") or "4:3")
                 asset_id = insert_asset(conn, job, "image", path)
                 result_asset_id = result_asset_id or asset_id
 
