@@ -506,44 +506,104 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
             lines.append(f"{tag} is content/reference image {index + 1}; use it as directed by the prompt.")
 
     if is_image2:
-        has_composition = has_primary or any(role in {"element", "base"} for role in roles)
+        base_tags = [
+            tag for tag, role in zip(tags, roles)
+            if role == "base"
+        ]
+
+        element_tags = [
+            tag for tag, role in zip(tags, roles)
+            if role == "element"
+        ]
+
         guidance: list[str] = []
-        if has_composition:
+
+        if base_tags:
             guidance.append(
-                "COMPOSITING TASK: treat the Base as the destination scene and preserve its architecture, camera, "
-                "perspective, background and framing. Place each Element at the location requested by the user, "
-                "at believable scale and perspective. Match scene lighting, contact shadows, reflections and occlusion "
-                "so the Element belongs in the Base. Preserve the Element's identity and do not redesign the Base."
+                "BASE SCENE LOCK: Treat "
+                + ", ".join(base_tags)
+                + " as the actual destination scene. Preserve its existing "
+                "architecture, geometry, proportions, camera viewpoint, "
+                "perspective, background and composition. Do not redesign "
+                "or replace the destination scene."
             )
-        if has_primary or "element" in roles:
+
+        if has_primary or element_tags:
+            if base_tags:
+                guidance.append(
+                    "PRECISE ELEMENT COMPOSITING: Integrate the actual Element "
+                    "source into the Base scene at the location specified by "
+                    "the user. Preserve its original silhouette, proportions, "
+                    "recognizable components, materials, colors and details. "
+                    "Adapt only its position, scale, perspective and lighting "
+                    "integration as required by the destination scene."
+                )
+            else:
+                guidance.append(
+                    "ELEMENT-LED SCENE CREATION: No Base image was supplied. "
+                    "Build the destination environment from the user's written "
+                    "architectural description. Use the actual Element source "
+                    "as the identity reference. Preserve its silhouette, "
+                    "proportions, recognizable components, materials, colors "
+                    "and distinctive details. Do not replace it with a similar "
+                    "newly invented object."
+                )
+
+        if has_primary or element_tags:
             guidance.append(
-                "ELEMENT IDENTITY: retain the exact recognizable object and its defining proportions, components, materials "
-                "and details while adapting only its scene integration."
+                "IDENTITY PROTECTION: Do not redesign, simplify, deform, "
+                "duplicate or remove defining features of the original Element. "
+                "Lighting, shadows, reflections and perspective adaptation "
+                "must not change its recognizable identity."
             )
+
         if has_style:
             guidance.append(
-                "STYLE ROLE: @style controls visual treatment only; it must not replace the Base, Element or requested scene."
+                "STYLE ROLE: @style controls visual treatment only. "
+                "It must not replace the Base, Element or requested scene."
             )
-        style_tags = [tag for tag, role in zip(tags, roles) if role == "style"]
+
+        style_tags = [
+            tag for tag, role in zip(tags, roles)
+            if role == "style"
+        ]
+
         if style_tags:
             guidance.append(
-                "STYLE ROLE: use " + ", ".join(style_tags) + " only for lighting, palette and rendering treatment. "
+                "STYLE REFERENCES: Use "
+                + ", ".join(style_tags)
+                + " only for lighting, palette and rendering treatment. "
                 "Do not copy their subjects, architecture or backgrounds."
             )
-        detail_tags = [tag for tag, role in zip(tags, roles) if role == "detail"]
+
+        detail_tags = [
+            tag for tag, role in zip(tags, roles)
+            if role == "detail"
+        ]
+
         if detail_tags:
             guidance.append(
-                "DETAIL ROLE: borrow only the specifically requested material, texture or surface detail from "
+                "DETAIL REFERENCES: Borrow only the specifically requested "
+                "material, texture, pattern or surface detail from "
                 + ", ".join(detail_tags)
-                + "; do not import their unrelated objects or backgrounds."
+                + ". Do not import their unrelated objects or backgrounds."
             )
+
         if references:
-            guidance.append("CONTENT REFERENCE RULE: Follow each @img tag and its resolved role exactly.")
+            guidance.append(
+                "REFERENCE MAPPING: Follow every @img label and its declared "
+                "role exactly. Never exchange the role or identity of two "
+                "different reference images."
+            )
+
         instructions = " ".join(guidance)
     else:
-        instructions = "REFERENCE INPUT RULE: the @img labels identify their corresponding content/reference images."
-    return prompt + "\n\n" + instructions + "\n" + "\n".join(lines)
+        instructions = (
+            "REFERENCE INPUT RULE: the @img labels identify their "
+            "corresponding content/reference images."
+        )
 
+    return prompt + "\n\n" + instructions + "\n" + "\n".join(lines)
 
 def build_print_render_prompt(scene_details=None, scene_type_id=None, material_id=None, lighting_id=None) -> str:
     """Fonction 1 — Screenshot-to-Render."""

@@ -16,12 +16,17 @@ import storage
 from PIL import Image
 from catalog import (
     MODEL_CATALOG,
+    candidate_resolutions,
     image2_identity_object_count,
     normalize_image2_reference_roles,
     text_to_image_identity_locked,
     text_to_image_images,
 )
-from frame_ratio import filter_candidates_by_frame, validate_image_output_frame
+from frame_ratio import (
+    filter_candidates_by_frame,
+    normalize_image_output_frame,
+    validate_image_output_frame,
+)
 from providers import is_provider_configured
 from prompts import add_image_reference_map, build_feature_prompt
 from workflows.common import (
@@ -181,15 +186,15 @@ def run(job: dict) -> None:
                     (candidate for candidate in feature_candidates if candidate.key == selected_model),
                     None,
                 )
-                if selected_candidate and requested_resolution not in selected_candidate.resolutions:
-                    supported = ", ".join(selected_candidate.resolutions) or "none reported"
+                if selected_candidate and requested_resolution not in candidate_resolutions(selected_candidate):
+                    supported = ", ".join(candidate_resolutions(selected_candidate)) or "none reported"
                     raise ValueError(
                         f"{selected_candidate.name} does not support {requested_resolution}. "
                         f"Supported resolutions: {supported}."
                     )
                 feature_candidates = [
                     candidate for candidate in feature_candidates
-                    if requested_resolution in candidate.resolutions
+                    if requested_resolution in candidate_resolutions(candidate)
                 ]
                 if not feature_candidates:
                     raise ValueError(
@@ -231,10 +236,18 @@ def run(job: dict) -> None:
                     input_.get("model"),
                 )
             output_validator = None
+            output_transformer = None
             if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
                 expected_frame = input_.get("aspectRatio") or "4:3"
+                output_transformer = lambda urls, _candidate: normalize_image_output_frame(urls, expected_frame)
                 output_validator = lambda urls, _candidate: validate_image_output_frame(urls, expected_frame)
-            outcome = execute_with_fallback(feature, candidates, req, output_validator=output_validator)
+            outcome = execute_with_fallback(
+                feature,
+                candidates,
+                req,
+                output_validator=output_validator,
+                output_transformer=output_transformer,
+            )
 
             result_asset_id = None
             for url in outcome["output_urls"]:

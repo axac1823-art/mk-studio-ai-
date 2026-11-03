@@ -84,7 +84,7 @@ const MAX_PRIMARY_SIZE = 10 * 1024 * 1024;
 const MAX_REFERENCE_SIZE = MAX_REFERENCE_SIZE_BYTES;
 const ASPECT_RATIOS: AspectRatio[] = ["1:1", "16:9", "9:16", "4:3", "3:4"];
 const IMAGE2_ADDITIONAL_ASPECT_RATIOS = ["3:2", "2:3", "21:9"];
-const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
+const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K", "640px"];
 const QUALITY_TIERS: QualityTier[] = ["standard", "pro"];
 
 type CameraPromptState = {
@@ -350,6 +350,13 @@ export async function POST(req: NextRequest) {
         ? (rawAspect as AspectRatio)
         : "1:1";
   const rawResolution = form.get("resolution");
+  if (
+    isTextToImage &&
+    rawResolution !== null &&
+    !RESOLUTIONS.includes(rawResolution as Resolution)
+  ) {
+    return NextResponse.json({ error: "Unsupported output resolution." }, { status: 400 });
+  }
   const resolution: Resolution = RESOLUTIONS.includes(rawResolution as Resolution)
     ? (rawResolution as Resolution)
     : "1K";

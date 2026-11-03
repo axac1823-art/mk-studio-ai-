@@ -175,7 +175,7 @@ def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
         input_.get("aspectRatio") or "auto"
     ).strip()
 
-    allowed_ratios = {"auto", "1:1", "16:9", "9:16"}
+    allowed_ratios = {"auto", "1:1", "16:9", "9:16", "4:3", "3:2", "2:3"}
 
     if aspect_ratio not in allowed_ratios:
         raise ProviderError(
@@ -188,12 +188,17 @@ def _run_image_generator(model_id: str, input_: dict, timeout_ms: int) -> str:
         "name": "renderstudio-image",
         "model": model_id,
         "image_count": 1,
-        "aspect_ratio": aspect_ratio,
         "resolution": resolution,
         "style": {
             "prompt": str(input_.get("prompt") or "")
         },
     }
+
+    # Magic Hour's generator API does not accept "auto" as an aspect ratio.
+    # Omitting the field invokes its documented default (1:1); explicit UI
+    # ratios are passed through unchanged.
+    if aspect_ratio != "auto":
+        payload["aspect_ratio"] = aspect_ratio
 
     images = input_.get("images")
 

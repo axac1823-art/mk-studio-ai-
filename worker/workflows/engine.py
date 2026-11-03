@@ -75,7 +75,14 @@ def order_text_to_image_candidates(
     return [candidate for _, candidate in sorted(indexed, key=rank)]
 
 
-def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, adapter_override=None, output_validator=None) -> dict:
+def execute_with_fallback(
+    feature: str,
+    candidates: list[Candidate],
+    req: dict,
+    adapter_override=None,
+    output_validator=None,
+    output_transformer=None,
+) -> dict:
     """Essaie les candidats dans l'ordre. Retourne
     {"winner": Candidate, "output_urls": [...], "attempts": [...]} ou lève
     AllModelsFailedError avec la trace complète.
@@ -106,6 +113,8 @@ def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, 
             output_urls = candidate.extract_output(data)
             if not output_urls:
                 raise ValueError("provider returned an empty output")
+            if output_transformer is not None:
+                output_urls = output_transformer(output_urls, candidate)
             if output_validator is not None:
                 output_validator(output_urls, candidate)
             attempts.append(

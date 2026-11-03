@@ -8,6 +8,7 @@ from catalog import (
     MODEL_CATALOG,
     google_text_to_image_input,
     image2_identity_object_count,
+    candidate_resolutions,
     magichour_text_to_image_input,
     normalize_image2_reference_roles,
     openai_text_to_image_input,

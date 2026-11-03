@@ -452,6 +452,18 @@ type Image2ModelOption = ModelOption & {
   service?: string;
 };
 
+const MAGIC_HOUR_IMAGE2_FRAME_RATIOS = ["1:1", "16:9", "9:16"] as const;
+
+function supportedImage2FrameRatios(model: Image2ModelOption): string[] {
+  const modelRatios = model.frameRatios ?? [];
+  if (model.provider?.toLowerCase() !== "magichour") return modelRatios;
+  return modelRatios.filter((ratio) =>
+    MAGIC_HOUR_IMAGE2_FRAME_RATIOS.includes(
+      ratio as (typeof MAGIC_HOUR_IMAGE2_FRAME_RATIOS)[number],
+    ),
+  );
+}
+
 interface WorkspaceAsset {
   id: string;
   type: "image" | "video";
@@ -1128,8 +1140,8 @@ export function Image2Workspace() {
   const availableAspectRatios = useMemo<Image2AspectRatio[]>(() => {
     if (modelOptions.length === 0) return [...IMAGE2_ASPECT_RATIOS];
     return IMAGE2_ASPECT_RATIOS.filter(
-      (ratio) => ratio === "auto" || frameCapabilityModels.some(
-        (model) => (model.frameRatios ?? []).includes(ratio),
+      (ratio) => ratio === "auto" || frameCapabilityModels.some((model) =>
+        supportedImage2FrameRatios(model).includes(ratio),
       ),
     );
   }, [modelOptions.length, frameCapabilityModels]);
@@ -1161,6 +1173,12 @@ export function Image2Workspace() {
       setResolution(availableResolutions[0] ?? "1K");
     }
   }, [availableResolutions, resolution]);
+
+  useEffect(() => {
+    if (!availableAspectRatios.includes(aspectRatio)) {
+      setAspectRatio("auto");
+    }
+  }, [availableAspectRatios, aspectRatio]);
   // Résolution locale du mode Auto : le serveur choisit le candidat
   // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
   // catalogue en tie-break). On reproduit cette logique ici pour afficher
@@ -1191,7 +1209,7 @@ export function Image2Workspace() {
     ? isCompatibleWithSelectedInputs(selectedModelOption)
     : !selectedModel;
   const selectedModelCanHandleFrame = selectedModelOption
-    ? aspectRatio === "auto" || (selectedModelOption.frameRatios ?? []).includes(aspectRatio)
+    ? aspectRatio === "auto" || supportedImage2FrameRatios(selectedModelOption).includes(aspectRatio)
     : true;
   const canGenerate =
     prompt.trim().length > 0 &&
@@ -1290,6 +1308,14 @@ const handleModelSelection = (key: string) => {
   const model = modelOptions.find((item) => item.key === key);
 
   setSelectedModel(key);
+
+  if (
+    model &&
+    aspectRatio !== "auto" &&
+    !supportedImage2FrameRatios(model).includes(aspectRatio)
+  ) {
+    setAspectRatio("auto");
+  }
 
   if (model?.resolutions?.length) {
     const supportedResolutions = model.resolutions;
@@ -2290,18 +2316,16 @@ if (
               </button>
               {aspectPickerOpen && (
                 <div className="absolute bottom-10 left-0 z-50 w-40 rounded-xl border border-white/[0.12] bg-[#2b2c32] p-1.5 shadow-2xl">
-                  {IMAGE2_ASPECT_RATIOS.map((ratio) => (
+                  {availableAspectRatios.map((ratio) => (
                     <button
                       key={ratio}
                       type="button"
-                      disabled={!availableAspectRatios.includes(ratio)}
-                      title={availableAspectRatios.includes(ratio) ? undefined : "Not supported by the selected model or configured Auto models."}
                       onClick={() => {
                         setAspectRatio(ratio);
                         setAspectPickerOpen(false);
                       }}
                       className={cn(
-                        "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-35",
+                        "flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[10px] transition-colors",
                         ratio === aspectRatio
                           ? "bg-[#aaa7ff]/15 text-[#d1cfff]"
                           : "text-[#d4d4db] hover:bg-white/[0.06]",
@@ -3515,7 +3539,7 @@ if (
                     const provider = providerLabel(model.provider, model);
                     const maxRefs = model.maxReferences ?? 0;
                     const fitsReferences = imageInputCount <= maxRefs;
-                    const supportedFrames = model.frameRatios ?? [];
+                    const supportedFrames = supportedImage2FrameRatios(model);
                     const supportsCurrentFrame = aspectRatio === "auto" || supportedFrames.includes(aspectRatio);
                     return (
                       <button

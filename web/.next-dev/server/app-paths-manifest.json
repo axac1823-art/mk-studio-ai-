@@ -1,8 +1,9 @@
 {
+  "/page": "app/page.js",
   "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
   "/api/generate/route": "app/api/generate/route.js",
   "/api/generate/[id]/route": "app/api/generate/[id]/route.js",
-  "/app/projects/page": "app/app/projects/page.js",
-  "/app/image2/page": "app/app/image2/page.js",
-  "/(auth)/login/page": "app/(auth)/login/page.js"
+  "/api/credits/balance/route": "app/api/credits/balance/route.js",
+  "/api/assets/route": "app/api/assets/route.js",
+  "/app/image2/page": "app/app/image2/page.js"
 }

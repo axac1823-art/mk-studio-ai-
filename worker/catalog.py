@@ -68,7 +68,13 @@ class Candidate:
 
 
 # --- Helpers d'exposition des modèles disponibles ---
-
+def candidate_resolutions(candidate: Candidate) -> tuple[str, ...]:
+    """Expose the verified resolution limit for the pinned Magic Hour model."""
+    if candidate.key != "magichour-flux-2-klein-text":
+        return candidate.resolutions
+    # Flux 2 Klein is currently validated only at this size by the adapter.
+    # Account tier alone must not make unsupported resolutions selectable.
+    return ("640px",)
 def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]:
     """Retourne les candidats d'une feature, prêts à être affichés dans un
     sélecteur utilisateur.
@@ -93,7 +99,7 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "maxReferences": c.max_references,
             "image2IdentityPriority": c.image2_identity_priority,
             "supportsStyleReference": c.supports_style_reference,
-            "resolutions": c.resolutions,
+            "resolutions": candidate_resolutions(c),
             "frameRatios": list(c.frame_ratios),
             "configured": is_provider_configured(c.provider),
             "tiers": c.tiers,
@@ -365,11 +371,15 @@ def normalize_image2_reference_roles(req: dict) -> list[str]:
         tag = raw_tags[index] if index < len(raw_tags) else None
         if not isinstance(tag, str) or not re.fullmatch(r"@img[1-9]\d*", tag):
             tag = f"@img{index + 1}"
-        explicit_role = _explicit_image2_reference_role(scene_details, tag)
         saved_role = raw_roles[index] if index < len(raw_roles) else None
-        role = explicit_role or (
-            saved_role if isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES else "element"
-        )
+
+        if isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES:
+            # The role selected in the Image2 UI is authoritative.
+            role = saved_role
+        else:
+            # Keep prompt inference only for legacy requests without role metadata.
+            role = _explicit_image2_reference_role(scene_details, tag) or "element"
+
         roles.append(role)
     return roles
 
@@ -407,11 +417,11 @@ def magichour_text_to_image_input(req: dict) -> dict:
     """Magic Hour Flux 2 Klein: preserve the requested native frame ratio."""
     ratio = req.get("aspectRatio") or "auto"
 
-    supported_ratios = {"auto", "1:1", "16:9", "9:16"}
+    supported_ratios = {"auto", "1:1", "16:9", "9:16", "4:3", "3:2", "2:3"}
     if ratio not in supported_ratios:
         raise ValueError(
             f"Magic Hour Flux 2 Klein does not support {ratio}; "
-            "use auto, 1:1, 16:9, or 9:16."
+            "use auto, 1:1, 16:9, 9:16, 4:3, 3:2, or 2:3."
         )
 
     images = text_to_image_images(req)
@@ -942,7 +952,7 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
         max_identity_objects=1,
         image2_identity_priority=50,
     ),
-    # The current Flux 2 Klein generator endpoint exposes only these three ratios.
+    # Les ratios natifs documentés de Flux 2 Klein dans Magic Hour.
     Candidate(
         "magichour-flux-2-klein-text",
         "Magic Hour Flux 2 Klein",
@@ -958,7 +968,7 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
         extract_image_urls,
         supports_style_reference=True,
         resolutions=("640px",),
-        frame_ratios=("1:1", "16:9", "9:16"),
+        frame_ratios=("1:1", "16:9", "9:16", "4:3", "3:2", "2:3"),
         max_identity_objects=5,
         image2_identity_priority=100,
     ),
