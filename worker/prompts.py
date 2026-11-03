@@ -471,9 +471,9 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
     lines: list[str] = []
     if has_style:
         lines.append(
-            "HIGHEST-PRIORITY STYLE TRANSFER: the separate Style reference is provider input 1 (@style). "
-            "Use it only for palette, lighting, contrast, "
-            "texture and rendering medium; never copy its subject, objects, architecture or scene."
+            "The separate Style reference is input 1 (@style), an aesthetic guide only. Match its actual "
+            "visual signature—tonal range, exposure, contrast, palette, color temperature, texture and rendering "
+            "medium—without copying its subject, objects, architecture or composition unless requested."
         )
     if has_primary:
         provider_index = 2 if has_style else 1
@@ -483,120 +483,29 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         )
 
     role_descriptions = {
-        "element": "Element source: integrate this actual object and preserve its identity, silhouette, proportions, materials and distinctive details.",
-        "base": "BASE SCENE: preserve this destination's architecture, background, camera, perspective and composition.",
-        "style": "Style reference only: borrow lighting, colors and visual treatment; do not copy its subject or background.",
-        "detail": "Detail reference only: borrow only the requested material, texture or detail; do not copy its objects or background.",
-    }
-    role_labels = {
-        "element": "element reference image",
-        "base": "base scene",
-        "style": "Style reference only",
-        "detail": "detail reference image",
+        "element": "element reference; use its subject or details as directed by the user's prompt",
+        "base": "destination/base scene; preserve it except for changes requested by the user",
+        "style": "style reference only; use its visual treatment, not its subject or composition",
+        "detail": "detail reference; use its material or details as directed by the user's prompt",
     }
     for index, tag in enumerate(tags):
         role = roles[index] if index < len(roles) else "element"
         provider_index = index + 1 + int(has_style) + int(has_primary)
         if is_image2:
             lines.append(
-                f"{tag} is {role_labels[role]} {provider_index} (provider input {provider_index}, "
-                f"role={role.upper()}). {role_descriptions[role]}"
+                f"{tag} is input image {provider_index} (role={role.upper()}): {role_descriptions[role]}."
             )
         else:
             lines.append(f"{tag} is content/reference image {index + 1}; use it as directed by the prompt.")
 
     if is_image2:
-        base_tags = [
-            tag for tag, role in zip(tags, roles)
-            if role == "base"
-        ]
-
-        element_tags = [
-            tag for tag, role in zip(tags, roles)
-            if role == "element"
-        ]
-
-        guidance: list[str] = []
-
-        if base_tags:
-            guidance.append(
-                "BASE SCENE LOCK: Treat "
-                + ", ".join(base_tags)
-                + " as the actual destination scene. Preserve its existing "
-                "architecture, geometry, proportions, camera viewpoint, "
-                "perspective, background and composition. Do not redesign "
-                "or replace the destination scene."
-            )
-
-        if has_primary or element_tags:
-            if base_tags:
-                guidance.append(
-                    "PRECISE ELEMENT COMPOSITING: Integrate the actual Element "
-                    "source into the Base scene at the location specified by "
-                    "the user. Preserve its original silhouette, proportions, "
-                    "recognizable components, materials, colors and details. "
-                    "Adapt only its position, scale, perspective and lighting "
-                    "integration as required by the destination scene."
-                )
-            else:
-                guidance.append(
-                    "ELEMENT-LED SCENE CREATION: No Base image was supplied. "
-                    "Build the destination environment from the user's written "
-                    "architectural description. Use the actual Element source "
-                    "as the identity reference. Preserve its silhouette, "
-                    "proportions, recognizable components, materials, colors "
-                    "and distinctive details. Do not replace it with a similar "
-                    "newly invented object."
-                )
-
-        if has_primary or element_tags:
-            guidance.append(
-                "IDENTITY PROTECTION: Do not redesign, simplify, deform, "
-                "duplicate or remove defining features of the original Element. "
-                "Lighting, shadows, reflections and perspective adaptation "
-                "must not change its recognizable identity."
-            )
-
-        if has_style:
-            guidance.append(
-                "STYLE ROLE: @style controls visual treatment only. "
-                "It must not replace the Base, Element or requested scene."
-            )
-
-        style_tags = [
-            tag for tag, role in zip(tags, roles)
-            if role == "style"
-        ]
-
-        if style_tags:
-            guidance.append(
-                "STYLE REFERENCES: Use "
-                + ", ".join(style_tags)
-                + " only for lighting, palette and rendering treatment. "
-                "Do not copy their subjects, architecture or backgrounds."
-            )
-
-        detail_tags = [
-            tag for tag, role in zip(tags, roles)
-            if role == "detail"
-        ]
-
-        if detail_tags:
-            guidance.append(
-                "DETAIL REFERENCES: Borrow only the specifically requested "
-                "material, texture, pattern or surface detail from "
-                + ", ".join(detail_tags)
-                + ". Do not import their unrelated objects or backgrounds."
-            )
-
-        if references:
-            guidance.append(
-                "REFERENCE MAPPING: Follow every @img label and its declared "
-                "role exactly. Never exchange the role or identity of two "
-                "different reference images."
-            )
-
-        instructions = " ".join(guidance)
+        instructions = (
+            "CONTENT REFERENCE RULE: Follow the user's written prompt and each image's selected role to decide "
+            "what to preserve, integrate or borrow. Preserve an Element's recognizable identity and the Base scene's "
+            "architecture and viewpoint when those roles are selected. Style and Detail references do not become "
+            "scene subjects. Do not impose default daylight, high-key exposure, warm grading, gloss or another "
+            "unrequested visual treatment."
+        )
     else:
         instructions = (
             "REFERENCE INPUT RULE: the @img labels identify their "
@@ -1222,39 +1131,20 @@ def build_text_to_image_prompt(
 
     parts = [
         (
-            "Create a coherent architectural image that follows the user's "
-            "exact subject, design intention, composition, camera, materials, "
-            "colors, lighting and requested visual medium. Do not invent "
-            "unrequested architectural or decorative elements."
+            "Create the subject and scene described by the user as a coherent, intentional image. Preserve explicit choices for "
+            "subject, composition, camera, materials, palette, lighting, time of day, mood and visual medium. Do not assume an "
+            "unrequested style or lighting setup."
         ),
         (
-            "ARCHITECTURAL QUALITY: maintain believable geometry, scale, "
-            "perspective, material response, surface roughness, texture detail, "
-            "natural illumination, realistic shadow behavior and consistent "
-            "spatial relationships. Use controlled exposure, balanced contrast, "
-            "clean edges and a deliberate visual hierarchy."
-        ),
-        (
-            "If no visual medium is specified, default to premium "
-            "photorealistic architectural visualization. If the user selects "
-            "an illustration, sketch, conceptual or other visual medium, "
-            "respect that medium instead of forcing photorealism."
+            "Maintain internal visual consistency: believable proportions where relevant, coherent perspective, consistent object "
+            "identity, intentional detail hierarchy and clean rendering appropriate to the requested medium."
         ),
     ]
 
     if has_composition_inputs:
         parts.append(
-            "IMAGE COMPOSITION TASK: use each supplied content image according "
-            "to its declared role. Preserve the Base scene and/or actual Element "
-            "identity as applicable. The user's description controls placement, "
-            "scene contents and requested changes."
-        )
-    if preserve_element_identity:
-        parts.append(
-            "ELEMENT IDENTITY: preserve the actual source object, including "
-            "its silhouette, proportions, distinctive components, materials, "
-            "textures and recognizable details. Do not substitute a merely "
-            "similar object or alter its defining features."
+            "Use each supplied content image according to its selected role and the user's written direction. The user's description "
+            "controls placement, scene contents and requested changes. Preserve recognizable source identity where relevant."
         )
     if has_reference_images and not has_composition_inputs:
         parts.append(
@@ -1266,6 +1156,11 @@ def build_text_to_image_prompt(
     description = _sanitize_scene_details(scene_details)
     if description:
         parts.append(description)
+
+    if preserve_element_identity and not has_composition_inputs:
+        parts.append(
+            "Preserve the recognizable identity and defining proportions of the supplied Element when the user's prompt asks to use it."
+        )
 
     environment = build_weather_season_prompt(weather, season)
     if environment:
