@@ -25,10 +25,7 @@ from catalog import (
     text_to_image_identity_locked,
     text_to_image_images,
 )
-from frame_ratio import (
-    normalize_image_output_frame,
-    validate_image_output_frame,
-)
+from frame_ratio import normalize_image_output_frame, validate_image_output_frame
 from providers import is_provider_configured
 from providers.http_helpers import get_bytes
 from prompts import add_image_reference_map, build_feature_prompt
@@ -149,16 +146,31 @@ def run(job: dict) -> None:
                 if isinstance(primary_image, str) and primary_image.strip():
                     req["imageUrl"] = _image_reference_to_data_uri(primary_image)
 
-                requested_ratio = input_.get("aspectRatio") or "4:3"
+            requested_ratio = input_.get("aspectRatio") or "4:3"
 
-                if requested_ratio == "auto":
-                    # Base owns the destination scene frame. If there is no
-                    # Base, use the primary image, then the first Element.
-                    # Style and Detail references never determine the frame.
-                    frame_reference = image2_frame_reference(req)
-                    req["resolvedAspectRatio"] = _infer_aspect_ratio(frame_reference)
+            if requested_ratio == "auto":
+                frame_reference = image2_frame_reference(req)
+
+                if frame_reference:
+                    # A real destination frame always has priority.
+                    req["resolvedAspectRatio"] = _infer_aspect_ratio(
+                        frame_reference
+                    )
+
+                elif (
+                    input_.get("model") == "magichour-flux-2-klein-text"
+                    and not text_to_image_images(input_)
+                ):
+                    # Magic Hour text-only Generator defaults to square.
+                    # Keep Auto compatible with its native output frame.
+                    req["resolvedAspectRatio"] = "1:1"
+
                 else:
-                    req["resolvedAspectRatio"] = requested_ratio
+                    # Preserve the existing project default for other cases.
+                    req["resolvedAspectRatio"] = _infer_aspect_ratio(None)
+
+            else:
+                req["resolvedAspectRatio"] = requested_ratio
 
             if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
                 # Gallery assets may be local worker storage URLs.
@@ -321,7 +333,18 @@ def run(job: dict) -> None:
                 )
 
             output_validator = None
-            output_transformer = None
+
+            if feature == "text_to_image":
+                expected_frame = req.get("resolvedAspectRatio") or "4:3"
+
+                # Validate the provider's native output.
+                # Never crop, pad, resize, or rewrite the generated image.
+                output_validator = (
+                    lambda urls, _candidate: validate_image_output_frame(
+                        urls,
+                        expected_frame,
+                    )
+                )
 
             if feature == "text_to_image":
                 expected_frame = req.get("resolvedAspectRatio") or "4:3"
@@ -346,7 +369,6 @@ def run(job: dict) -> None:
                 candidates,
                 req,
                 output_validator=output_validator,
-                output_transformer=output_transformer,
             )
 
             result_asset_id = None

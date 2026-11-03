@@ -448,12 +448,28 @@ type Image2ModelOption = ModelOption & {
   tiers?: string[];
   resolutions?: string[];
   frameRatios?: string[];
+
+  // Native text-only Generator ratios, separate from Editor ratios.
+  textToImageGeneratorFrameRatios?: string[];
+
   costPerGeneration?: number;
   service?: string;
 };
 
-function supportedImage2FrameRatios(model: Image2ModelOption): string[] {
-  // The worker catalog is the single source of truth for verified frames.
+function supportedImage2FrameRatios(
+  model: Image2ModelOption,
+  hasInputImages: boolean,
+): string[] {
+  // Text-only requests use the Generator endpoint.
+  // Requests with image inputs use the Editor endpoint.
+  if (
+    !hasInputImages &&
+    Array.isArray(model.textToImageGeneratorFrameRatios) &&
+    model.textToImageGeneratorFrameRatios.length > 0
+  ) {
+    return model.textToImageGeneratorFrameRatios;
+  }
+
   return model.frameRatios ?? [];
 }
 
@@ -1119,10 +1135,13 @@ export function Image2Workspace() {
     [inputCompatibleModels],
   );
   const compatibleConfiguredModels = useMemo(
-    () => configuredInputCompatibleModels.filter(
-      (model) => aspectRatio === "auto" || supportedImage2FrameRatios(model).includes(aspectRatio),
-    ),
-    [configuredInputCompatibleModels, aspectRatio],
+    () =>
+      configuredInputCompatibleModels.filter(
+        (model) =>
+          aspectRatio === "auto" ||
+          supportedImage2FrameRatios(model, imageInputCount > 0).includes(aspectRatio),
+      ),
+    [configuredInputCompatibleModels, aspectRatio, imageInputCount],
   );
   const frameCapabilityModels = useMemo(() => {
     if (selectedModelOption) return [selectedModelOption];
@@ -1134,13 +1153,15 @@ export function Image2Workspace() {
     const supported = modelOptions.length === 0
       ? [...IMAGE2_ASPECT_RATIOS]
       : IMAGE2_ASPECT_RATIOS.filter(
-          (ratio) => ratio === "auto" || frameCapabilityModels.some((model) =>
-            supportedImage2FrameRatios(model).includes(ratio),
-          ),
+          (ratio) =>
+            ratio === "auto" ||
+            frameCapabilityModels.some((model) =>
+              supportedImage2FrameRatios(model, imageInputCount > 0).includes(ratio),
+            ),
         );
     // Keep the current value visible even when the selected model cannot honor it.
     return supported.includes(aspectRatio) ? supported : [aspectRatio, ...supported];
-  }, [modelOptions.length, frameCapabilityModels, aspectRatio]);
+  }, [modelOptions.length, frameCapabilityModels, aspectRatio, imageInputCount]);
   // Show only settings genuinely exposed by the selected model. Auto uses the
   // intersection across configured models that can handle the selected inputs.
   const availableQualityTiers = useMemo(() => {
@@ -1198,7 +1219,11 @@ export function Image2Workspace() {
     ? isCompatibleWithSelectedInputs(selectedModelOption)
     : !selectedModel;
   const selectedModelCanHandleFrame = selectedModelOption
-    ? aspectRatio === "auto" || supportedImage2FrameRatios(selectedModelOption).includes(aspectRatio)
+    ? aspectRatio === "auto" ||
+      supportedImage2FrameRatios(
+        selectedModelOption,
+        imageInputCount > 0,
+      ).includes(aspectRatio)
     : true;
   const selectedModelCanHandleResolution = selectedModelOption
     ? (selectedModelOption.resolutions ?? ["1K"]).includes(resolution)
@@ -1323,24 +1348,27 @@ const handleModelSelection = (key: string) => {
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isBusy) return;
-const supportedResolutions = selectedModelOption?.resolutions ?? ["1K"];
+    const supportedResolutions = selectedModelOption?.resolutions ?? ["1K"];
 
-if (selectedModelOption && !supportedResolutions.includes(resolution)) {
-  setError(
-    `${selectedModelOption.name} does not support ${resolution}. Supported resolutions: ${supportedResolutions.join(", ")}. Your selected resolution was kept unchanged.`,
-  );
-  return;
-}
-if (
-  selectedModelOption &&
-  aspectRatio !== "auto" &&
-  !supportedImage2FrameRatios(selectedModelOption).includes(aspectRatio)
-) {
-  setError(
-    `${selectedModelOption.name} does not support ${aspectRatio}. Your selected frame was kept unchanged. Choose another model or explicitly select a supported frame.`,
-  );
-  return;
-}
+    if (selectedModelOption && !supportedResolutions.includes(resolution)) {
+      setError(
+        `${selectedModelOption.name} does not support ${resolution}. Supported resolutions: ${supportedResolutions.join(", ")}. Your selected resolution was kept unchanged.`,
+      );
+      return;
+    }
+    if (
+      selectedModelOption &&
+      aspectRatio !== "auto" &&
+      !supportedImage2FrameRatios(
+        selectedModelOption,
+        imageInputCount > 0,
+      ).includes(aspectRatio)
+    ) {
+      setError(
+        `${selectedModelOption.name} does not support ${aspectRatio}. Your selected frame was kept unchanged. Choose another model or explicitly select a supported frame.`,
+      );
+      return;
+    }
     if (selectedModelOption && !selectedModelOption.configured) {
       setError(
         "The selected model is not configured on the worker. Choose another model or Auto.",
@@ -3524,7 +3552,7 @@ if (
                     const fitsReferences = imageInputCount <= maxRefs;
                     const fitsIdentityObjects = model.maxIdentityObjects === undefined || identityObjectCount <= model.maxIdentityObjects;
                     const supportsStyle = !hasStyleReference || model.supportsStyleReference === true;
-                    const supportedFrames = supportedImage2FrameRatios(model);
+                    const supportedFrames = supportedImage2FrameRatios(model, imageInputCount > 0);
                     const supportsCurrentFrame = aspectRatio === "auto" || supportedFrames.includes(aspectRatio);
                     const supportsCurrentResolution = (model.resolutions ?? ["1K"]).includes(resolution);
                     return (

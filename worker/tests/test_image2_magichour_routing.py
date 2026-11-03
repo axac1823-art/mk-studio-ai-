@@ -241,46 +241,49 @@ def test_magic_hour_editor_preserves_reference_manifest_order():
     assert result == "https://example.com/editor-output.png"
 
 
-def test_magic_hour_generator_does_not_send_editor_assets():
-    captured = {}
+def test_magic_hour_generator_forwards_all_native_frames():
+    for aspect_ratio in ("1:1", "16:9", "9:16"):
+        captured = {}
 
-    def fake_post_json(url, headers, body, timeout_s=60):
-        captured["url"] = url
-        captured["body"] = body
-        return {"id": "generator-job-1"}
+        def fake_post_json(url, headers, body, timeout_s=60):
+            captured["url"] = url
+            captured["body"] = body
+            return {"id": "generator-job-1"}
 
-    input_ = {
-        "prompt": "A contemporary architectural exterior.",
-        "aspectRatio": "16:9",
-        "resolution": "640px",
-    }
+        input_ = {
+            "prompt": "A contemporary architectural exterior.",
+            "aspectRatio": aspect_ratio,
+            "resolution": "640px",
+        }
 
-    with (
-        patch.object(magichour, "_headers", return_value={}),
-        patch.object(
-            magichour,
-            "post_json",
-            side_effect=fake_post_json,
-        ),
-        patch.object(
-            magichour,
-            "_poll_project",
-            return_value="https://example.com/generated.png",
-        ),
-    ):
-        result = magichour._run_image_generator(
-            "flux-2-klein",
-            input_,
-            timeout_ms=1000,
-        )
+        with (
+            patch.object(magichour, "_headers", return_value={}),
+            patch.object(
+                magichour,
+                "post_json",
+                side_effect=fake_post_json,
+            ),
+            patch.object(
+                magichour,
+                "_poll_project",
+                return_value="https://example.com/generated.png",
+            ),
+        ):
+            result = magichour._run_image_generator(
+                "flux-2-klein",
+                input_,
+                timeout_ms=1000,
+            )
 
-    assert captured["url"].endswith("/v1/ai-image-generator")
-    assert captured["body"]["aspect_ratio"] == "16:9"
-    assert captured["body"]["resolution"] == "640px"
-    assert "assets" not in captured["body"]
+        assert captured["url"].endswith("/v1/ai-image-generator")
 
-    assert result == "https://example.com/generated.png"
+        # The exact selected frame must reach Magic Hour.
+        assert captured["body"]["aspect_ratio"] == aspect_ratio
 
+        # Text-only generation must not send Editor assets.
+        assert "assets" not in captured["body"]
+
+        assert result == "https://example.com/generated.png"
 
 def test_magic_hour_generator_rejects_unsupported_frame_without_conversion():
     input_ = {

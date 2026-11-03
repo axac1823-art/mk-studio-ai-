@@ -499,7 +499,7 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
 
     if has_style_input:
         lines.append(
-            "STYLE INPUT 1 (@style): This is an aesthetic reference only. "
+           "STYLE INPUT 1 (@style): Style reference only. This is an aesthetic reference only. "
             "Extract its actual visual language: palette, tonal range, "
             "exposure, contrast, color temperature, lighting character, "
             "surface treatment, texture and rendering medium. "
@@ -527,7 +527,7 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         ),
         "base": (
             "Base scene / destination image. This is the scene into which "
-            "the requested composition is made. Preserve its architecture, "
+            "the requested composition is made; preserve its architecture, "
             "existing objects, spatial layout, visible geometry, camera "
             "viewpoint, perspective, framing, background and environment "
             "unless the user explicitly requests a change."
@@ -540,7 +540,7 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         "detail": (
             "Detail reference only. Borrow only the requested material, "
             "texture, finish, pattern, surface treatment or small design "
-            "detail. Do not copy its object silhouette, subject, architecture, "
+            "detail; do not copy its object silhouette, subject, architecture, "
             "layout or background."
         ),
     }
