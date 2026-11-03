@@ -1,3 +1,4 @@
+
 """Moteur de fallback partagé par les workflows — port de lib/ai/router.ts.
 
 Deux responsabilités :
@@ -24,7 +25,11 @@ class AllModelsFailedError(Exception):
         self.attempts = attempts
 
 
-def order_candidates(candidates: list[Candidate], quality: str, selected_key: str | None = None) -> list[Candidate]:
+def order_candidates(
+    candidates: list[Candidate],
+    quality: str,
+    selected_key: str | None = None,
+) -> list[Candidate]:
     """Ordonne les candidats.
 
     - `selected_key` (choix utilisateur) retourne UNIQUEMENT ce candidat
@@ -42,7 +47,6 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
     def rank(item):
         index, candidate = item
         tier_match = 0 if quality in candidate.tiers else 1
-        # Auto : coût réel croissant, avec l'ordre catalogue en tie-break.
         return (tier_match, candidate.cost_per_generation, index)
 
     return [candidate for _, candidate in sorted(indexed, key=rank)]
@@ -57,6 +61,7 @@ def order_text_to_image_candidates(
     """Appliquer une priorité de fidélité aux tâches Image2 avec références."""
     if selected_key and selected_key != "auto":
         return [candidate for candidate in candidates if candidate.key == selected_key]
+
     if not prioritize_reference_fidelity:
         return order_candidates(candidates, quality, selected_key)
 
@@ -95,34 +100,56 @@ def execute_with_fallback(
     for candidate in candidates:
         started = time.monotonic()
         try:
-            reference_count = (
-                len(text_to_image_images(req))
-                if feature == "text_to_image"
-                else len(req.get("referenceUrls", []))
-            )
+            if feature == "text_to_image":
+                # Count every actual provider image input:
+                # separate Style image, primary image, and tagged references.
+                reference_count = len(text_to_image_images(req))
+            else:
+                reference_count = len(req.get("referenceUrls", []))
+
             if reference_count > candidate.max_references:
                 raise ValueError(
                     f"candidate accepts {candidate.max_references} reference images; "
                     f"request contains {reference_count}"
                 )
+
             if adapter_override is not None:
                 run = adapter_override
             else:
                 run = PROVIDERS[candidate.provider].generate
+
             # Les candidats insuffisants ont été sautés, les tags gardent ainsi leur image exacte.
             candidate_req = dict(req)
-            data = run(candidate.model_id, candidate.build_input(candidate_req), candidate.timeout_ms)
+            data = run(
+                candidate.model_id,
+                candidate.build_input(candidate_req),
+                candidate.timeout_ms,
+            )
+
             output_urls = candidate.extract_output(data)
             if not output_urls:
                 raise ValueError("provider returned an empty output")
+
             if output_transformer is not None:
                 output_urls = output_transformer(output_urls, candidate)
+
             if output_validator is not None:
                 output_validator(output_urls, candidate)
+
             attempts.append(
-                {"candidateKey": candidate.key, "ok": True, "latencyMs": int((time.monotonic() - started) * 1000)}
+                {
+                    "candidateKey": candidate.key,
+                    "ok": True,
+                    "latencyMs": int((time.monotonic() - started) * 1000),
+                }
             )
-            return {"winner": candidate, "output_urls": output_urls, "attempts": attempts}
+
+            return {
+                "winner": candidate,
+                "output_urls": output_urls,
+                "attempts": attempts,
+            }
+
         except Exception as err:  # noqa: BLE001 — toute erreur = fallback
             # L'erreur réelle reste dans la trace serveur, jamais chez le client.
             attempts.append(

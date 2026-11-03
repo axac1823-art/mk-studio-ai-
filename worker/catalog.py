@@ -1,3 +1,4 @@
+
 """Catalogue feature -> candidats ordonnés — port de lib/ai/catalog.ts.
 
 C'EST ICI, et nulle part ailleurs, qu'on décide quels modèles servent
@@ -65,6 +66,9 @@ class Candidate:
     # Capacités de composition Image2 ; une priorité plus basse est préférée.
     max_identity_objects: int | None = None
     image2_identity_priority: int = 50
+    # Text-only Image Generator may support fewer ratios than Image Editor.
+    # None means that the generator shares the candidate's general frame ratios.
+    text_to_image_generator_frame_ratios: tuple[str, ...] | None = None
 
 
 # --- Helpers d'exposition des modèles disponibles ---
@@ -75,6 +79,20 @@ def candidate_resolutions(candidate: Candidate) -> tuple[str, ...]:
     # Flux 2 Klein is currently validated only at this size by the adapter.
     # Account tier alone must not make unsupported resolutions selectable.
     return ("640px",)
+
+def candidate_text_to_image_frame_ratios(
+    candidate: Candidate,
+    *,
+    has_input_images: bool,
+) -> tuple[str, ...]:
+    """Return frame ratios for the actual Magic Hour-style generation path."""
+    if (
+        not has_input_images
+        and candidate.text_to_image_generator_frame_ratios is not None
+    ):
+        return candidate.text_to_image_generator_frame_ratios
+
+    return candidate.frame_ratios
 def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]:
     """Retourne les candidats d'une feature, prêts à être affichés dans un
     sélecteur utilisateur.
@@ -114,6 +132,10 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
         }
         if c.max_identity_objects is not None:
             item["maxIdentityObjects"] = c.max_identity_objects
+        if c.text_to_image_generator_frame_ratios is not None:
+            item["textToImageGeneratorFrameRatios"] = (
+                c.text_to_image_generator_frame_ratios
+            )
         if include_costs:
             item["costPerGeneration"] = c.cost_per_generation
         result.append(item)
@@ -264,7 +286,6 @@ def magichour_edit_input(req: dict) -> dict:
     }
 
 
-
 IMAGE2_REFERENCE_ROLES = {"element", "base", "style", "detail"}
 
 
@@ -331,7 +352,7 @@ def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str 
         (
             "detail",
             (
-                rf"\b(?:borrow|take|use|match|copy)\b[^.!?\n]{{0,100}}\b(?:material|texture|detail|pattern|finish|surface)\b[^.!?\n]{{0,60}}\bfrom\s+{image_tag}\b",
+                rf"\b(?:borrow|take|use|match|copy)\b[^.!?\n]{{0,100}}\b(?:material|texture|detail|pattern|finish|surface)[^.!?\n]{{0,60}}\bfrom\s+{image_tag}\b",
                 rf"\b(?:use|take|borrow)\s+{image_tag}\s+(?:for|as)\s+(?:the\s+)?(?:material|texture|detail|pattern|finish|surface)\b",
                 rf"{image_tag}\s+(?:للخامة|للملمس|للتفاصيل|للنقش|للتشطيب)(?:\s+فقط)?",
                 rf"(?:استفد|اقتبس|خذ)\b[^.!؟\n]{{0,80}}\b(?:الخامة|الملمس|التفاصيل|النقش|التشطيب)\b[^.!؟\n]{{0,40}}{image_tag}",
@@ -355,34 +376,40 @@ def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str 
 
 
 def normalize_image2_reference_roles(req: dict) -> list[str]:
-    """Keep saved UI roles authoritative; infer roles only for legacy requests."""
+    """Explicit prompt role declarations override saved roles; legacy requests fall back safely."""
     references = req.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
+
     raw_roles = req.get("referenceRoles") or []
     if not isinstance(raw_roles, (list, tuple)):
         raw_roles = []
+
     raw_tags = req.get("referenceTags") or []
     if not isinstance(raw_tags, (list, tuple)):
         raw_tags = []
+
     scene_details = req.get("sceneDetails")
     roles: list[str] = []
+
     for index in range(len(references)):
         tag = raw_tags[index] if index < len(raw_tags) else None
         if not isinstance(tag, str) or not re.fullmatch(r"@img[1-9]\d*", tag):
             tag = f"@img{index + 1}"
-        saved_role = raw_roles[index] if index < len(raw_roles) else None
 
-        if isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES:
-            # The role selected in the Image2 UI is authoritative.
+        saved_role = raw_roles[index] if index < len(raw_roles) else None
+        explicit_role = _explicit_image2_reference_role(scene_details, tag)
+
+        if explicit_role in IMAGE2_REFERENCE_ROLES:
+            role = explicit_role
+        elif isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES:
             role = saved_role
         else:
-            # Keep prompt inference only for legacy requests without role metadata.
-            role = _explicit_image2_reference_role(scene_details, tag) or "element"
+            role = "element"
 
         roles.append(role)
-    return roles
 
+    return roles
 
 def text_to_image_identity_locked(req: dict) -> bool:
     """Only an Element or Base source locks identity/composition; Style alone does not."""
@@ -399,24 +426,43 @@ def image2_identity_object_count(req: dict) -> int:
 
 
 def image2_frame_reference(req: dict) -> str | None:
-    """Choose the only valid source for Auto framing: Base, primary, then Element.
+    """Choose the source image that defines Auto framing.
 
-    Style and Detail images are deliberately excluded because they do not define
-    the destination frame.
+    Priority:
+    1. Base: it is the destination scene and therefore owns the output frame.
+    2. Primary image: used when there is no Base.
+    3. First Element reference: fallback when no primary image exists.
+
+    Style and Detail references never define the destination frame.
     """
     references = req.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
+
     roles = normalize_image2_reference_roles(req)
-    base_index = next((i for i, role in enumerate(roles) if role == "base"), None)
+
+    base_index = next(
+        (index for index, role in enumerate(roles) if role == "base"),
+        None,
+    )
     if base_index is not None and base_index < len(references):
-        return references[base_index]
+        value = references[base_index]
+        if isinstance(value, str) and value.strip():
+            return value
+
     primary = req.get("imageUrl")
     if isinstance(primary, str) and primary.strip():
         return primary
-    element_index = next((i for i, role in enumerate(roles) if role == "element"), None)
+
+    element_index = next(
+        (index for index, role in enumerate(roles) if role == "element"),
+        None,
+    )
     if element_index is not None and element_index < len(references):
-        return references[element_index]
+        value = references[element_index]
+        if isinstance(value, str) and value.strip():
+            return value
+
     return None
 
 
@@ -436,7 +482,7 @@ def text_to_image_images(req: dict) -> list[str]:
 
 
 def magichour_text_to_image_input(req: dict) -> dict:
-    """Magic Hour Flux 2 Klein: preserve the requested native frame ratio."""
+    """Magic Hour Flux 2 Klein: preserve the resolved native frame ratio."""
     ratio = req.get("aspectRatio") or "auto"
     if ratio == "auto":
         ratio = req.get("resolvedAspectRatio") or "4:3"
@@ -459,6 +505,7 @@ def magichour_text_to_image_input(req: dict) -> dict:
         "is_text_to_image": True,
     }
 
+
 def _magichour_video_prompt(req: dict, *, video_to_video: bool = False) -> str:
     """Construit un prompt concis respectant la limite Magic Hour de 2000 caractères."""
     if video_to_video:
@@ -479,7 +526,8 @@ def magichour_video_input(req: dict) -> dict:
     """Magic Hour image-to-video : durées transmises telles quelles.
 
     Le tier standard utilise 480p car 720p n'est pas disponible sur tous les
-    plans Magic Hour (notamment le free tier)."""
+    plans Magic Hour (notamment le free tier).
+    """
     payload = {
         "prompt": _magichour_video_prompt(req),
         "image": req["imageUrl"],
@@ -502,7 +550,8 @@ def magichour_video_to_video_input(req: dict) -> dict:
     """Magic Hour video-to-video / relight : reprend une vidéo existante.
 
     Le tier standard utilise 480p pour rester compatible avec les plans Magic Hour
-    qui ne proposent pas 720p (free tier)."""
+    qui ne proposent pas 720p (free tier).
+    """
     return {
         "prompt": _magichour_video_prompt(req, video_to_video=True),
         "videoUrl": req["videoUrl"],
@@ -523,7 +572,8 @@ def unified_3d_input(req: dict) -> dict:
     """Passe au provider les champs pertinents (prompt et/ou images).
 
     Chaque adaptateur 3D choisit lui-même s'il utilise le prompt, l'image
-    ou les deux selon son API officielle."""
+    ou les deux selon son API officielle.
+    """
     payload: dict = {}
     if req.get("prompt"):
         payload["prompt"] = req["prompt"]
@@ -692,6 +742,7 @@ IMAGE_EDIT_CANDIDATES: list[Candidate] = [
     Candidate("magichour-flux-2-klein", "Magic Hour Flux 2 Klein", "Free tier friendly image edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_edit_input, extract_image_urls),
 ]
 
+
 ANIMATE_CANDIDATES: list[Candidate] = [
     Candidate(
         "comfyui-minimax-h3", "MiniMax H3 (Local ComfyUI)", "Local MiniMax H3 image-to-video generation",
@@ -763,6 +814,7 @@ ANIMATE_CANDIDATES: list[Candidate] = [
     ),
 ]
 
+
 # Video-to-Video et Relight : pour l'instant seul Magic Hour expose ces
 # capacités via son endpoint /v1/video-to-video. Les builders ne diffèrent que
 # par le prompt (même requête API).
@@ -775,6 +827,7 @@ VIDEO_TO_VIDEO_CANDIDATES: list[Candidate] = [
     ),
 ]
 
+
 VIDEO_RELIGHT_CANDIDATES: list[Candidate] = [
     Candidate(
         "magichour-video-relight", "Magic Hour Video Relight", "Change lighting and time of day on a video",
@@ -784,6 +837,7 @@ VIDEO_RELIGHT_CANDIDATES: list[Candidate] = [
     ),
 ]
 
+
 LIP_SYNC_CANDIDATES: list[Candidate] = [
     Candidate(
         "magichour-lip-sync", "Magic Hour Lip Sync", "Synchronize mouth movement with an audio track",
@@ -791,6 +845,7 @@ LIP_SYNC_CANDIDATES: list[Candidate] = [
         magichour_lip_sync_input, extract_video_url,
     ),
 ]
+
 
 # Background Remover : services dédiés en priorité. Magic Hour utilise ici
 # son éditeur d'image standard (Flux 2 Klein, éligible free tier) avec le prompt
@@ -840,6 +895,7 @@ BACKGROUND_REMOVER_CANDIDATES: list[Candidate] = [
     ),
 ]
 
+
 # 3D Generator : Meshy text-to-3D et image-to-3D, sortie GLB.
 THREED_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -878,11 +934,13 @@ THREED_CANDIDATES: list[Candidate] = [
     ),
 ]
 
+
 # Text-to-image standalone (Image Generator) : prompt principal + image de
 # référence optionnelle. Les modèles image-to-image du catalogue édition
 # peuvent aussi servir quand une image est fournie ; ici on privilégie les
 # modèles natifs text-to-image.
 IMAGE2_FRAME_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9")
+
 
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
     Candidate(
@@ -995,8 +1053,10 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
         frame_ratios=("1:1", "16:9", "9:16", "4:3", "3:2", "2:3"),
         max_identity_objects=5,
         image2_identity_priority=100,
+        text_to_image_generator_frame_ratios=("1:1", "16:9", "9:16"),
     ),
 ]
+
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {
     "print_render": IMAGE_EDIT_CANDIDATES,
