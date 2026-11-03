@@ -471,9 +471,12 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
     lines: list[str] = []
     if has_style:
         lines.append(
-            "The separate Style reference is input 1 (@style), an aesthetic guide only. Match its actual "
-            "visual signature—tonal range, exposure, contrast, palette, color temperature, texture and rendering "
-            "medium—without copying its subject, objects, architecture or composition unless requested."
+            "HIGHEST-PRIORITY STYLE TRANSFER: the separate Style reference is provider input 1 (@style). "
+            "Transfer only its visual treatment: relative luminance and exposure, highlight roll-off, "
+            "shadow depth and retained shadow detail, contrast curve, saturation, palette, white balance, "
+            "color temperature, material response, texture or grain, surface finish and edge treatment. "
+            "Adapt the lighting coherently to the destination scene. Never copy its subject, objects, "
+            "architecture or background, and do not impose an unrelated style."
         )
     if has_primary:
         provider_index = 2 if has_style else 1
@@ -485,7 +488,11 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
     role_descriptions = {
         "element": "element reference; use its subject or details as directed by the user's prompt",
         "base": "destination/base scene; preserve it except for changes requested by the user",
-        "style": "style reference only; use its visual treatment, not its subject or composition",
+        "style": (
+            "Style reference only: transfer exposure, luminance, highlight and shadow behavior, "
+            "contrast, saturation, color palette, white balance, material response, texture and finish. "
+            "Do not copy its subject, objects, architecture or background."
+        ),
         "detail": "detail reference; use its material or details as directed by the user's prompt",
     }
     for index, tag in enumerate(tags):

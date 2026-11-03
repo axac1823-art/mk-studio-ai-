@@ -452,16 +452,9 @@ type Image2ModelOption = ModelOption & {
   service?: string;
 };
 
-const MAGIC_HOUR_IMAGE2_FRAME_RATIOS = ["1:1", "16:9", "9:16"] as const;
-
 function supportedImage2FrameRatios(model: Image2ModelOption): string[] {
-  const modelRatios = model.frameRatios ?? [];
-  if (model.provider?.toLowerCase() !== "magichour") return modelRatios;
-  return modelRatios.filter((ratio) =>
-    MAGIC_HOUR_IMAGE2_FRAME_RATIOS.includes(
-      ratio as (typeof MAGIC_HOUR_IMAGE2_FRAME_RATIOS)[number],
-    ),
-  );
+  // The worker catalog is the single source of truth for verified frames.
+  return model.frameRatios ?? [];
 }
 
 interface WorkspaceAsset {
@@ -1127,7 +1120,7 @@ export function Image2Workspace() {
   );
   const compatibleConfiguredModels = useMemo(
     () => configuredInputCompatibleModels.filter(
-      (model) => aspectRatio === "auto" || (model.frameRatios ?? []).includes(aspectRatio),
+      (model) => aspectRatio === "auto" || supportedImage2FrameRatios(model).includes(aspectRatio),
     ),
     [configuredInputCompatibleModels, aspectRatio],
   );
@@ -1138,13 +1131,16 @@ export function Image2Workspace() {
       : inputCompatibleModels;
   }, [selectedModelOption, configuredInputCompatibleModels, inputCompatibleModels]);
   const availableAspectRatios = useMemo<Image2AspectRatio[]>(() => {
-    if (modelOptions.length === 0) return [...IMAGE2_ASPECT_RATIOS];
-    return IMAGE2_ASPECT_RATIOS.filter(
-      (ratio) => ratio === "auto" || frameCapabilityModels.some((model) =>
-        supportedImage2FrameRatios(model).includes(ratio),
-      ),
-    );
-  }, [modelOptions.length, frameCapabilityModels]);
+    const supported = modelOptions.length === 0
+      ? [...IMAGE2_ASPECT_RATIOS]
+      : IMAGE2_ASPECT_RATIOS.filter(
+          (ratio) => ratio === "auto" || frameCapabilityModels.some((model) =>
+            supportedImage2FrameRatios(model).includes(ratio),
+          ),
+        );
+    // Keep the current value visible even when the selected model cannot honor it.
+    return supported.includes(aspectRatio) ? supported : [aspectRatio, ...supported];
+  }, [modelOptions.length, frameCapabilityModels, aspectRatio]);
   // Show only settings genuinely exposed by the selected model. Auto uses the
   // intersection across configured models that can handle the selected inputs.
   const availableQualityTiers = useMemo(() => {
@@ -1156,11 +1152,13 @@ export function Image2Workspace() {
   }, [selectedModelOption, compatibleConfiguredModels]);
   const availableResolutions = useMemo<Resolution[]>(() => {
     const capabilityModels = selectedModelOption ? [selectedModelOption] : compatibleConfiguredModels;
-    if (capabilityModels.length === 0) return ["1K"];
-    return RESOLUTIONS.filter((value) =>
+    if (capabilityModels.length === 0) return [...RESOLUTIONS];
+    const supported = RESOLUTIONS.filter((value) =>
       capabilityModels.some((model) => (model.resolutions ?? ["1K"]).includes(value)),
     );
-  }, [selectedModelOption, compatibleConfiguredModels]);
+    // Keep an unsupported current value visible so the user can see it is preserved.
+    return supported.includes(resolution) ? supported : [resolution, ...supported];
+  }, [selectedModelOption, compatibleConfiguredModels, resolution]);
 
   useEffect(() => {
     if (!availableQualityTiers.some((tier) => tier.id === quality)) {
@@ -1168,17 +1166,8 @@ export function Image2Workspace() {
     }
   }, [availableQualityTiers, quality]);
 
-  useEffect(() => {
-    if (!availableResolutions.includes(resolution)) {
-      setResolution(availableResolutions[0] ?? "1K");
-    }
-  }, [availableResolutions, resolution]);
-
-  useEffect(() => {
-    if (!availableAspectRatios.includes(aspectRatio)) {
-      setAspectRatio("auto");
-    }
-  }, [availableAspectRatios, aspectRatio]);
+  // Keep user-selected output settings intact when capabilities change.
+  // An incompatible model is blocked; the frame/resolution is never silently rewritten.
   // Résolution locale du mode Auto : le serveur choisit le candidat
   // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
   // catalogue en tie-break). On reproduit cette logique ici pour afficher
@@ -1211,13 +1200,17 @@ export function Image2Workspace() {
   const selectedModelCanHandleFrame = selectedModelOption
     ? aspectRatio === "auto" || supportedImage2FrameRatios(selectedModelOption).includes(aspectRatio)
     : true;
+  const selectedModelCanHandleResolution = selectedModelOption
+    ? (selectedModelOption.resolutions ?? ["1K"]).includes(resolution)
+    : !selectedModel;
   const canGenerate =
     prompt.trim().length > 0 &&
     selectedModelCanHandleImages &&
     selectedModelCanHandleFrame &&
+    selectedModelCanHandleResolution &&
     (Boolean(selectedModel) ||
       modelOptions.length === 0 ||
-      compatibleConfiguredModels.length > 0);
+      resolutionCompatibleModels.length > 0);
 
   const activeCost = costsConfig
     ? computeDisplayCost(costsConfig, {
@@ -1305,32 +1298,9 @@ export function Image2Workspace() {
   );
 
 const handleModelSelection = (key: string) => {
-  const model = modelOptions.find((item) => item.key === key);
-
+  // Selection never mutates the requested frame or resolution.
+  // Compatibility is validated separately and an incompatible model cannot run.
   setSelectedModel(key);
-
-  if (
-    model &&
-    aspectRatio !== "auto" &&
-    !supportedImage2FrameRatios(model).includes(aspectRatio)
-  ) {
-    setAspectRatio("auto");
-  }
-
-  if (model?.resolutions?.length) {
-    const supportedResolutions = model.resolutions;
-
-    if (!supportedResolutions.includes(resolution)) {
-      const preferredResolution = supportedResolutions.includes("1K")
-        ? "1K"
-        : supportedResolutions[0];
-
-      if (preferredResolution) {
-        setResolution(preferredResolution as Resolution);
-      }
-    }
-  }
-
   setModelPickerOpen(false);
   setError(null);
 };
@@ -1353,24 +1323,22 @@ const handleModelSelection = (key: string) => {
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isBusy) return;
-const supportedResolutions = selectedModelOption?.resolutions ?? [];
+const supportedResolutions = selectedModelOption?.resolutions ?? ["1K"];
 
+if (selectedModelOption && !supportedResolutions.includes(resolution)) {
+  setError(
+    `${selectedModelOption.name} does not support ${resolution}. Supported resolutions: ${supportedResolutions.join(", ")}. Your selected resolution was kept unchanged.`,
+  );
+  return;
+}
 if (
   selectedModelOption &&
-  supportedResolutions.length > 0 &&
-  !supportedResolutions.includes(resolution)
+  aspectRatio !== "auto" &&
+  !supportedImage2FrameRatios(selectedModelOption).includes(aspectRatio)
 ) {
-  const nextResolution = supportedResolutions.includes("1K")
-    ? "1K"
-    : supportedResolutions[0];
-
-  if (nextResolution) {
-    setResolution(nextResolution as Resolution);
-    setError(
-      `${selectedModelOption.name} supports ${supportedResolutions.join(", ")} only. Resolution updated. Generate again.`,
-    );
-  }
-
+  setError(
+    `${selectedModelOption.name} does not support ${aspectRatio}. Your selected frame was kept unchanged. Choose another model or explicitly select a supported frame.`,
+  );
   return;
 }
     if (selectedModelOption && !selectedModelOption.configured) {
@@ -1386,6 +1354,19 @@ if (
       setError(
         `${selectedModelOption.name} supports up to ${selectedModelOption.maxReferences ?? 0} total image inputs including Style. Choose a compatible model or remove images.`,
       );
+      return;
+    }
+    if (
+      selectedModelOption?.maxIdentityObjects !== undefined &&
+      identityObjectCount > selectedModelOption.maxIdentityObjects
+    ) {
+      setError(
+        `${selectedModelOption.name} supports up to ${selectedModelOption.maxIdentityObjects} identity Element images; reduce Element references or choose another model.`,
+      );
+      return;
+    }
+    if (selectedModelOption && hasStyleReference && !selectedModelOption.supportsStyleReference) {
+      setError(`${selectedModelOption.name} does not support a Style reference. Choose a compatible model.`);
       return;
     }
 
@@ -3508,9 +3489,11 @@ if (
                     Auto (recommended)
                   </span>
                   <span className="mt-1 block text-[10px] text-[#898c96]">
-                    {resolvedAutoModel
-                      ? `Will use ${resolvedAutoModel.name} (${providerLabel(resolvedAutoModel.provider, resolvedAutoModel)}) — cheapest configured model matching your inputs.`
-                      : "Automatically pick a configured model that supports your content references and requested quality."}
+                    {aspectRatio === "auto" && imageInputCount > 0
+                      ? "The worker will infer the frame from Base, then primary image or Element, and select a compatible model."
+                      : resolvedAutoModel
+                        ? `Will use ${resolvedAutoModel.name} (${providerLabel(resolvedAutoModel.provider, resolvedAutoModel)}) — best compatible candidate for the selected task and output settings.`
+                        : "No configured model currently matches all selected references, roles, frame, resolution and quality. Adjust an input or choose a compatible model."}
                   </span>
                 </span>
                 <span
@@ -3539,8 +3522,11 @@ if (
                     const provider = providerLabel(model.provider, model);
                     const maxRefs = model.maxReferences ?? 0;
                     const fitsReferences = imageInputCount <= maxRefs;
+                    const fitsIdentityObjects = model.maxIdentityObjects === undefined || identityObjectCount <= model.maxIdentityObjects;
+                    const supportsStyle = !hasStyleReference || model.supportsStyleReference === true;
                     const supportedFrames = supportedImage2FrameRatios(model);
                     const supportsCurrentFrame = aspectRatio === "auto" || supportedFrames.includes(aspectRatio);
+                    const supportsCurrentResolution = (model.resolutions ?? ["1K"]).includes(resolution);
                     return (
                       <button
                         key={model.key}
@@ -3598,6 +3584,21 @@ if (
                             <span className="mt-1 block text-[9px] text-rose-200">
                               Needs fewer image inputs ({imageInputCount}{" "}
                               selected).
+                            </span>
+                          )}
+                          {!fitsIdentityObjects && (
+                            <span className="mt-1 block text-[9px] text-rose-200">
+                              Supports up to {model.maxIdentityObjects} Element references.
+                            </span>
+                          )}
+                          {!supportsStyle && (
+                            <span className="mt-1 block text-[9px] text-rose-200">
+                              This model does not support the Style role.
+                            </span>
+                          )}
+                          {!supportsCurrentResolution && (
+                            <span className="mt-1 block text-[9px] text-amber-200">
+                              Does not support {resolution}. Choose: {(model.resolutions ?? []).join(", ")}.
                             </span>
                           )}
                           {!supportsCurrentFrame && (

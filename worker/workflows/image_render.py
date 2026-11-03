@@ -9,7 +9,6 @@ ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 import base64
 import io
 import math
-import mimetypes
 
 import db
 import storage
@@ -17,6 +16,7 @@ from PIL import Image
 from catalog import (
     MODEL_CATALOG,
     candidate_resolutions,
+    image2_frame_reference,
     image2_identity_object_count,
     normalize_image2_reference_roles,
     text_to_image_identity_locked,
@@ -44,19 +44,8 @@ from workflows.engine import (
 
 
 def _image_reference_to_data_uri(value: str) -> str:
-    """Read a local /storage file and turn it into a provider-ready data URI."""
-    path_value = value
-    if value.startswith("http://") or value.startswith("https://"):
-        from urllib.parse import urlparse
-        parsed = urlparse(value)
-        if parsed.path.startswith("/storage/") and parsed.hostname in {"localhost", "127.0.0.1"}:
-            path_value = parsed.path
-    if not path_value.startswith("/storage/"):
-        return value
-    file_path = storage.resolve(path_value)
-    mime = mimetypes.guess_type(file_path.name)[0] or "image/png"
-    encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
-    return f"data:{mime};base64,{encoded}"
+    """Convert any URL pointing to this worker storage into a data URI."""
+    return storage.image_data_uri_if_local(value)
 
 
 def _infer_aspect_ratio(value: str | None) -> str:
@@ -118,26 +107,9 @@ def run(job: dict) -> None:
                     req["imageUrl"] = _image_reference_to_data_uri(primary_image)
                 requested_ratio = input_.get("aspectRatio") or "4:3"
                 if requested_ratio == "auto":
-                    source_for_ratio = req.get("imageUrl")
-                    if not source_for_ratio:
-                        references_for_ratio = req.get("referenceUrls") or []
-                        reference_roles = input_.get("referenceRoles") or []
-                        base_index = next(
-                            (index for index, role in enumerate(reference_roles) if role == "base"),
-                            None,
-                        )
-                        element_index = next(
-                            (index for index, role in enumerate(reference_roles) if role == "element"),
-                            None,
-                        )
-                        source_index = base_index if base_index is not None else element_index
-                        if source_index is None:
-                            source_index = 0 if references_for_ratio else None
-                        source_for_ratio = (
-                            references_for_ratio[source_index]
-                            if source_index is not None and source_index < len(references_for_ratio)
-                            else None
-                        )
+                    # Base is the destination frame. Only if it is absent may the
+                    # primary image or an Element reference define the frame.
+                    source_for_ratio = image2_frame_reference(req)
                     req["resolvedAspectRatio"] = _infer_aspect_ratio(source_for_ratio)
                 else:
                     req["resolvedAspectRatio"] = requested_ratio
@@ -202,22 +174,23 @@ def run(job: dict) -> None:
                         "Choose a supported resolution or another model."
                     )
 
-                # Explicit frames are filtered before model ordering. Auto remains provider-selected.
-                if requested_ratio != "auto":
-                    selected_candidate = next(
-                        (candidate for candidate in feature_candidates if candidate.key == selected_model),
-                        None,
+                # The resolved frame is binding in both explicit and Auto modes.
+                # Never let Auto choose a model that changes the source frame.
+                target_frame = req.get("resolvedAspectRatio") or requested_ratio
+                selected_candidate = next(
+                    (candidate for candidate in feature_candidates if candidate.key == selected_model),
+                    None,
+                )
+                if selected_candidate and target_frame not in selected_candidate.frame_ratios:
+                    supported = ", ".join(selected_candidate.frame_ratios) or "none reported"
+                    raise ValueError(
+                        f"{selected_candidate.name} does not support {target_frame}. Supported frames: {supported}."
                     )
-                    if selected_candidate and requested_ratio not in selected_candidate.frame_ratios:
-                        supported = ", ".join(selected_candidate.frame_ratios) or "none reported"
-                        raise ValueError(
-                            f"{selected_candidate.name} does not support {requested_ratio}. Supported frames: {supported}."
-                        )
-                    feature_candidates = filter_candidates_by_frame(feature_candidates, requested_ratio)
-                    if not feature_candidates:
-                        raise ValueError(
-                            f"No configured Text-to-Image model supports {requested_ratio}. Choose a supported frame or another model."
-                        )
+                feature_candidates = filter_candidates_by_frame(feature_candidates, target_frame)
+                if not feature_candidates:
+                    raise ValueError(
+                        f"No configured Text-to-Image model supports {target_frame}. Choose a compatible model or frame."
+                    )
             if feature == "multi_angle" and isinstance(input_.get("cameraState"), dict) and input_.get("referenceUrls"):
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
@@ -237,8 +210,9 @@ def run(job: dict) -> None:
                 )
             output_validator = None
             output_transformer = None
-            if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
-                expected_frame = input_.get("aspectRatio") or "4:3"
+            if feature == "text_to_image":
+                # Auto uses the frame resolved from Base/primary/Element above.
+                expected_frame = req.get("resolvedAspectRatio") or "4:3"
                 output_transformer = lambda urls, _candidate: normalize_image_output_frame(urls, expected_frame)
                 output_validator = lambda urls, _candidate: validate_image_output_frame(urls, expected_frame)
             outcome = execute_with_fallback(

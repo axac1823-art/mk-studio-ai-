@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path.cwd()
-REVIEWED_CODEX_HEAD = "32e26de9b1193e0e69a144512e1c1a6abc330f8e"
+REVIEWED_CODEX_HEAD = "e9404a356a0a9546d9c05e3ec76fecfa45394cd7"
 FILE_NEWLINES: dict[Path, str] = {}
 
 
@@ -319,9 +319,9 @@ def main() -> int:
         "worker/prompts.py": [
             (
                 '        lines.append(\n'
-                '            "HIGHEST-PRIORITY STYLE TRANSFER: the separate Style reference is provider input 1 (@style). "\n'
-                '            "Use it only for palette, lighting, contrast, "\n'
-                '            "texture and rendering medium; never copy its subject, objects, architecture or scene."\n'
+                '            "The separate Style reference is input 1 (@style), an aesthetic guide only. Match its actual "\n'
+                '            "visual signature—tonal range, exposure, contrast, palette, color temperature, texture and rendering "\n'
+                '            "medium—without copying its subject, objects, architecture or composition unless requested."\n'
                 '        )',
                 '        lines.append(\n'
                 '            "HIGHEST-PRIORITY STYLE TRANSFER: the separate Style reference is provider input 1 (@style). "\n'
@@ -334,7 +334,7 @@ def main() -> int:
                 "make Style transfer specific without imposing a default aesthetic",
             ),
             (
-                '        "style": "Style reference only: borrow lighting, colors and visual treatment; do not copy its subject or background.",',
+                '        "style": "style reference only; use its visual treatment, not its subject or composition",',
                 '        "style": (\n'
                 '            "Style reference only: transfer exposure, luminance, highlight and shadow behavior, "\n'
                 '            "contrast, saturation, color palette, white balance, material response, texture and finish. "\n'
@@ -865,7 +865,7 @@ def test_fallback_counts_the_separate_style_reference():\n    candidate = Candid
             frame_test_path.parent.mkdir(parents=True, exist_ok=True)
             frame_test_path.write_bytes(frame_contract_test.encode("utf-8"))
 
-        compile_paths = [str(path) for path in staged]
+        compile_paths = [str(path) for path in staged if path.suffix == ".py"]
         if should_add_magichour_test:
             compile_paths.append(str(magichour_test_path))
         if should_add_frame_test:

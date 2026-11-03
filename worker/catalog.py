@@ -355,7 +355,7 @@ def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str 
 
 
 def normalize_image2_reference_roles(req: dict) -> list[str]:
-    """Resolve explicit prompt declarations before saved roles and legacy defaults."""
+    """Keep saved UI roles authoritative; infer roles only for legacy requests."""
     references = req.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
@@ -398,6 +398,28 @@ def image2_identity_object_count(req: dict) -> int:
     )
 
 
+def image2_frame_reference(req: dict) -> str | None:
+    """Choose the only valid source for Auto framing: Base, primary, then Element.
+
+    Style and Detail images are deliberately excluded because they do not define
+    the destination frame.
+    """
+    references = req.get("referenceUrls") or []
+    if not isinstance(references, (list, tuple)):
+        references = []
+    roles = normalize_image2_reference_roles(req)
+    base_index = next((i for i, role in enumerate(roles) if role == "base"), None)
+    if base_index is not None and base_index < len(references):
+        return references[base_index]
+    primary = req.get("imageUrl")
+    if isinstance(primary, str) and primary.strip():
+        return primary
+    element_index = next((i for i, role in enumerate(roles) if role == "element"), None)
+    if element_index is not None and element_index < len(references):
+        return references[element_index]
+    return None
+
+
 def text_to_image_images(req: dict) -> list[str]:
     """Return provider image inputs in manifest order: Style, primary Element, then references."""
     images: list[str] = []
@@ -416,6 +438,8 @@ def text_to_image_images(req: dict) -> list[str]:
 def magichour_text_to_image_input(req: dict) -> dict:
     """Magic Hour Flux 2 Klein: preserve the requested native frame ratio."""
     ratio = req.get("aspectRatio") or "auto"
+    if ratio == "auto":
+        ratio = req.get("resolvedAspectRatio") or "4:3"
 
     supported_ratios = {"auto", "1:1", "16:9", "9:16", "4:3", "3:2", "2:3"}
     if ratio not in supported_ratios:

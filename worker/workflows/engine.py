@@ -10,7 +10,7 @@ Deux responsabilités :
 """
 import time
 
-from catalog import Candidate
+from catalog import Candidate, text_to_image_images
 from providers import PROVIDERS
 
 
@@ -95,9 +95,11 @@ def execute_with_fallback(
     for candidate in candidates:
         started = time.monotonic()
         try:
-            reference_count = len(req.get("referenceUrls", []))
-            if feature == "text_to_image" and req.get("imageUrl"):
-                reference_count += 1
+            reference_count = (
+                len(text_to_image_images(req))
+                if feature == "text_to_image"
+                else len(req.get("referenceUrls", []))
+            )
             if reference_count > candidate.max_references:
                 raise ValueError(
                     f"candidate accepts {candidate.max_references} reference images; "
