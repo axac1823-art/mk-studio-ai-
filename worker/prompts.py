@@ -438,7 +438,7 @@ def _join(parts: list[str | None]) -> str:
 
 
 def add_image_reference_map(prompt: str, fields: dict) -> str:
-    """Map provider input indices to exact Image2 tags and declared source roles."""
+    """Relier chaque image à son ordre fournisseur et à son rôle Image2."""
     references = fields.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
@@ -471,23 +471,22 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
     lines: list[str] = []
     if has_style:
         lines.append(
-            "HIGHEST-PRIORITY STYLE TRANSFER: the separate Style reference governs visual treatment only."
-        )
-        lines.append(
-            "The separate Style image is provider input 1, named @style. It controls visual treatment only: palette, "
-            "lighting character, contrast, texture and rendering medium. It is not a scene or object source."
+            "HIGHEST-PRIORITY STYLE TRANSFER: the separate Style reference is provider input 1 (@style). "
+            "Use it only for palette, lighting, contrast, "
+            "texture and rendering medium; never copy its subject, objects, architecture or scene."
         )
     if has_primary:
         provider_index = 2 if has_style else 1
         lines.append(
-            f"The primary image is Element input {provider_index}; preserve its actual identity, proportions and distinctive details."
+            f"The primary image is Element input {provider_index}; preserve its real identity, silhouette, proportions, "
+            "materials and distinctive details."
         )
 
     role_descriptions = {
-        "element": "Element source: use this actual object in the scene; preserve its identity, silhouette, proportions and distinctive details.",
-        "base": "Base scene: use this as the destination scene and preserve its building, background, camera composition and layout.",
-        "style": "Style reference: use its lighting, colors and visual treatment only; do not copy its subject or background.",
-        "detail": "Detail reference: borrow only the requested material, texture or detail; do not copy its objects or background.",
+        "element": "Element source: integrate this actual object and preserve its identity, silhouette, proportions, materials and distinctive details.",
+        "base": "BASE SCENE: preserve this destination's architecture, background, camera, perspective and composition.",
+        "style": "Style reference only: borrow lighting, colors and visual treatment; do not copy its subject or background.",
+        "detail": "Detail reference only: borrow only the requested material, texture or detail; do not copy its objects or background.",
     }
     role_labels = {
         "element": "element reference image",
@@ -499,15 +498,10 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         role = roles[index] if index < len(roles) else "element"
         provider_index = index + 1 + int(has_style) + int(has_primary)
         if is_image2:
-            label = role_labels[role]
-            if role == "element":
-                lines.append(f"{tag} is element reference image {provider_index}. {role_descriptions[role]}")
-            elif role == "base":
-                lines.append(f"{tag} is {label} input {provider_index}. BASE SCENE: {role_descriptions[role]}")
-            elif role == "detail":
-                lines.append(f"{tag} is {label} {provider_index}. Detail reference only: {role_descriptions[role]}")
-            else:
-                lines.append(f"{tag} is {label} input {provider_index}. {role_descriptions[role]}")
+            lines.append(
+                f"{tag} is {role_labels[role]} {provider_index} (provider input {provider_index}, "
+                f"role={role.upper()}). {role_descriptions[role]}"
+            )
         else:
             lines.append(f"{tag} is content/reference image {index + 1}; use it as directed by the prompt.")
 
@@ -516,25 +510,32 @@ def add_image_reference_map(prompt: str, fields: dict) -> str:
         guidance: list[str] = []
         if has_composition:
             guidance.append(
-                "IMAGE COMPOSITION TASK: use each supplied content image according to its declared role. Preserve the Base scene and/or actual Element identity as applicable. The user's description controls placement, scene contents and requested changes."
+                "COMPOSITING TASK: treat the Base as the destination scene and preserve its architecture, camera, "
+                "perspective, background and framing. Place each Element at the location requested by the user, "
+                "at believable scale and perspective. Match scene lighting, contact shadows, reflections and occlusion "
+                "so the Element belongs in the Base. Preserve the Element's identity and do not redesign the Base."
             )
         if has_primary or "element" in roles:
             guidance.append(
-                "Preserve the exact identity, proportions, materials and details of each Element. Fit it into the Base at appropriate scale and perspective; adapt lighting, shadows and reflections to the destination scene without replacing the Element's identity."
+                "ELEMENT IDENTITY: retain the exact recognizable object and its defining proportions, components, materials "
+                "and details while adapting only its scene integration."
             )
         if has_style:
             guidance.append(
-                "Use @style for lighting and color treatment only. Do not copy its objects, architecture or background."
+                "STYLE ROLE: @style controls visual treatment only; it must not replace the Base, Element or requested scene."
             )
         style_tags = [tag for tag, role in zip(tags, roles) if role == "style"]
         if style_tags:
             guidance.append(
-                "Use " + ", ".join(style_tags) + " for lighting and color treatment only; do not copy its objects or background."
+                "STYLE ROLE: use " + ", ".join(style_tags) + " only for lighting, palette and rendering treatment. "
+                "Do not copy their subjects, architecture or backgrounds."
             )
         detail_tags = [tag for tag, role in zip(tags, roles) if role == "detail"]
         if detail_tags:
             guidance.append(
-                "Borrow only the requested material, texture or surface details from " + ", ".join(detail_tags) + "; do not copy their subjects or backgrounds."
+                "DETAIL ROLE: borrow only the specifically requested material, texture or surface detail from "
+                + ", ".join(detail_tags)
+                + "; do not import their unrelated objects or backgrounds."
             )
         if references:
             guidance.append("CONTENT REFERENCE RULE: Follow each @img tag and its resolved role exactly.")
@@ -1161,12 +1162,23 @@ def build_text_to_image_prompt(
 
     parts = [
         (
-            "Create a coherent, photorealistic architectural image "
-            "following the user's exact visual intention."
+            "Create a coherent architectural image that follows the user's "
+            "exact subject, design intention, composition, camera, materials, "
+            "colors, lighting and requested visual medium. Do not invent "
+            "unrequested architectural or decorative elements."
         ),
         (
-            "Maintain realistic geometry, proportions, perspective, "
-            "materials, lighting and spatial relationships."
+            "ARCHITECTURAL QUALITY: maintain believable geometry, scale, "
+            "perspective, material response, surface roughness, texture detail, "
+            "natural illumination, realistic shadow behavior and consistent "
+            "spatial relationships. Use controlled exposure, balanced contrast, "
+            "clean edges and a deliberate visual hierarchy."
+        ),
+        (
+            "If no visual medium is specified, default to premium "
+            "photorealistic architectural visualization. If the user selects "
+            "an illustration, sketch, conceptual or other visual medium, "
+            "respect that medium instead of forcing photorealism."
         ),
     ]
 

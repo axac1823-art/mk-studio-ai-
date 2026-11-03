@@ -16,7 +16,9 @@ import storage
 from PIL import Image
 from catalog import (
     MODEL_CATALOG,
+    image2_identity_object_count,
     normalize_image2_reference_roles,
+    text_to_image_identity_locked,
     text_to_image_images,
 )
 from frame_ratio import filter_candidates_by_frame, validate_image_output_frame
@@ -29,7 +31,11 @@ from workflows.common import (
     mark_processing,
     store_output,
 )
-from workflows.engine import execute_with_fallback, order_candidates
+from workflows.engine import (
+    execute_with_fallback,
+    order_candidates,
+    order_text_to_image_candidates,
+)
 
 
 def _image_reference_to_data_uri(value: str) -> str:
@@ -140,10 +146,15 @@ def run(job: dict) -> None:
             if feature == "text_to_image":
                 has_style_reference = bool(input_.get("styleReferenceUrl")) or "style" in input_["referenceRoles"]
                 input_count = len(text_to_image_images(input_))
+                identity_count = image2_identity_object_count(input_)
                 feature_candidates = [
                     candidate for candidate in feature_candidates
                     if candidate.max_references >= input_count
                     and (not has_style_reference or candidate.supports_style_reference)
+                    and (
+                        candidate.max_identity_objects is None
+                        or identity_count <= candidate.max_identity_objects
+                    )
                 ]
                 # Real Auto: only configured providers are candidates. The normal
                 # quality/cost ranking still applies to the providers that are ready.
@@ -171,18 +182,11 @@ def run(job: dict) -> None:
                     None,
                 )
                 if selected_candidate and requested_resolution not in selected_candidate.resolutions:
-                    # Magic Hour's free Flux 2 Klein tier only permits 640px.
-                    # Normalize a stale UI's default 1K request server-side.
-                    if selected_candidate.key == "magichour-flux-2-klein-text" and "640px" in selected_candidate.resolutions:
-                        requested_resolution = "640px"
-                        input_["resolution"] = requested_resolution
-                        req["resolution"] = requested_resolution
-                    else:
-                        supported = ", ".join(selected_candidate.resolutions) or "none reported"
-                        raise ValueError(
-                            f"{selected_candidate.name} does not support {requested_resolution}. "
-                            f"Supported resolutions: {supported}."
-                        )
+                    supported = ", ".join(selected_candidate.resolutions) or "none reported"
+                    raise ValueError(
+                        f"{selected_candidate.name} does not support {requested_resolution}. "
+                        f"Supported resolutions: {supported}."
+                    )
                 feature_candidates = [
                     candidate for candidate in feature_candidates
                     if requested_resolution in candidate.resolutions
@@ -213,7 +217,19 @@ def run(job: dict) -> None:
                 # Le rendu caméra dépend de la vue-guide capturée dans l'éditeur.
                 # Exclure les adaptateurs qui ne savent transmettre que l'image principale.
                 feature_candidates = [candidate for candidate in feature_candidates if candidate.max_references > 0]
-            candidates = order_candidates(feature_candidates, input_.get("quality") or "standard", input_.get("model"))
+            if feature == "text_to_image":
+                candidates = order_text_to_image_candidates(
+                    feature_candidates,
+                    input_.get("quality") or "standard",
+                    input_.get("model"),
+                    prioritize_reference_fidelity=text_to_image_identity_locked(input_),
+                )
+            else:
+                candidates = order_candidates(
+                    feature_candidates,
+                    input_.get("quality") or "standard",
+                    input_.get("model"),
+                )
             output_validator = None
             if feature == "text_to_image" and (input_.get("aspectRatio") or "4:3") != "auto":
                 expected_frame = input_.get("aspectRatio") or "4:3"

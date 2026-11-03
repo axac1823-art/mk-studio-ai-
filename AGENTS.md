@@ -61,6 +61,9 @@ Trois principes d'architecture à respecter dans toute modification :
    du catalogue (+ éventuellement son adaptateur), jamais de code ailleurs.
    Chaque candidat porte un `cost_per_generation` (coût réel provider) et
    la sélection "Auto" choisit le moins cher satisfaisant le tier qualité.
+   Exception Image2 : Auto reste au coût pour le texte seul ; si une image
+   Element ou Base doit être composée, il priorise `image2_identity_priority`
+   après filtrage par références, rôle, résolution et tier.
    Le prix utilisateur en crédits découle de ce coût × `margin_multiplier`
    (table `action_costs` / `video_action_costs`).
 2. **Les clés API ne quittent JAMAIS le serveur.** Tous les appels modèles

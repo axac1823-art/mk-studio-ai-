@@ -39,11 +39,21 @@ def _run_one(model_id: str, input_: dict) -> str:
         parts.append({"inline_data": {"mime_type": mime, "data": data}})
 
     generation_config: dict = {"responseModalities": ["IMAGE"]}
-    # Gemini supports native imageConfig.aspectRatio for explicit frames. For AUTO,
-    # omit the override and let the model choose its default framing.
+    image_config: dict = {}
     aspect_ratio = input_.get("aspectRatio")
     if aspect_ratio in {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"}:
-        generation_config["imageConfig"] = {"aspectRatio": aspect_ratio}
+        image_config["aspectRatio"] = aspect_ratio
+    resolution = str(input_.get("resolution") or "1K").upper()
+    if model_id == "gemini-3.1-flash-image":
+        if resolution not in {"1K", "2K", "4K"}:
+            raise ProviderError(f"google: unsupported resolution {resolution}")
+        image_config["imageSize"] = resolution
+    elif model_id == "gemini-3.1-flash-lite-image" and resolution != "1K":
+        raise ProviderError(
+            f"google: Gemini 3.1 Flash Lite supports 1K only, not {resolution}"
+        )
+    if image_config:
+        generation_config["imageConfig"] = image_config
 
     response = post_json(
         f"{BASE_URL}/{model_id}:generateContent",

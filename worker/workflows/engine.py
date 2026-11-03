@@ -48,6 +48,33 @@ def order_candidates(candidates: list[Candidate], quality: str, selected_key: st
     return [candidate for _, candidate in sorted(indexed, key=rank)]
 
 
+def order_text_to_image_candidates(
+    candidates: list[Candidate],
+    quality: str,
+    selected_key: str | None = None,
+    prioritize_reference_fidelity: bool = False,
+) -> list[Candidate]:
+    """Appliquer une priorité de fidélité aux tâches Image2 avec références."""
+    if selected_key and selected_key != "auto":
+        return [candidate for candidate in candidates if candidate.key == selected_key]
+    if not prioritize_reference_fidelity:
+        return order_candidates(candidates, quality, selected_key)
+
+    indexed = list(enumerate(candidates))
+
+    def rank(item):
+        index, candidate = item
+        tier_match = 0 if quality in candidate.tiers else 1
+        return (
+            tier_match,
+            candidate.image2_identity_priority,
+            candidate.cost_per_generation,
+            index,
+        )
+
+    return [candidate for _, candidate in sorted(indexed, key=rank)]
+
+
 def execute_with_fallback(feature: str, candidates: list[Candidate], req: dict, adapter_override=None, output_validator=None) -> dict:
     """Essaie les candidats dans l'ordre. Retourne
     {"winner": Candidate, "output_urls": [...], "attempts": [...]} ou lève

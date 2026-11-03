@@ -48,6 +48,16 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
     if not isinstance(images, list):
         images = []
 
+    output_format = str(input_.get("output_format") or "jpeg").lower()
+    output_mime_types = {
+        "png": "image/png",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+    }
+    output_mime = output_mime_types.get(output_format)
+    if output_mime is None:
+        raise ProviderError(f"openai: unsupported output format {output_format}")
+
     files = []
     for uri in images:
         parsed = parse_data_uri(uri)
@@ -67,7 +77,7 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
             "prompt": str(input_.get("prompt") or ""),
             "size": str(input_.get("size") or "auto"),
             "quality": str(input_.get("quality") or "auto"),
-            "output_format": "jpeg",
+            "output_format": output_format,
         },
         files=files,
         timeout=300,
@@ -82,7 +92,7 @@ def _run_image_edit(model_id: str, input_: dict) -> str:
     b64 = items[0].get("b64_json") if items else None
     if not b64:
         raise ProviderError("openai: no image in images/edits response")
-    return f"data:image/jpeg;base64,{b64}"
+    return f"data:{output_mime};base64,{b64}"
 
 
 def _run_image_generation(model_id: str, input_: dict) -> str:

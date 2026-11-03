@@ -62,6 +62,9 @@ class Candidate:
     resolutions: tuple[str, ...] = ("1K",)
     # Native output aspect ratios accepted by this candidate adapter. Empty means unverified.
     frame_ratios: tuple[str, ...] = ()
+    # Capacités de composition Image2 ; une priorité plus basse est préférée.
+    max_identity_objects: int | None = None
+    image2_identity_priority: int = 50
 
 
 # --- Helpers d'exposition des modèles disponibles ---
@@ -88,6 +91,7 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "description": c.description,
             "provider": c.provider,
             "maxReferences": c.max_references,
+            "image2IdentityPriority": c.image2_identity_priority,
             "supportsStyleReference": c.supports_style_reference,
             "resolutions": c.resolutions,
             "frameRatios": list(c.frame_ratios),
@@ -102,6 +106,8 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "supportsTextTo3d": c.supports_text_to_3d,
             "supportsImageTo3d": c.supports_image_to_3d,
         }
+        if c.max_identity_objects is not None:
+            item["maxIdentityObjects"] = c.max_identity_objects
         if include_costs:
             item["costPerGeneration"] = c.cost_per_generation
         result.append(item)
@@ -559,19 +565,76 @@ def openai_text_to_image_input(req: dict) -> dict:
         "images": images,
         "size": size,
         "quality": "high" if req["quality"] == "pro" else "medium",
+        "output_format": "png",
         "quantity": req["quantity"],
     }
+
+
+OPENAI_IMAGE2_SIZES = {
+    "1K": {
+        "1:1": "1024x1024",
+        "16:9": "1280x720",
+        "9:16": "720x1280",
+        "4:3": "1024x768",
+        "3:4": "768x1024",
+        "3:2": "1152x768",
+        "2:3": "768x1152",
+        "21:9": "1792x768",
+    },
+    "2K": {
+        "1:1": "2048x2048",
+        "16:9": "2560x1440",
+        "9:16": "1440x2560",
+        "4:3": "2048x1536",
+        "3:4": "1536x2048",
+        "3:2": "2304x1536",
+        "2:3": "1536x2304",
+        "21:9": "2688x1152",
+    },
+    "4K": {
+        "1:1": "2880x2880",
+        "16:9": "3840x2160",
+        "9:16": "2160x3840",
+        "4:3": "3264x2448",
+        "3:4": "2448x3264",
+        "3:2": "3456x2304",
+        "2:3": "2304x3456",
+        "21:9": "3840x1648",
+    },
+}
+
+
+def openai_text_to_image_25_input(req: dict) -> dict:
+    """Construire les dimensions Image2 explicites pour GPT Image 2.5."""
+    ratio = req.get("aspectRatio") or "auto"
+    if ratio == "auto":
+        ratio = req.get("resolvedAspectRatio") or "auto"
+    resolution = str(req.get("resolution") or "1K").upper()
+    size = OPENAI_IMAGE2_SIZES.get(resolution, {}).get(ratio, "auto")
+    return {
+        "prompt": req["prompt"],
+        "images": text_to_image_images(req),
+        "size": size,
+        "quality": "xhigh" if req.get("quality") == "pro" else "medium",
+        "output_format": "png",
+        "quantity": req["quantity"],
+    }
+
 
 def google_text_to_image_input(req: dict) -> dict:
     """Google multimodal generation: preserve Style order and pass a native ratio when selected."""
     images = text_to_image_images(req)
+    ratio = req.get("aspectRatio") or "auto"
+    if ratio == "auto":
+        ratio = req.get("resolvedAspectRatio") or "auto"
     payload = {
         "prompt": req["prompt"],
         "images": images,
         "quantity": req["quantity"],
+        "resolution": str(req.get("resolution") or "1K").upper(),
     }
-    if req.get("aspectRatio") not in (None, "auto"):
-        payload["aspectRatio"] = req["aspectRatio"]
+    if ratio != "auto":
+        payload["aspectRatio"] = ratio
     return payload
 
 
@@ -788,13 +851,117 @@ THREED_CANDIDATES: list[Candidate] = [
 IMAGE2_FRAME_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9")
 
 TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
-    Candidate("flux-pro", "Flux Pro 1.1", "High quality text-to-image photorealistic renders; supports one reference image", "bfl", "flux-pro-1.1", 7, 5, 1, IMAGE_TIMEOUT_MS, ("standard", "pro"), bfl_text_to_image_input, extract_image_urls, frame_ratios=IMAGE2_FRAME_RATIOS),
-    Candidate("flux-dev", "Flux Dev", "Fast text-to-image generation; supports one reference image", "bfl", "flux-dev", 5, 3, 1, IMAGE_TIMEOUT_MS, ("standard",), bfl_text_to_image_input, extract_image_urls, frame_ratios=IMAGE2_FRAME_RATIOS),
-    Candidate("gpt-image-2", "GPT Image 2", "OpenAI image generation with exact custom dimensions, Style and content references", "openai", "gpt-image-2", 6, 8, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), openai_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
-    Candidate("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite Image", "Cost-efficient 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-lite-image", 3, 4, 13, IMAGE_TIMEOUT_MS, ("standard",), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
-    Candidate("gemini-3.1-flash", "Nano Banana 2", "High-quality 1K text-to-image with Style and content references", "google", "gemini-3.1-flash-image", 3, 7, 13, IMAGE_TIMEOUT_MS, ("standard", "pro"), google_text_to_image_input, extract_image_urls, supports_style_reference=True, frame_ratios=IMAGE2_FRAME_RATIOS),
+    Candidate(
+        "gpt-image-2.5-sunburst",
+        "GPT Image 2.5 Sunburst",
+        "High-precision image generation and architectural compositing",
+        "openai",
+        "gpt-image-2.5-sunburst",
+        8,
+        8,  # Estimation provisoire ; le coût réel varie avec la taille et la qualité.
+        13,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        openai_text_to_image_25_input,
+        extract_image_urls,
+        supports_style_reference=True,
+        resolutions=("1K", "2K", "4K"),
+        frame_ratios=IMAGE2_FRAME_RATIOS,
+        max_identity_objects=13,
+        image2_identity_priority=10,
+    ),
+    Candidate(
+        "gemini-3.1-flash",
+        "Nano Banana 2",
+        "High-quality multi-reference architectural generation",
+        "google",
+        "gemini-3.1-flash-image",
+        3,
+        7,
+        13,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        google_text_to_image_input,
+        extract_image_urls,
+        supports_style_reference=True,
+        resolutions=("1K", "2K", "4K"),
+        frame_ratios=IMAGE2_FRAME_RATIOS,
+        max_identity_objects=10,
+        image2_identity_priority=20,
+    ),
+    Candidate(
+        "gemini-3.1-flash-lite",
+        "Nano Banana 2 Lite",
+        "Cost-efficient multi-reference generation at 1K",
+        "google",
+        "gemini-3.1-flash-lite-image",
+        3,
+        4,
+        13,
+        IMAGE_TIMEOUT_MS,
+        ("standard",),
+        google_text_to_image_input,
+        extract_image_urls,
+        supports_style_reference=True,
+        resolutions=("1K",),
+        frame_ratios=IMAGE2_FRAME_RATIOS,
+        max_identity_objects=10,
+        image2_identity_priority=30,
+    ),
+    Candidate(
+        "flux-pro",
+        "Flux Pro 1.1",
+        "High quality text-to-image photorealistic renders; supports one reference image",
+        "bfl",
+        "flux-pro-1.1",
+        7,
+        5,
+        1,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        bfl_text_to_image_input,
+        extract_image_urls,
+        frame_ratios=IMAGE2_FRAME_RATIOS,
+        max_identity_objects=1,
+        image2_identity_priority=40,
+    ),
+    Candidate(
+        "flux-dev",
+        "Flux Dev",
+        "Fast text-to-image generation; supports one reference image",
+        "bfl",
+        "flux-dev",
+        5,
+        3,
+        1,
+        IMAGE_TIMEOUT_MS,
+        ("standard",),
+        bfl_text_to_image_input,
+        extract_image_urls,
+        frame_ratios=IMAGE2_FRAME_RATIOS,
+        max_identity_objects=1,
+        image2_identity_priority=50,
+    ),
     # The current Flux 2 Klein generator endpoint exposes only these three ratios.
-    Candidate("magichour-flux-2-klein-text", "Magic Hour Flux 2 Klein", "Free tier friendly 640px text-to-image and style reference edits", "magichour", "flux-2-klein", 5, 1, 5, IMAGE_TIMEOUT_MS, ("standard", "pro"), magichour_text_to_image_input, extract_image_urls, supports_style_reference=True, resolutions=("640px",), frame_ratios=("1:1", "16:9", "9:16")),
+    Candidate(
+        "magichour-flux-2-klein-text",
+        "Magic Hour Flux 2 Klein",
+        "Free tier friendly 640px text-to-image and style reference edits",
+        "magichour",
+        "flux-2-klein",
+        5,
+        1,
+        5,
+        IMAGE_TIMEOUT_MS,
+        ("standard", "pro"),
+        magichour_text_to_image_input,
+        extract_image_urls,
+        supports_style_reference=True,
+        resolutions=("640px",),
+        frame_ratios=("1:1", "16:9", "9:16"),
+        max_identity_objects=5,
+        image2_identity_priority=100,
+    ),
 ]
 
 MODEL_CATALOG: dict[str, list[Candidate]] = {

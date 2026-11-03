@@ -4593,6 +4593,10 @@ video {
   --tw-text-opacity: 1;
   color: rgb(214 214 223 / var(--tw-text-opacity, 1));
 }
+.text-\[\#d7d7df\] {
+  --tw-text-opacity: 1;
+  color: rgb(215 215 223 / var(--tw-text-opacity, 1));
+}
 .text-\[\#d7d8df\] {
   --tw-text-opacity: 1;
   color: rgb(215 216 223 / var(--tw-text-opacity, 1));
@@ -6372,6 +6376,11 @@ html.dark #hero .hero-responsive-image {
 .focus\:border-\[\#8c88ff\]:focus {
   --tw-border-opacity: 1;
   border-color: rgb(140 136 255 / var(--tw-border-opacity, 1));
+}
+
+.focus\:border-\[\#9f9cff\]:focus {
+  --tw-border-opacity: 1;
+  border-color: rgb(159 156 255 / var(--tw-border-opacity, 1));
 }
 
 .focus\:border-\[\#aaa7ff\]\/70:focus {

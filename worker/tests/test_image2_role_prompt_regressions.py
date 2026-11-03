@@ -5,15 +5,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from catalog import (
+    MODEL_CATALOG,
     google_text_to_image_input,
     image2_identity_object_count,
     magichour_text_to_image_input,
     normalize_image2_reference_roles,
     openai_text_to_image_input,
+    openai_text_to_image_25_input,
     text_to_image_identity_locked,
     text_to_image_images,
 )
 from prompts import add_image_reference_map, build_feature_prompt
+from workflows.engine import order_text_to_image_candidates
 
 
 def test_style_only_does_not_lock_object_identity():
@@ -130,3 +133,72 @@ def test_arabic_prompt_roles_are_recognized():
         ),
     }
     assert normalize_image2_reference_roles(req) == ["element", "base", "style", "detail"]
+
+
+def test_identity_compositing_auto_prefers_reference_fidelity():
+    ordered = order_text_to_image_candidates(
+        MODEL_CATALOG["text_to_image"],
+        "standard",
+        "auto",
+        prioritize_reference_fidelity=True,
+    )
+    assert ordered[0].key == "gpt-image-2.5-sunburst"
+    assert ordered[1].key == "gemini-3.1-flash"
+
+
+def test_text_only_auto_keeps_cost_first_order():
+    resolution_compatible = [
+        candidate
+        for candidate in MODEL_CATALOG["text_to_image"]
+        if "1K" in candidate.resolutions
+    ]
+    ordered = order_text_to_image_candidates(
+        resolution_compatible,
+        "standard",
+        "auto",
+        prioritize_reference_fidelity=False,
+    )
+    assert ordered[0].key == "flux-dev"
+
+
+def test_gpt_image_25_gets_native_4k_dimensions_and_png():
+    payload = openai_text_to_image_25_input(
+        {
+            "prompt": "Architectural visualization",
+            "referenceUrls": [],
+            "aspectRatio": "16:9",
+            "resolution": "4K",
+            "quality": "pro",
+            "quantity": 1,
+        }
+    )
+    assert payload["size"] == "3840x2160"
+    assert payload["quality"] == "xhigh"
+    assert payload["output_format"] == "png"
+
+
+def test_google_payload_passes_requested_image_size_and_ratio():
+    payload = google_text_to_image_input(
+        {
+            "prompt": "Architectural visualization",
+            "images": [],
+            "aspectRatio": "9:16",
+            "resolution": "2K",
+            "quantity": 1,
+        }
+    )
+    assert payload["aspectRatio"] == "9:16"
+    assert payload["resolution"] == "2K"
+
+
+def test_role_manifest_explains_architectural_compositing():
+    req = {
+        "feature": "text_to_image",
+        "referenceUrls": ["element.png", "base.png"],
+        "referenceTags": ["@img1", "@img2"],
+        "referenceRoles": ["element", "base"],
+    }
+    prompt = add_image_reference_map("Insert the object into the scene.", req)
+    assert "COMPOSITING TASK" in prompt
+    assert "contact shadows" in prompt
+    assert "perspective" in prompt

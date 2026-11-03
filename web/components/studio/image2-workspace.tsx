@@ -442,6 +442,9 @@ const IMAGE2_STYLE_FILTERS: readonly Image2Filter[] = [
 type Image2ModelOption = ModelOption & {
   provider?: string;
   maxReferences?: number;
+  maxIdentityObjects?: number;
+  image2IdentityPriority?: number;
+  supportsStyleReference?: boolean;
   tiers?: string[];
   resolutions?: string[];
   frameRatios?: string[];
@@ -1077,14 +1080,34 @@ export function Image2Workspace() {
   );
 
   const imageInputCount = references.length;
+  const identityObjectCount = references.filter(
+    (reference) => (reference.role ?? "element") === "element",
+  ).length;
+  const hasStyleReference = references.some(
+    (reference) => (reference.role ?? "element") === "style",
+  );
+  const hasIdentityReference = references.some((reference) =>
+    ["element", "base"].includes(reference.role ?? "element"),
+  );
   const isCompatibleWithSelectedInputs = useCallback(
     (model: Image2ModelOption) =>
-      model.configured && imageInputCount <= (model.maxReferences ?? 0),
-    [imageInputCount],
+      model.configured &&
+      imageInputCount <= (model.maxReferences ?? 0) &&
+      (model.maxIdentityObjects === undefined ||
+        identityObjectCount <= model.maxIdentityObjects) &&
+      (!hasStyleReference || model.supportsStyleReference === true),
+    [imageInputCount, identityObjectCount, hasStyleReference],
   );
   const inputCompatibleModels = useMemo(
-    () => modelOptions.filter((model) => imageInputCount <= (model.maxReferences ?? 0)),
-    [modelOptions, imageInputCount],
+    () =>
+      modelOptions.filter(
+        (model) =>
+          imageInputCount <= (model.maxReferences ?? 0) &&
+          (model.maxIdentityObjects === undefined ||
+            identityObjectCount <= model.maxIdentityObjects) &&
+          (!hasStyleReference || model.supportsStyleReference === true),
+      ),
+    [modelOptions, imageInputCount, identityObjectCount, hasStyleReference],
   );
   const configuredInputCompatibleModels = useMemo(
     () => inputCompatibleModels.filter((model) => model.configured),
@@ -1142,14 +1165,28 @@ export function Image2Workspace() {
   // compatible le MOINS CHER (cost_per_generation croissant, puis ordre
   // catalogue en tie-break). On reproduit cette logique ici pour afficher
   // le modèle résolu dans le bouton « Auto ».
+  const resolutionCompatibleModels = useMemo(
+    () =>
+      compatibleConfiguredModels.filter((model) =>
+        (model.resolutions ?? ["1K"]).includes(resolution),
+      ),
+    [compatibleConfiguredModels, resolution],
+  );
   const resolvedAutoModel = useMemo<Image2ModelOption | null>(() => {
-    if (compatibleConfiguredModels.length === 0) return null;
-    return compatibleConfiguredModels.reduce((best, m) =>
-      (m.costPerGeneration ?? Infinity) < (best.costPerGeneration ?? Infinity)
-        ? m
-        : best,
+    const tierMatches = resolutionCompatibleModels.filter((model) =>
+      (model.tiers ?? ["standard"]).includes(quality),
     );
-  }, [compatibleConfiguredModels]);
+    const candidates = tierMatches.length > 0 ? tierMatches : resolutionCompatibleModels;
+    if (candidates.length === 0) return null;
+    return [...candidates].sort((a, b) => {
+      if (hasIdentityReference) {
+        const priorityDifference =
+          (a.image2IdentityPriority ?? 50) - (b.image2IdentityPriority ?? 50);
+        if (priorityDifference !== 0) return priorityDifference;
+      }
+      return (a.costPerGeneration ?? Infinity) - (b.costPerGeneration ?? Infinity);
+    })[0];
+  }, [resolutionCompatibleModels, quality, hasIdentityReference]);
   const selectedModelCanHandleImages = selectedModelOption
     ? isCompatibleWithSelectedInputs(selectedModelOption)
     : !selectedModel;
@@ -1249,10 +1286,28 @@ export function Image2Workspace() {
     0,
   );
 
-  const handleModelSelection = (key: string) => {
-    setSelectedModel(key);
-    setModelPickerOpen(false);
-  };
+const handleModelSelection = (key: string) => {
+  const model = modelOptions.find((item) => item.key === key);
+
+  setSelectedModel(key);
+
+  if (model?.resolutions?.length) {
+    const supportedResolutions = model.resolutions;
+
+    if (!supportedResolutions.includes(resolution)) {
+      const preferredResolution = supportedResolutions.includes("1K")
+        ? "1K"
+        : supportedResolutions[0];
+
+      if (preferredResolution) {
+        setResolution(preferredResolution as Resolution);
+      }
+    }
+  }
+
+  setModelPickerOpen(false);
+  setError(null);
+};
 
   const toggleStyleFilter = (filterId: string) => {
     if (selectedStyleFilters.includes(filterId)) {
@@ -1272,7 +1327,26 @@ export function Image2Workspace() {
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isBusy) return;
+const supportedResolutions = selectedModelOption?.resolutions ?? [];
 
+if (
+  selectedModelOption &&
+  supportedResolutions.length > 0 &&
+  !supportedResolutions.includes(resolution)
+) {
+  const nextResolution = supportedResolutions.includes("1K")
+    ? "1K"
+    : supportedResolutions[0];
+
+  if (nextResolution) {
+    setResolution(nextResolution as Resolution);
+    setError(
+      `${selectedModelOption.name} supports ${supportedResolutions.join(", ")} only. Resolution updated. Generate again.`,
+    );
+  }
+
+  return;
+}
     if (selectedModelOption && !selectedModelOption.configured) {
       setError(
         "The selected model is not configured on the worker. Choose another model or Auto.",
@@ -1862,6 +1936,24 @@ export function Image2Workspace() {
                     >
                       {reference.name}
                     </p>
+                    <select
+                      aria-label={`Role for ${reference.tag}`}
+                      value={reference.role ?? "element"}
+                      onChange={(event) => {
+                        const role = event.target.value as Image2ReferenceRole;
+                        setReferences((current) =>
+                          current.map((item) =>
+                            item.id === reference.id ? { ...item, role } : item,
+                          ),
+                        );
+                      }}
+                      className="mt-1 w-full min-w-0 rounded-md border border-white/[0.09] bg-[#17181c] px-1.5 py-1 text-[9px] text-[#d7d7df] outline-none focus:border-[#9f9cff]"
+                    >
+                      <option value="element">Element</option>
+                      <option value="base">Base Scene</option>
+                      <option value="style">Style</option>
+                      <option value="detail">Detail</option>
+                    </select>
                   </div>
                 ))}
                 {references.length < MAX_REFERENCE_IMAGES && (
