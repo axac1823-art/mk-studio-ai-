@@ -332,19 +332,8 @@ def run(job: dict) -> None:
                     input_.get("model"),
                 )
 
-            output_validator = None
 
-            if feature == "text_to_image":
-                expected_frame = req.get("resolvedAspectRatio") or "4:3"
 
-                # Validate the provider's native output.
-                # Never crop, pad, resize, or rewrite the generated image.
-                output_validator = (
-                    lambda urls, _candidate: validate_image_output_frame(
-                        urls,
-                        expected_frame,
-                    )
-                )
 
             if feature == "text_to_image":
                 expected_frame = req.get("resolvedAspectRatio") or "4:3"
