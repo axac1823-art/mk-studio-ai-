@@ -1,12 +1,9 @@
 {
-  "/api/generate/route": "app/api/generate/route.js",
-  "/api/generate/[id]/route": "app/api/generate/[id]/route.js",
-  "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/config/costs/route": "app/api/config/costs/route.js",
   "/api/credits/balance/route": "app/api/credits/balance/route.js",
+  "/api/jobs/notifications/route": "app/api/jobs/notifications/route.js",
   "/api/projects/route": "app/api/projects/route.js",
   "/api/models/[feature]/route": "app/api/models/[feature]/route.js",
+  "/api/config/costs/route": "app/api/config/costs/route.js",
   "/api/assets/route": "app/api/assets/route.js",
   "/app/image2/page": "app/app/image2/page.js"
 }
