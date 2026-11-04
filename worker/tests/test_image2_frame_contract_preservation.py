@@ -29,13 +29,27 @@ def _png_data_uri(width: int, height: int):
     return "data:image/png;base64," + encoded
 
 
-def test_native_16_9_output_is_accepted_without_dimension_changes():
-    source_uri = _png_data_uri(640, 360)
+@pytest.mark.parametrize(
+    ("width", "height", "aspect_ratio"),
+    [
+        (640, 360, "16:9"),
+        (1280, 720, "16:9"),
+        (640, 640, "1:1"),
+        (360, 640, "9:16"),
+        (720, 1280, "9:16"),
+    ],
+)
+def test_native_output_frame_is_accepted_at_different_pixel_dimensions(
+    width,
+    height,
+    aspect_ratio,
+):
+    source_uri = _png_data_uri(width, height)
 
-    # Validation does not return or rewrite an image.
+    # Validation checks the requested ratio, not one fixed pixel size.
     validate_image_output_frame(
         [source_uri],
-        "16:9",
+        aspect_ratio,
     )
 
     image_bytes = base64.b64decode(
@@ -43,19 +57,20 @@ def test_native_16_9_output_is_accepted_without_dimension_changes():
     )
 
     with Image.open(io.BytesIO(image_bytes)) as image:
-        assert image.size == (640, 360)
+        assert image.size == (width, height)
 
 
-def test_wrong_native_frame_is_rejected_without_padding_or_cropping():
+@pytest.mark.parametrize("aspect_ratio", ["16:9", "1:1", "9:16"])
+def test_wrong_native_frame_is_rejected_without_padding_or_cropping(aspect_ratio):
     source_uri = _png_data_uri(640, 384)
 
     with pytest.raises(
         ValueError,
-        match="not the requested 16:9 frame",
+        match=f"not the requested {aspect_ratio} frame",
     ):
         validate_image_output_frame(
             [source_uri],
-            "16:9",
+            aspect_ratio,
         )
 
     image_bytes = base64.b64decode(
