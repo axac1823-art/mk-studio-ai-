@@ -311,3 +311,40 @@ Vérification rapide :
 ## COMMANDE FOR RUN WEB 
 npm start -- -H 0.0.0.0 
 IN:(http://192.168.1.4:3000/)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+تم إنشاء نقطة رجوع على فرع `codex`:
+
+`73919f67dc810acbacc5f65bd1d85807f56b27b2` — `chore: checkpoint Image2 frame diagnostics`
+
+تضمّن الـcommit تغييرات التشخيص في ملفات Worker الخمسة. لم أضمّن `web/.next-dev/trace` لأنه أثر تشغيل آلي؛ ما زال هذا الملف معدّلاً خارج الـcommit. الفرع الآن متقدم بcommit واحد عن `origin/codex`، ولم أعمل push.
