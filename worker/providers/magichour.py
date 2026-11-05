@@ -268,6 +268,32 @@ def _image_resolution(input_: dict) -> str:
     return resolution
 
 
+def _log_image2_submit(
+    input_: dict,
+    *,
+    endpoint: str,
+    model_id: str,
+    aspect_ratio: str,
+    resolution: str,
+    image_count: int,
+) -> None:
+    """Log safe request metadata without prompts, image data, or credentials."""
+    diagnostics = input_.get("_diagnostics") or {}
+    logger.info(
+        "IMAGE2_DIAGNOSTICS job_id=%s provider=magichour model=%s "
+        "endpoint=%s requested_ratio=%s resolved_ratio=%s sent_ratio=%s "
+        "resolution=%s image_count=%d",
+        diagnostics.get("job_id", "unknown"),
+        model_id,
+        endpoint,
+        diagnostics.get("requested_ratio", "unknown"),
+        diagnostics.get("resolved_ratio", "unknown"),
+        aspect_ratio,
+        resolution,
+        image_count,
+    )
+
+
 def _run_image_generator(
     model_id: str,
     input_: dict,
@@ -317,12 +343,13 @@ def _run_image_generator(
         },
     }
 
-    logger.info(
-        "Magic Hour image submit: endpoint=generator model=%s "
-        "aspect_ratio=%s resolution=%s",
-        model_id,
-        aspect_ratio,
-        resolution,
+    _log_image2_submit(
+        input_,
+        endpoint="ai-image-generator",
+        model_id=model_id,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        image_count=0,
     )
 
     job = post_json(
@@ -339,7 +366,8 @@ def _run_image_generator(
         )
 
     logger.info(
-        "Magic Hour image submitted: endpoint=generator project_id=%s",
+        "Magic Hour image submitted: job_id=%s endpoint=generator project_id=%s",
+        (input_.get("_diagnostics") or {}).get("job_id", "unknown"),
         job_id,
     )
 
@@ -382,13 +410,13 @@ def _run_image_edit(
 
     resolution = _image_resolution(input_)
 
-    logger.info(
-        "Magic Hour image submit: endpoint=editor model=%s "
-        "aspect_ratio=%s resolution=%s image_count=%d",
-        model_id,
-        aspect_ratio,
-        resolution,
-        len(images),
+    _log_image2_submit(
+        input_,
+        endpoint="ai-image-editor",
+        model_id=model_id,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        image_count=len(images),
     )
 
     # Preserve the input manifest order. The prompt's reference map uses
@@ -425,7 +453,8 @@ def _run_image_edit(
         )
 
     logger.info(
-        "Magic Hour image submitted: endpoint=editor project_id=%s",
+        "Magic Hour image submitted: job_id=%s endpoint=editor project_id=%s",
+        (input_.get("_diagnostics") or {}).get("job_id", "unknown"),
         job_id,
     )
 

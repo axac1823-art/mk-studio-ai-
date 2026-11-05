@@ -51,7 +51,13 @@ def _read_image_bytes(value: str) -> bytes:
     return data
 
 
-def validate_image_output_frame(output_urls: list[str], aspect_ratio: str, tolerance: float = 0.025) -> None:
+def validate_image_output_frame(
+    output_urls: list[str],
+    aspect_ratio: str,
+    tolerance: float = 0.025,
+    *,
+    diagnostics: dict | None = None,
+) -> None:
     """Raise if any output differs from the requested frame by >2.5%.
 
     This check protects users from silently receiving a different aspect ratio.
@@ -71,7 +77,28 @@ def validate_image_output_frame(output_urls: list[str], aspect_ratio: str, toler
         except Exception as exc:
             raise ValueError(f"Could not inspect output image {index} dimensions: {exc}") from exc
 
-        if abs(actual / expected - 1.0) > tolerance:
+        deviation = abs(actual / expected - 1.0)
+        frame_valid = deviation <= tolerance
+        if diagnostics is not None:
+            logger.info(
+                "IMAGE2_DIAGNOSTICS job_id=%s provider=%s model=%s "
+                "endpoint=%s requested_ratio=%s resolved_ratio=%s "
+                "output_width=%d output_height=%d output_ratio=%.4f "
+                "deviation_pct=%.2f frame_validation=%s",
+                diagnostics.get("job_id", "unknown"),
+                diagnostics.get("provider", "unknown"),
+                diagnostics.get("model", "unknown"),
+                diagnostics.get("endpoint", "unknown"),
+                diagnostics.get("requested_ratio", "unknown"),
+                diagnostics.get("resolved_ratio", aspect_ratio),
+                width,
+                height,
+                actual,
+                deviation * 100,
+                "passed" if frame_valid else "failed",
+            )
+
+        if not frame_valid:
             raise ValueError(
                 f"Output image {index} returned {width}x{height} ({actual:.4f}:1), "
                 f"not the requested {aspect_ratio} frame."

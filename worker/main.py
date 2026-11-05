@@ -5,6 +5,8 @@ DB et appelle ces endpoints HTTP. Le worker exécute le workflow en
 BackgroundTasks (pas de queue externe à ce stade) et met à jour la ligne
 `jobs` dans la DB partagée — /web la lit pour le polling client.
 """
+import logging
+
 from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -13,6 +15,10 @@ from dependencies import require_worker_key
 from providers import is_any_provider_configured
 from routes import audio, generate, jobs, lip_sync, models, threed_generator, upscale, video_edit, video_upscale
 from routes import storage as storage_routes
+
+# Les journaux de diagnostic des adaptateurs (notamment Image2) doivent
+# apparaître dans la console du worker pendant les essais locaux.
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="RenderStudio Worker")
 

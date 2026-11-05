@@ -496,7 +496,7 @@ def magichour_text_to_image_input(req: dict) -> dict:
 
     images = text_to_image_images(req)
 
-    return {
+    result = {
         "prompt": req["prompt"],
         "images": images,
         "aspectRatio": ratio,
@@ -504,6 +504,14 @@ def magichour_text_to_image_input(req: dict) -> dict:
         "quantity": req["quantity"],
         "is_text_to_image": True,
     }
+    diagnostic_job_id = req.get("_diagnosticJobId")
+    if diagnostic_job_id:
+        result["_diagnostics"] = {
+            "job_id": str(diagnostic_job_id),
+            "requested_ratio": req.get("aspectRatio") or "4:3",
+            "resolved_ratio": req.get("resolvedAspectRatio") or ratio,
+        }
+    return result
 
 
 def _magichour_video_prompt(req: dict, *, video_to_video: bool = False) -> str:

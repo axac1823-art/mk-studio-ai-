@@ -9,6 +9,7 @@ ligne en DB), puis job -> complete (crédits débités, idempotent) ou failed.
 """
 import base64
 import io
+import logging
 import math
 
 import db
@@ -25,7 +26,7 @@ from catalog import (
     text_to_image_identity_locked,
     text_to_image_images,
 )
-from frame_ratio import normalize_image_output_frame, validate_image_output_frame
+from frame_ratio import validate_image_output_frame
 from providers import is_provider_configured
 from providers.http_helpers import get_bytes
 from prompts import add_image_reference_map, build_feature_prompt
@@ -41,6 +42,8 @@ from workflows.engine import (
     order_candidates,
     order_text_to_image_candidates,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _image_reference_to_data_uri(value: str) -> str:
@@ -125,6 +128,8 @@ def run(job: dict) -> None:
             prompt = add_image_reference_map(prompt, input_)
 
             req = {**input_, "prompt": prompt}
+            if feature == "text_to_image":
+                req["_diagnosticJobId"] = str(job["id"])
 
             # Convert local worker assets immediately before provider adapters
             # consume them. Keep the image manifest order unchanged.
@@ -171,6 +176,20 @@ def run(job: dict) -> None:
 
             else:
                 req["resolvedAspectRatio"] = requested_ratio
+
+            if feature == "text_to_image":
+                image_count = len(text_to_image_images(req))
+                logger.info(
+                    "IMAGE2_DIAGNOSTICS job_id=%s stage=resolved "
+                    "input_mode=%s requested_ratio=%s resolved_ratio=%s "
+                    "resolution=%s image_count=%d",
+                    job["id"],
+                    "with_references" if image_count else "text_only",
+                    requested_ratio,
+                    req.get("resolvedAspectRatio") or "4:3",
+                    input_.get("resolution") or "640px",
+                    image_count,
+                )
 
             if feature == "background_remover" and isinstance(req.get("imageUrl"), str):
                 # Gallery assets may be local worker storage URLs.
@@ -331,27 +350,31 @@ def run(job: dict) -> None:
                     input_.get("quality") or "standard",
                     input_.get("model"),
                 )
-
-
-
-
+            output_validator = None
             if feature == "text_to_image":
                 expected_frame = req.get("resolvedAspectRatio") or "4:3"
 
-                # Pad only small provider deviations. Never crop away source
-                # content or resize the original image to conceal a mismatch.
-                output_transformer = (
-                    lambda urls, _candidate: normalize_image_output_frame(
+                def output_validator(urls, candidate):
+                    image_count = len(text_to_image_images(req))
+                    endpoint = "not_applicable"
+                    if candidate.provider == "magichour":
+                        endpoint = (
+                            "ai-image-editor"
+                            if image_count
+                            else "ai-image-generator"
+                        )
+                    validate_image_output_frame(
                         urls,
                         expected_frame,
+                        diagnostics={
+                            "job_id": str(job["id"]),
+                            "provider": candidate.provider,
+                            "model": candidate.key,
+                            "endpoint": endpoint,
+                            "requested_ratio": requested_ratio,
+                            "resolved_ratio": expected_frame,
+                        },
                     )
-                )
-                output_validator = (
-                    lambda urls, _candidate: validate_image_output_frame(
-                        urls,
-                        expected_frame,
-                    )
-                )
 
             outcome = execute_with_fallback(
                 feature,
