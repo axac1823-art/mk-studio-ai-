@@ -118,6 +118,23 @@ def test_image2_camera_position_is_optional():
     assert "Top-Down / Nadir" not in prompt
 
 
+def test_image2_prompt_does_not_invent_architecture_for_a_non_building_subject():
+    prompt = build_feature_prompt(
+        "text_to_image",
+        {
+            "sceneDetails": "A red ceramic teapot on a linen tablecloth.",
+            "referenceUrls": ["teapot-reference.png"],
+            "referenceRoles": ["base"],
+            "cameraPresetId": "front_view",
+        },
+    ).lower()
+
+    assert "architectural" not in prompt
+    assert "building" not in prompt
+    assert "facade" not in prompt
+    assert "red ceramic teapot" in prompt
+
+
 def test_image2_all_camera_presets_have_prompt_instructions():
     assert len(IMAGE2_CAMERA_POSITION_PROMPTS) == 9
     for preset_id, instruction in IMAGE2_CAMERA_POSITION_PROMPTS.items():

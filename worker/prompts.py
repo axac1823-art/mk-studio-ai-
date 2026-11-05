@@ -1125,15 +1125,15 @@ IMAGE2_STYLE_FILTER_PROMPTS: dict[str, str] = {
 }
 
 IMAGE2_CAMERA_POSITION_PROMPTS = {
-    "front_view": "Place the camera directly in front of the main facade at natural architectural-photo height.",
-    "three_quarter_view": "Use a natural ground-level three-quarter view showing two adjacent facades and depth.",
+    "front_view": "Place the camera directly in front of the main subject at a natural eye-level height.",
+    "three_quarter_view": "Use a natural ground-level three-quarter view that shows the main subject and its depth.",
     "low_angle": "Use a low camera looking upward, emphasizing height without distorting proportions.",
-    "elevated_view": "Use an elevated view looking gently down while keeping facades visible.",
-    "aerial_three_quarter": "Use an oblique aerial view showing the roof and two facades, not a top-down view.",
-    "high_aerial": "Use a high and distant aerial camera viewpoint showing the building, plot and site context.",
-    "low_altitude_aerial": "Use a close low-altitude aerial view emphasizing facade and immediate surroundings.",
-    "top_down_nadir": "Use a true vertical top-down view showing roof, footprint and site arrangement.",
-    "interior_corner": "Place the camera near an interior corner, looking diagonally across the room.",
+    "elevated_view": "Use an elevated view looking gently downward while keeping the main subject visible.",
+    "aerial_three_quarter": "Use an oblique aerial view of the main subject and its immediate surroundings, not a top-down view.",
+    "high_aerial": "Use a high and distant aerial camera viewpoint showing the main subject and its immediate surroundings.",
+    "low_altitude_aerial": "Use a close low-altitude aerial view emphasizing the main subject and nearby environment.",
+    "top_down_nadir": "Use a true vertical top-down view showing the main subject and its spatial arrangement.",
+    "interior_corner": "For an interior requested by the user, place the camera near a corner and look diagonally across the scene.",
 }
 IMAGE2_WEATHER_PROMPTS = {
     "clear_sunny": "Clear sunny sky, natural daylight and realistic shadows.",
@@ -1142,7 +1142,7 @@ IMAGE2_WEATHER_PROMPTS = {
     "dark_clouds": "Dense dramatic storm clouds while retaining believable daylight; no rain or lightning.",
     "thunderstorm": "Plausible thunderstorm clouds and rain; distant lightning only when appropriate.",
     "rain": "Natural rainfall with plausible wet paving and subtle reflections; no flooding.",
-    "fog_mist": "Layered realistic mist while keeping the main building readable.",
+    "fog_mist": "Layered realistic mist while keeping the main subject readable.",
     "snow": "Natural snowfall and plausible accumulation on exposed horizontal surfaces.",
     "dust_haze": "Subtle dusty haze and atmospheric depth while keeping the foreground clear.",
 }
@@ -1170,8 +1170,8 @@ def build_weather_season_prompt(weather=None, season=None) -> str:
     if not parts:
         return ""
     return (
-        "Apply the selected environmental changes photorealistically. Preserve the building's identity, geometry, "
-        "proportions, facade, materials, structural details, camera position, perspective and composition.\n"
+        "Apply the selected environmental changes photorealistically. Preserve the main subject's identity, visible "
+        "geometry, proportions, materials, details, camera position, perspective and composition.\n"
         + "\n".join(parts)
     )
 
@@ -1251,7 +1251,7 @@ def build_text_to_image_prompt(
     season=None,
     reference_roles=None,
 ) -> str:
-    """Build a role-aware architectural image generation prompt."""
+    """Build a role-aware Image2 prompt without imposing a subject type."""
 
     roles = set(reference_roles or [])
 
@@ -1279,14 +1279,14 @@ def build_text_to_image_prompt(
     parts = [
         (
             "Create the subject and scene described by the user as a coherent, "
-            "intentional architectural image. Follow explicit choices for "
+            "intentional image. Follow explicit choices for "
             "subject, composition, camera, materials, palette, lighting, "
             "time of day, mood and visual medium. Do not assume an unrequested "
-            "style, environment or lighting setup."
+            "style, environment, lighting setup, building or other subject."
         ),
         (
             "Maintain visual consistency: believable proportions, coherent "
-            "perspective, realistic object scale, consistent architectural "
+            "perspective, realistic object scale, consistent scene "
             "geometry, readable detail hierarchy and physically plausible "
             "material response."
         ),
@@ -1303,7 +1303,7 @@ def build_text_to_image_prompt(
     if has_base:
         parts.append(
             "BASE SCENE: The Base reference is the destination scene and "
-            "the primary source of truth for existing architecture, spatial "
+            "the primary source of truth for the existing subject, spatial "
             "layout, camera viewpoint, perspective, framing, background, "
             "landscape and fixed objects. Preserve these elements unless "
             "the user explicitly requests a change. Do not replace the "
@@ -1332,7 +1332,7 @@ def build_text_to_image_prompt(
         parts.append(
             "COMPOSITING TASK: Treat the Base as the destination environment "
             "and the Element as the subject to integrate. Follow the requested "
-            "placement and scale. Preserve the existing Base architecture "
+            "placement and scale. Preserve the existing Base scene "
             "and composition while making the inserted Element look "
             "physically present in that scene. Maintain correct perspective, "
             "ground contact, contact shadows, cast shadows, reflections "
@@ -1342,7 +1342,7 @@ def build_text_to_image_prompt(
     if has_style and not has_composition_inputs:
         parts.append(
             "Style references guide visual treatment only. They are not "
-            "scene subjects, objects, architectural designs or backgrounds. "
+            "scene subjects, objects, designs or backgrounds. "
             "Follow the user's requested subject and scene description."
         )
 
@@ -1350,7 +1350,7 @@ def build_text_to_image_prompt(
         parts.append(
             "Detail references contribute only the requested material, "
             "texture, finish, pattern or surface detail. Do not copy their "
-            "objects, silhouettes, architecture, scene layout or backgrounds."
+            "objects, silhouettes, scene layout or backgrounds."
         )
 
     description = _sanitize_scene_details(scene_details)
@@ -1405,7 +1405,7 @@ def build_text_to_image_prompt(
             "color treatment, shading and finish only. They are not source "
             "images, subjects, objects, scene descriptions, backgrounds, "
             "overlays or separate layers. Preserve the user's requested "
-            "subject, composition, object count, architectural geometry "
+            "subject, composition, object count, visible geometry "
             "and setting."
         )
 
@@ -1416,7 +1416,7 @@ def build_text_to_image_prompt(
                     "A separate Style reference image is attached. Treat "
                     "it only as an aesthetic guide. Match its actual visual "
                     "treatment without copying its subject, objects, "
-                    "architecture or composition."
+                    "scene layout or composition."
                 ),
                 (
                     "Do not force a bright, warm, glossy or photorealistic "

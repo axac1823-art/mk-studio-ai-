@@ -38,6 +38,7 @@ from workflows.common import (
     store_output,
 )
 from workflows.engine import (
+    OutputValidationError,
     execute_with_fallback,
     order_candidates,
     order_text_to_image_candidates,
@@ -207,11 +208,30 @@ def run(job: dict) -> None:
                 # image, the primary image and every tagged reference.
                 input_count = len(text_to_image_images(input_))
                 identity_count = image2_identity_object_count(input_)
+                selected_model = input_.get("model")
+                explicitly_selected_candidate = next(
+                    (
+                        candidate
+                        for candidate in feature_candidates
+                        if candidate.key == selected_model
+                    ),
+                    None,
+                )
+                if (
+                    input_count > 0
+                    and explicitly_selected_candidate is not None
+                    and not explicitly_selected_candidate.supports_image_input
+                ):
+                    raise ValueError(
+                        f"{explicitly_selected_candidate.name} is text-only in Image2 and cannot accept image references. "
+                        "Choose another model or remove the input images."
+                    )
 
                 feature_candidates = [
                     candidate
                     for candidate in feature_candidates
-                    if candidate.max_references >= input_count
+                    if (input_count == 0 or candidate.supports_image_input)
+                    and candidate.max_references >= input_count
                     and (
                         not has_style_reference
                         or candidate.supports_style_reference
@@ -225,7 +245,6 @@ def run(job: dict) -> None:
                 # Auto may use only providers that are actually configured.
                 # A manually selected model remains explicit and is not
                 # silently replaced by another provider.
-                selected_model = input_.get("model")
                 if not selected_model or selected_model == "auto":
                     feature_candidates = [
                         candidate
@@ -359,10 +378,20 @@ def run(job: dict) -> None:
                     endpoint = "not_applicable"
                     if candidate.provider == "magichour":
                         endpoint = (
-                            "ai-image-editor"
+                            "POST /v1/ai-image-editor"
                             if image_count
-                            else "ai-image-generator"
+                            else "POST /v1/ai-image-generator"
                         )
+                    elif candidate.provider == "openai":
+                        endpoint = (
+                            "POST /v1/images/edits"
+                            if image_count
+                            else "POST /v1/images/generations"
+                        )
+                    elif candidate.provider == "google":
+                        endpoint = f"POST /v1beta/models/{candidate.model_id}:generateContent"
+                    elif candidate.provider == "bfl":
+                        endpoint = f"POST /v1/{candidate.model_id}"
                     validate_image_output_frame(
                         urls,
                         expected_frame,
@@ -381,6 +410,7 @@ def run(job: dict) -> None:
                 candidates,
                 req,
                 output_validator=output_validator,
+                stop_on_output_validation_error=(feature == "text_to_image"),
             )
 
             result_asset_id = None
@@ -399,5 +429,56 @@ def run(job: dict) -> None:
                 outcome["winner"].cost_per_generation,
             )
 
+        except OutputValidationError as err:
+            image_count = len(text_to_image_images(req))
+            endpoint = "not_applicable"
+            if err.candidate.provider == "magichour":
+                endpoint = (
+                    "POST /v1/ai-image-editor"
+                    if image_count
+                    else "POST /v1/ai-image-generator"
+                )
+            elif err.candidate.provider == "openai":
+                endpoint = "POST /v1/images/edits" if image_count else "POST /v1/images/generations"
+            elif err.candidate.provider == "google":
+                endpoint = f"POST /v1beta/models/{err.candidate.model_id}:generateContent"
+            elif err.candidate.provider == "bfl":
+                endpoint = f"POST /v1/{err.candidate.model_id}"
+            logger.exception(
+                "IMAGE2_OUTPUT_VALIDATION_FAILED job_id=%s model=%s provider=%s endpoint=%s "
+                "expected_frame=%s returned_images=%d; traceback follows",
+                job["id"],
+                err.candidate.key,
+                err.candidate.provider,
+                endpoint,
+                req.get("resolvedAspectRatio") or input_.get("aspectRatio") or "4:3",
+                len(err.output_urls),
+            )
+            for index, output_url in enumerate(err.output_urls, start=1):
+                try:
+                    stored_path, _extension = store_output(output_url)
+                    asset_id = insert_asset(conn, job, "image", stored_path)
+                    err.saved_asset_count += 1
+                    logger.info(
+                        "IMAGE2_REJECTED_IMAGE_SAVED job_id=%s image_index=%d asset_id=%s storage_path=%s",
+                        job["id"],
+                        index,
+                        asset_id,
+                        stored_path,
+                    )
+                except Exception:
+                    logger.exception(
+                        "IMAGE2_REJECTED_IMAGE_SAVE_FAILED job_id=%s image_index=%d; traceback follows",
+                        job["id"],
+                        index,
+                    )
+            fail_job(conn, job, err)
+
         except Exception as err:  # AllModelsFailedError incluse
+            if feature == "text_to_image":
+                logger.exception(
+                    "IMAGE2_WORKFLOW_FAILED job_id=%s feature=%s; traceback follows",
+                    job["id"],
+                    feature,
+                )
             fail_job(conn, job, err)

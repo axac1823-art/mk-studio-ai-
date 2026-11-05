@@ -445,6 +445,7 @@ type Image2ModelOption = ModelOption & {
   maxIdentityObjects?: number;
   image2IdentityPriority?: number;
   supportsStyleReference?: boolean;
+  supportsImageInput?: boolean;
   tiers?: string[];
   resolutions?: string[];
   frameRatios?: string[];
@@ -679,6 +680,7 @@ export function Image2Workspace() {
   const [resolution, setResolution] = useState<Resolution>("1K");
   const [quantity, setQuantity] = useState(1);
   const [result, setResult] = useState<ResultState>({ status: "idle" });
+  const [rejectedOutputUrls, setRejectedOutputUrls] = useState<string[]>([]);
   const [lastGenerationMeta, setLastGenerationMeta] = useState<LastGenerationMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [referenceNotice, setReferenceNotice] = useState<string | null>(null);
@@ -1083,8 +1085,16 @@ export function Image2Workspace() {
             void refreshAssets(selectedProjectId);
           } else if (data.status === "error") {
             stopPolling();
+            const previewUrls = Array.isArray(data.previewUrls)
+              ? data.previewUrls.filter((url: unknown): url is string => typeof url === "string")
+              : [];
+            setRejectedOutputUrls(previewUrls);
             setResult({ status: "idle" });
             setError(data.error ?? "Generation failed. Please try again.");
+            if (previewUrls.length > 0) {
+              setSelectedOutputIndex(0);
+              void refreshAssets(selectedProjectId);
+            }
           } else {
             setResult((current) =>
               current.status === "busy"
@@ -1113,6 +1123,7 @@ export function Image2Workspace() {
   const isCompatibleWithSelectedInputs = useCallback(
     (model: Image2ModelOption) =>
       model.configured &&
+      (!imageInputCount || model.supportsImageInput !== false) &&
       imageInputCount <= (model.maxReferences ?? 0) &&
       (model.maxIdentityObjects === undefined ||
         identityObjectCount <= model.maxIdentityObjects) &&
@@ -1123,6 +1134,7 @@ export function Image2Workspace() {
     () =>
       modelOptions.filter(
         (model) =>
+          (!imageInputCount || model.supportsImageInput !== false) &&
           imageInputCount <= (model.maxReferences ?? 0) &&
           (model.maxIdentityObjects === undefined ||
             identityObjectCount <= model.maxIdentityObjects) &&
@@ -1407,6 +1419,7 @@ const handleModelSelection = (key: string) => {
       resolution,
       createdAt: new Date().toISOString(),
     });
+    setRejectedOutputUrls([]);
     setResult({ status: "busy" });
     const form = new FormData();
     form.append("feature", "text_to_image");
@@ -2714,6 +2727,42 @@ const handleModelSelection = (key: string) => {
               </button>
             </div>
           )}
+          {rejectedOutputUrls.length > 0 && (
+            <section
+              className="mb-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.05] p-3"
+              aria-label="Rejected image preview"
+            >
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold text-amber-100">
+                  Generated image · saved to Assets
+                </p>
+                <span className="rounded bg-amber-200/10 px-2 py-1 text-[9px] text-amber-100">
+                  Frame validation failed
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {rejectedOutputUrls.map((url, index) => (
+                  <button
+                    key={`${url}-${index}`}
+                    type="button"
+                    onClick={() => setZoomedImage(url)}
+                    className="overflow-hidden rounded-lg border border-white/[0.08] bg-[#17181c] text-left"
+                    aria-label={`Open rejected image ${index + 1}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={`Generated image rejected by frame validation ${index + 1}`}
+                      className="max-h-[420px] w-full object-contain"
+                    />
+                    <span className="block px-2.5 py-2 text-[9px] text-[#a6a8b1]">
+                      Preserved in project Assets · not counted as a successful generation
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
           {feedTab === "Creations" ? (
             <>
               {isBusy && (
@@ -3549,7 +3598,8 @@ const handleModelSelection = (key: string) => {
                     const active = model.key === selectedModel;
                     const provider = providerLabel(model.provider, model);
                     const maxRefs = model.maxReferences ?? 0;
-                    const fitsReferences = imageInputCount <= maxRefs;
+                    const supportsImageInput = imageInputCount === 0 || model.supportsImageInput !== false;
+                    const fitsReferences = supportsImageInput && imageInputCount <= maxRefs;
                     const fitsIdentityObjects = model.maxIdentityObjects === undefined || identityObjectCount <= model.maxIdentityObjects;
                     const supportsStyle = !hasStyleReference || model.supportsStyleReference === true;
                     const supportedFrames = supportedImage2FrameRatios(model, imageInputCount > 0);
@@ -3595,9 +3645,11 @@ const handleModelSelection = (key: string) => {
                               {model.service ?? "Image · Text-to-image"}
                             </span>
                             <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[8px] text-[#acafb9]">
-                              {maxRefs > 0
-                                ? `${maxRefs} content images max`
-                                : "Prompt only"}
+                              {model.supportsImageInput === false
+                                ? "Prompt only"
+                                : maxRefs > 0
+                                  ? `${maxRefs} content images max`
+                                  : "Prompt only"}
                             </span>
                             <span className="rounded bg-[#aaa7ff]/10 px-1.5 py-0.5 text-[8px] text-[#c2bfff]" title={`Supported output frames: ${supportedFrames.join(", ") || "not reported"}`}>
                               {supportedFrames.length > 0 ? `Frames: ${supportedFrames.join(" · ")}` : "Frames not reported"}
@@ -3610,8 +3662,9 @@ const handleModelSelection = (key: string) => {
                           )}
                           {!fitsReferences && (
                             <span className="mt-1 block text-[9px] text-rose-200">
-                              Needs fewer image inputs ({imageInputCount}{" "}
-                              selected).
+                              {model.supportsImageInput === false
+                                ? "Text-only model. Remove image references to use it."
+                                : `Needs fewer image inputs (${imageInputCount} selected).`}
                             </span>
                           )}
                           {!fitsIdentityObjects && (

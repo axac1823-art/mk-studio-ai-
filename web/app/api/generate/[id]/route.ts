@@ -33,9 +33,14 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     });
   }
   if (job.status === "failed") {
+    const isImage2Job = job.type === "text_to_image" || job.input?.feature === "text_to_image";
+    const assets = isImage2Job ? await listAssetsForJob(job.id) : [];
+    const rejectedImages = assets.filter((asset) => asset.type === "image");
     return NextResponse.json({
       status: "error",
       error: job.error_message ?? "Generation failed, please try again.",
+      previewUrls: rejectedImages.map((asset) => publicUrl(asset.storage_path)),
+      previewAssetIds: rejectedImages.map((asset) => asset.id),
     });
   }
   // pending / processing : le client repollera.

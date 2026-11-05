@@ -58,6 +58,8 @@ class Candidate:
     supports_image_to_3d: bool = False
     # True only for adapters that pass images as multimodal context, not as the image being edited.
     supports_style_reference: bool = False
+    # Whether this candidate's actual Image2 adapter accepts input images.
+    supports_image_input: bool = True
     # Current text-to-image adapters expose approximately 1K output only.
     # Do not advertise 2K/4K until an adapter really requests those sizes.
     resolutions: tuple[str, ...] = ("1K",)
@@ -130,6 +132,8 @@ def list_feature_models(feature: str, include_costs: bool = False) -> list[dict]
             "supportsTextTo3d": c.supports_text_to_3d,
             "supportsImageTo3d": c.supports_image_to_3d,
         }
+        if feature == "text_to_image":
+            item["supportsImageInput"] = c.supports_image_input
         if c.max_identity_objects is not None:
             item["maxIdentityObjects"] = c.max_identity_objects
         if c.text_to_image_generator_frame_ratios is not None:
@@ -1021,6 +1025,7 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
         ("standard", "pro"),
         bfl_text_to_image_input,
         extract_image_urls,
+        supports_image_input=False,
         frame_ratios=IMAGE2_FRAME_RATIOS,
         max_identity_objects=1,
         image2_identity_priority=40,
@@ -1038,6 +1043,7 @@ TEXT_TO_IMAGE_CANDIDATES: list[Candidate] = [
         ("standard",),
         bfl_text_to_image_input,
         extract_image_urls,
+        supports_image_input=False,
         frame_ratios=IMAGE2_FRAME_RATIOS,
         max_identity_objects=1,
         image2_identity_priority=50,

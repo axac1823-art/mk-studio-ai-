@@ -101,7 +101,8 @@ def validate_image_output_frame(
         if not frame_valid:
             raise ValueError(
                 f"Output image {index} returned {width}x{height} ({actual:.4f}:1), "
-                f"not the requested {aspect_ratio} frame."
+                f"not the requested {aspect_ratio} frame; deviation is {deviation * 100:.2f}%, "
+                f"which exceeds the allowed {tolerance * 100:.2f}% tolerance."
             )
 
 

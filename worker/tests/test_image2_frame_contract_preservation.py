@@ -82,6 +82,17 @@ def test_wrong_native_frame_is_rejected_without_padding_or_cropping(aspect_ratio
         assert image.size == (640, 384)
 
 
+def test_frame_rejection_reports_measured_deviation_and_fixed_tolerance():
+    with pytest.raises(ValueError) as exc:
+        validate_image_output_frame([_png_data_uri(640, 448)], "16:9")
+
+    message = str(exc.value)
+    assert "640x448" in message
+    assert "deviation is" in message
+    assert "19.64%" in message
+    assert "2.50% tolerance" in message
+
+
 def test_worker_storage_image_url_is_resolved_even_when_host_is_a_lan_ip(
     tmp_path,
     monkeypatch,

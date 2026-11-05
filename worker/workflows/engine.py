@@ -25,6 +25,26 @@ class AllModelsFailedError(Exception):
         self.attempts = attempts
 
 
+class OutputValidationError(Exception):
+    """A provider returned an image, but the workflow rejected its output."""
+
+    def __init__(
+        self,
+        feature: str,
+        candidate: Candidate,
+        output_urls: list[str],
+        validation_error: Exception,
+        attempts: list[dict],
+    ):
+        super().__init__(str(validation_error))
+        self.feature = feature
+        self.candidate = candidate
+        self.output_urls = list(output_urls)
+        self.validation_error = validation_error
+        self.attempts = attempts
+        self.saved_asset_count = 0
+
+
 def order_candidates(
     candidates: list[Candidate],
     quality: str,
@@ -87,6 +107,7 @@ def execute_with_fallback(
     adapter_override=None,
     output_validator=None,
     output_transformer=None,
+    stop_on_output_validation_error: bool = False,
 ) -> dict:
     """Essaie les candidats dans l'ordre. Retourne
     {"winner": Candidate, "output_urls": [...], "attempts": [...]} ou lève
@@ -134,7 +155,27 @@ def execute_with_fallback(
                 output_urls = output_transformer(output_urls, candidate)
 
             if output_validator is not None:
-                output_validator(output_urls, candidate)
+                try:
+                    output_validator(output_urls, candidate)
+                except Exception as validation_err:
+                    if not stop_on_output_validation_error:
+                        raise
+                    attempts.append(
+                        {
+                            "candidateKey": candidate.key,
+                            "ok": False,
+                            "phase": "output_validation",
+                            "latencyMs": int((time.monotonic() - started) * 1000),
+                            "error": str(validation_err),
+                        }
+                    )
+                    raise OutputValidationError(
+                        feature,
+                        candidate,
+                        output_urls,
+                        validation_err,
+                        attempts.copy(),
+                    ) from validation_err
 
             attempts.append(
                 {
@@ -150,6 +191,10 @@ def execute_with_fallback(
                 "attempts": attempts,
             }
 
+        except OutputValidationError:
+            # Image2 has already received a provider output: do not spend on
+            # another provider merely because the output contract rejected it.
+            raise
         except Exception as err:  # noqa: BLE001 — toute erreur = fallback
             # L'erreur réelle reste dans la trace serveur, jamais chez le client.
             attempts.append(

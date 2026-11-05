@@ -282,6 +282,18 @@ def test_text_only_auto_keeps_cost_first_order():
     assert ordered[0].key == "flux-dev"
 
 
+def test_bfl_image2_flux_pro_and_flux_dev_are_text_only():
+    candidates = {
+        candidate.key: candidate
+        for candidate in MODEL_CATALOG["text_to_image"]
+    }
+
+    assert candidates["flux-pro"].supports_image_input is False
+    assert candidates["flux-dev"].supports_image_input is False
+    assert candidates["gpt-image-2.5-sunburst"].supports_image_input is True
+    assert candidates["gemini-3.1-flash"].supports_image_input is True
+
+
 def test_gpt_image_25_gets_native_4k_dimensions_and_png():
     payload = openai_text_to_image_25_input(
         {

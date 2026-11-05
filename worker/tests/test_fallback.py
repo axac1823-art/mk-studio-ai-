@@ -7,7 +7,12 @@ sortie, échec global (AllModelsFailedError), tri par tier de qualité,
 compatibilité des références, sortie vide = échec.
 """
 from catalog import Candidate
-from workflows.engine import AllModelsFailedError, execute_with_fallback, order_candidates
+from workflows.engine import (
+    AllModelsFailedError,
+    OutputValidationError,
+    execute_with_fallback,
+    order_candidates,
+)
 
 failures = 0
 
@@ -69,7 +74,36 @@ def base_request(**overrides) -> dict:
     return req
 
 
+def test_output_validation_failure_stops_fallback_and_keeps_provider_output() -> None:
+    calls: list[str] = []
+    candidates = [fake_candidate("a"), fake_candidate("b")]
+
+    def reject_frame(_urls, _candidate):
+        raise ValueError("frame mismatch: 640x448 is not 16:9")
+
+    caught = None
+    try:
+        execute_with_fallback(
+            "text_to_image",
+            candidates,
+            base_request(feature="text_to_image", imageUrl=None, referenceUrls=[]),
+            fake_adapter([], calls),
+            output_validator=reject_frame,
+            stop_on_output_validation_error=True,
+        )
+    except OutputValidationError as exc:
+        caught = exc
+
+    check(isinstance(caught, OutputValidationError), "output validation raises a dedicated non-retriable error")
+    check(calls == ["fake/a"], "no second provider is called after a returned image fails validation")
+    check(caught is not None and caught.output_urls == ["https://example.test/a.jpg"], "rejected provider output is preserved for Assets")
+    check(caught is not None and caught.candidate.key == "a", "failed candidate identity is retained")
+
+
 def main() -> None:
+    print("\n[0] Output validation failure: keep the image and do not retry")
+    test_output_validation_failure_stops_fallback_and_keeps_provider_output()
+
     print("\n[1] Fallback : A et B échouent, C sert la génération")
     calls: list[str] = []
     candidates = [fake_candidate("a"), fake_candidate("b"), fake_candidate("c")]

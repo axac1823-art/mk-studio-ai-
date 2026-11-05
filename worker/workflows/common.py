@@ -10,7 +10,7 @@ import logging
 import db
 import storage
 from providers.http_helpers import data_uri_to_bytes, get_bytes
-from workflows.engine import AllModelsFailedError
+from workflows.engine import AllModelsFailedError, OutputValidationError
 
 log = logging.getLogger("workflows")
 
@@ -34,6 +34,16 @@ _MIME_EXT = {
 def _client_failure_message(err: Exception) -> str:
     """Traduit les erreurs providers en messages actionnables sans exposer
     les réponses brutes, URLs internes ou détails d'authentification."""
+    if isinstance(err, OutputValidationError):
+        if err.saved_asset_count > 0:
+            return (
+                f"Image frame validation failed: {err}. The rejected image was saved to Assets; "
+                "the generation remains failed because its frame does not match the requested ratio."
+            )
+        return (
+            f"Image frame validation failed: {err}. The generated image could not be saved to Assets; "
+            "check the worker terminal logs for the storage error."
+        )
     if isinstance(err, AllModelsFailedError):
         errors = [str(attempt.get("error") or "").lower() for attempt in err.attempts]
     else:
@@ -240,10 +250,19 @@ def set_video_progress(conn, job_id: str, progress: dict) -> None:
 def fail_job(conn, job: dict, err: Exception) -> None:
     """Échec : détails provider uniquement dans le journal serveur, message
     client actionnable, AUCUN débit (les crédits ne partent qu'au succès)."""
-    if isinstance(err, AllModelsFailedError):
-        log.error("job %s (%s) failed: %s\nattempts=%s", job["id"], job.get("type"), err, err.attempts)
+    if isinstance(err, OutputValidationError):
+        log.error(
+            "job %s (%s) rejected by Image2 output validation: %s; saved_assets=%d source_file=%s",
+            job["id"],
+            job.get("type"),
+            err,
+            err.saved_asset_count,
+            __file__,
+        )
+    elif isinstance(err, AllModelsFailedError):
+        log.error("job %s (%s) failed: %s\nattempts=%s source_file=%s", job["id"], job.get("type"), err, err.attempts, __file__)
     else:
-        log.error("job %s (%s) failed: %s", job["id"], job.get("type"), err)
+        log.error("job %s (%s) failed: %s source_file=%s", job["id"], job.get("type"), err, __file__)
     conn.execute(
         "UPDATE jobs SET status = 'failed', error_message = %s WHERE id = %s AND status = 'processing'",
         (_client_failure_message(err), job["id"]),
