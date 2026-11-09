@@ -9,9 +9,14 @@
 // exécuté par le worker de façon idempotente. Ici : calcul du coût
 // affiché/facturé et lecture du solde AVANT lancement.
 import { requireAuth } from "../auth";
-import { getActionCosts, getLedgerBalance } from "../db/queries";
+import {
+  getActionCosts,
+  getActionMargins,
+  getAppConfigNumber,
+  getLedgerBalance,
+} from "../db/queries";
 
-export const QUALITY_MULTIPLIER = { standard: 1, pro: 2 } as const;
+import type { ComparePricingConfig } from "../compare/pricing";export const QUALITY_MULTIPLIER = { standard: 1, pro: 2 } as const;
 export const RESOLUTION_SURCHARGE = {
   "640px": 0,
   "1K": 0,
@@ -52,7 +57,38 @@ export interface CostInput {
   durationSeconds?: keyof typeof DURATION_MULTIPLIER;
   upscaleFactor?: 2 | 4;
 }
+/**
+ * Charge la configuration tarifaire propre à Compare Studio.
+ * Le coût de base reste issu du catalogue provider côté serveur.
+ */
+export async function getComparePricingConfig(): Promise<ComparePricingConfig> {
+  const [margins, creditPerUsdCent] = await Promise.all([
+    getActionMargins(),
+    getAppConfigNumber("credit_per_usd_cent", 1),
+  ]);
 
+  const marginMultiplier = margins.text_to_image;
+
+  if (
+    typeof marginMultiplier !== "number" ||
+    !Number.isFinite(marginMultiplier) ||
+    marginMultiplier <= 0
+  ) {
+    throw new Error("Missing or invalid text_to_image margin configuration.");
+  }
+
+  if (
+    !Number.isFinite(creditPerUsdCent) ||
+    creditPerUsdCent <= 0
+  ) {
+    throw new Error("Invalid credit conversion configuration.");
+  }
+
+  return {
+    marginMultiplier,
+    creditPerUsdCent,
+  };
+}
 /** Solde courant de l'utilisateur authentifié (somme du ledger append-only). */
 export async function getBalance(): Promise<number> {
   const { dbUser: user } = await requireAuth();

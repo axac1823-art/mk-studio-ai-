@@ -293,6 +293,14 @@ def magichour_edit_input(req: dict) -> dict:
 IMAGE2_REFERENCE_ROLES = {"element", "base", "style", "detail"}
 
 
+class Image2RoleConflictError(ValueError):
+    """The prompt explicitly assigns a reference a role different from its saved metadata."""
+
+
+class Image2AutoFrameError(ValueError):
+    """The selected Base metadata is ambiguous or its dimensions cannot be inspected."""
+
+
 def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str | None:
     """Detect an explicit role assigned to one exact Image2 tag in the prompt."""
     text = scene_details if isinstance(scene_details, str) else ""
@@ -326,7 +334,6 @@ def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str 
         ),
         "element": (
             rf"{image_tag}[^.!?\n]{{0,45}}(?:\u0643\u0639\u0646\u0635\u0631|\u0643\u062c\u0633\u0645|\u0643\u0645\u0646\u062a\u062c)",
-            rf"(?:\u0627\u062d\u0641\u0638|\u0627\u062d\u062a\u0641\u0638)[^.!?\n]{{0,70}}(?:\u0647\u0648\u064a\u0629|\u0634\u0643\u0644|\u0646\u0633\u0628)[^.!?\n]{{0,40}}{image_tag}",
         ),
     }
     for role in ("base", "style", "detail", "element"):
@@ -367,7 +374,6 @@ def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str 
             (
                 rf"\b(?:use|treat|consider)\s+{image_tag}\s+(?:as\s+)?(?:the\s+)?(?:element|object|item|subject|product|person|building)\b",
                 rf"{image_tag}\s+(?:as\s+)?(?:the\s+)?(?:object|element|item|subject)\s+to\s+(?:insert|place|add|include)\b",
-                rf"\b(?:preserve|keep|retain)\b[^.!?\n]{{0,100}}\b(?:identity|silhouette|proportions|features)\b[^.!?\n]{{0,50}}{image_tag}\b",
                 rf"{image_tag}\s+(?:كعنصر|كجسم|كمنتج|كشخص|كعنصر\s+لإدخاله)",
                 rf"(?:حافظ|احتفظ)\b[^.!؟\n]{{0,100}}\b(?:هوية|شكل|نسب|تفاصيل)\b[^.!؟\n]{{0,50}}{image_tag}",
             ),
@@ -380,7 +386,10 @@ def _explicit_image2_reference_role(scene_details: str | None, tag: str) -> str 
 
 
 def normalize_image2_reference_roles(req: dict) -> list[str]:
-    """Explicit prompt role declarations override saved roles; legacy requests fall back safely."""
+    """Return saved Image2 roles; never infer or mutate them from prompt text.
+
+    Legacy requests without valid role metadata keep the historical Element default.
+    """
     references = req.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
@@ -389,31 +398,112 @@ def normalize_image2_reference_roles(req: dict) -> list[str]:
     if not isinstance(raw_roles, (list, tuple)):
         raw_roles = []
 
+    roles: list[str] = []
+    for index in range(len(references)):
+        saved_role = raw_roles[index] if index < len(raw_roles) else None
+        if isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES:
+            roles.append(saved_role)
+        else:
+            roles.append("element")
+    return roles
+
+
+def image2_reference_role_conflicts(req: dict) -> list[dict[str, str]]:
+    """Find explicit prompt role assignments that contradict saved role metadata.
+
+    Prompt text is validation-only here. It never changes the returned role manifest.
+    Multiple prompt clauses are checked independently so contradictory assignments
+    to the same tag are not hidden by the first matching clause.
+    """
+    references = req.get("referenceUrls") or []
+    if not isinstance(references, (list, tuple)) or not references:
+        return []
+
+    scene_details = req.get("sceneDetails")
+    if not isinstance(scene_details, str) or not scene_details.strip():
+        return []
+
     raw_tags = req.get("referenceTags") or []
     if not isinstance(raw_tags, (list, tuple)):
         raw_tags = []
 
-    scene_details = req.get("sceneDetails")
-    roles: list[str] = []
+    saved_roles = normalize_image2_reference_roles(req)
+    clauses = re.split(r"(?<=[.!?؟])\s+|[\r\n;،]+", scene_details)
+    conflicts: list[dict[str, str]] = []
 
-    for index in range(len(references)):
+    for index, saved_role in enumerate(saved_roles):
         tag = raw_tags[index] if index < len(raw_tags) else None
         if not isinstance(tag, str) or not re.fullmatch(r"@img[1-9]\d*", tag):
             tag = f"@img{index + 1}"
 
-        saved_role = raw_roles[index] if index < len(raw_roles) else None
-        explicit_role = _explicit_image2_reference_role(scene_details, tag)
+        declared_roles: set[str] = set()
+        image_tag = re.escape(tag)
+        direct_role_patterns = {
+            "base": (
+                rf"{image_tag}\s+(?:as\s+)?(?:(?:the|a|an)\s+)?(?:base|background|backdrop|destination(?:\s+scene)?)\b",
+                rf"{image_tag}\s+(?:كخلفية|كقاعدة|كمشهد\s+أساسي)",
+            ),
+            "element": (
+                rf"{image_tag}\s+(?:as\s+)?(?:(?:the|a|an)\s+)?(?:element|object|item|subject|product|person|building)\b",
+                rf"{image_tag}\s+(?:كعنصر|كجسم|كمنتج|كشخص)",
+            ),
+            "style": (
+                rf"{image_tag}\s+(?:as|for)\s+(?:(?:the|a|an)\s+)?(?:style|lighting|light|color(?:\s+treatment)?|palette|visual\s+treatment)\b",
+                rf"{image_tag}\s+(?:للإضاءة|للضوء|للألوان|للمعالجة\s+البصرية|كمرجع\s+أسلوبي)",
+            ),
+            "detail": (
+                rf"{image_tag}\s+(?:as|for)\s+(?:(?:the|a|an)\s+)?(?:material|texture|detail|pattern|finish|surface)\b",
+                rf"{image_tag}\s+(?:للخامة|للملمس|للتفاصيل|للنقش|للتشطيب)",
+            ),
+        }
+        for clause in clauses:
+            negative_patterns = (
+                rf"\b(?:do\s+not|don't|never|avoid)\s+(?:use|treat|assign|consider|interpret)\s+{image_tag}\s+(?:as|for)\b",
+                rf"{image_tag}\s+(?:is|should\s+be)\s+not\s+(?:the\s+)?(?:base|background|style|lighting|light|material|texture|detail|element|object)\b",
+                rf"(?:لا\s+تستخدم|لا\s+تعامل|لا\s+تعتبر|لا\s+تسند|لا\s+تصنف)\s+{image_tag}\s+(?:ك|على\s+أنه|على\s+أنها)",
+            )
+            if any(re.search(pattern, clause, re.IGNORECASE) for pattern in negative_patterns):
+                continue
 
-        if explicit_role in IMAGE2_REFERENCE_ROLES:
-            role = explicit_role
-        elif isinstance(saved_role, str) and saved_role in IMAGE2_REFERENCE_ROLES:
-            role = saved_role
-        else:
-            role = "element"
+            for role, patterns in direct_role_patterns.items():
+                if any(re.search(pattern, clause, re.IGNORECASE) for pattern in patterns):
+                    declared_roles.add(role)
 
-        roles.append(role)
+            # Also catch compact contradictory assignments such as
+            # "Use @img1 as Base and Element" within one sentence.
+            all_role_aliases = (
+                r"base|background|backdrop|destination|element|object|item|subject|product|person|building|"
+                r"style|lighting|light|color(?:\s+treatment)?|palette|visual\s+treatment|"
+                r"material|texture|detail|pattern|finish|surface"
+            )
+            for role, aliases in (
+                ("base", r"base|background|backdrop|destination"),
+                ("element", r"element|object|item|subject|product|person|building"),
+                ("style", r"style|lighting|light|color(?:\s+treatment)?|palette|visual\s+treatment"),
+                ("detail", r"material|texture|detail|pattern|finish|surface"),
+            ):
+                compound = (
+                    rf"{image_tag}\s+(?:as|for)\s+(?:(?:the|a|an)\s+)?(?:{all_role_aliases})"
+                    rf"\s+(?:and|or|/)\s+(?:(?:the|a|an)\s+)?(?:{aliases})\b"
+                )
+                if re.search(compound, clause, re.IGNORECASE):
+                    declared_roles.add(role)
 
-    return roles
+            explicit_role = _explicit_image2_reference_role(clause, tag)
+            if explicit_role in IMAGE2_REFERENCE_ROLES:
+                declared_roles.add(explicit_role)
+
+        for prompt_role in sorted(declared_roles):
+            if prompt_role != saved_role:
+                conflicts.append(
+                    {
+                        "tag": tag,
+                        "saved_role": saved_role,
+                        "prompt_role": prompt_role,
+                    }
+                )
+
+    return conflicts
 
 def text_to_image_identity_locked(req: dict) -> bool:
     """Only an Element or Base source locks identity/composition; Style alone does not."""
@@ -430,45 +520,40 @@ def image2_identity_object_count(req: dict) -> int:
 
 
 def image2_frame_reference(req: dict) -> str | None:
-    """Choose the source image that defines Auto framing.
+    """Return the single explicitly tagged Base reference for Auto framing.
 
-    Priority:
-    1. Base: it is the destination scene and therefore owns the output frame.
-    2. Primary image: used when there is no Base.
-    3. First Element reference: fallback when no primary image exists.
-
-    Style and Detail references never define the destination frame.
+    Primary Image, Element, Style and Detail never become an Auto frame source.
+    With no Base, the caller applies the documented default. Multiple Base roles
+    are ambiguous and must be resolved by the user before provider selection.
     """
     references = req.get("referenceUrls") or []
     if not isinstance(references, (list, tuple)):
         references = []
 
     roles = normalize_image2_reference_roles(req)
+    base_indices = [index for index, role in enumerate(roles) if role == "base"]
 
-    base_index = next(
-        (index for index, role in enumerate(roles) if role == "base"),
-        None,
-    )
-    if base_index is not None and base_index < len(references):
-        value = references[base_index]
-        if isinstance(value, str) and value.strip():
-            return value
+    if len(base_indices) > 1:
+        raise Image2AutoFrameError(
+            f"Auto framing requires exactly one Base reference; found {len(base_indices)}. "
+            "Keep one Base image or choose an explicit aspect ratio."
+        )
 
-    primary = req.get("imageUrl")
-    if isinstance(primary, str) and primary.strip():
-        return primary
+    if not base_indices:
+        return None
 
-    element_index = next(
-        (index for index, role in enumerate(roles) if role == "element"),
-        None,
-    )
-    if element_index is not None and element_index < len(references):
-        value = references[element_index]
-        if isinstance(value, str) and value.strip():
-            return value
+    base_index = base_indices[0]
+    if base_index >= len(references):
+        raise Image2AutoFrameError(
+            "The selected Base reference is missing. Re-select the Base image or choose an explicit aspect ratio."
+        )
 
-    return None
-
+    value = references[base_index]
+    if not isinstance(value, str) or not value.strip():
+        raise Image2AutoFrameError(
+            "The selected Base reference is empty or invalid. Re-select the Base image or choose an explicit aspect ratio."
+        )
+    return value
 
 def text_to_image_images(req: dict) -> list[str]:
     """Return provider image inputs in manifest order: Style, primary Element, then references."""

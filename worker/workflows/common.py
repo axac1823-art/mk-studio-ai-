@@ -9,6 +9,7 @@ import logging
 
 import db
 import storage
+from catalog import Image2AutoFrameError, Image2RoleConflictError
 from providers.http_helpers import data_uri_to_bytes, get_bytes
 from workflows.engine import AllModelsFailedError, OutputValidationError
 
@@ -34,6 +35,8 @@ _MIME_EXT = {
 def _client_failure_message(err: Exception) -> str:
     """Traduit les erreurs providers en messages actionnables sans exposer
     les réponses brutes, URLs internes ou détails d'authentification."""
+    if isinstance(err, (Image2RoleConflictError, Image2AutoFrameError)):
+        return str(err)
     if isinstance(err, OutputValidationError):
         if err.saved_asset_count > 0:
             return (

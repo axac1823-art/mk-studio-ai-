@@ -14,7 +14,7 @@ import math
 
 import db
 import storage
-from PIL import Image
+from PIL import Image, ImageOps
 
 from catalog import (
     MODEL_CATALOG,
@@ -22,6 +22,9 @@ from catalog import (
     candidate_text_to_image_frame_ratios,
     image2_frame_reference,
     image2_identity_object_count,
+    image2_reference_role_conflicts,
+    Image2AutoFrameError,
+    Image2RoleConflictError,
     normalize_image2_reference_roles,
     text_to_image_identity_locked,
     text_to_image_images,
@@ -60,32 +63,36 @@ def _image_reference_to_data_uri(value: str) -> str:
 
 
 def _infer_aspect_ratio(value: str | None) -> str:
-    """Infer the nearest supported frame from a reference image; default to 4:3."""
+    """Infer the nearest supported frame from one Base image.
+
+    A missing Base uses the documented 4:3 default. If a Base was selected but
+    cannot be read, fail explicitly instead of silently changing its frame to 4:3.
+    EXIF orientation is applied to an in-memory Pillow view for measurement only;
+    the original reference bytes and provider input are never rewritten.
+    """
     if not isinstance(value, str) or not value.strip():
         return "4:3"
 
     try:
         if value.startswith("data:") and "," in value:
             payload = value.split(",", 1)[1]
-            image_bytes = base64.b64decode(payload)
+            image_bytes = base64.b64decode(payload, validate=True)
         elif value.startswith("/storage/"):
             image_bytes = storage.resolve(value).read_bytes()
         elif value.startswith(("http://", "https://")):
-            # Prefer the local file when this URL maps to worker storage.
-            # Otherwise inspect the remote source rather than silently
-            # assuming that every external reference is 4:3.
             local_path = storage.local_path_from_url(value)
             if local_path is not None and local_path.is_file():
                 image_bytes = local_path.read_bytes()
             else:
                 image_bytes, _content_type = get_bytes(value, timeout_s=30)
         else:
-            return "4:3"
+            raise ValueError("unsupported Base image reference format")
 
         with Image.open(io.BytesIO(image_bytes)) as image:
-            width, height = image.size
+            oriented_image = ImageOps.exif_transpose(image)
+            width, height = oriented_image.size
             if width <= 0 or height <= 0:
-                return "4:3"
+                raise ValueError("Base image has invalid dimensions")
             source_ratio = width / height
 
         ratios = {
@@ -102,11 +109,34 @@ def _infer_aspect_ratio(value: str | None) -> str:
             ratios,
             key=lambda key: abs(math.log(source_ratio / ratios[key])),
         )
+    except Exception as exc:
+        # Do not log the URL or data URI: either may contain private/signed data.
+        logger.error(
+            "IMAGE2_AUTO_FRAME_BASE_INSPECTION_FAILED error_type=%s",
+            type(exc).__name__,
+        )
+        raise Image2AutoFrameError(
+            "Auto could not read the selected Base image dimensions. "
+            "Re-select the Base image or choose an explicit aspect ratio."
+        ) from exc
 
-    except Exception:
-        # Keep Auto usable when a reference URL cannot be inspected.
-        # The default is explicit and is still validated downstream.
-        return "4:3"
+def _resolve_image2_aspect_ratio(input_: dict, req: dict) -> str:
+    """Resolve the Image2 output frame once; adapters may only translate it."""
+    requested_ratio = input_.get("aspectRatio") or "4:3"
+    if requested_ratio != "auto":
+        return requested_ratio
+
+    frame_reference = image2_frame_reference(req)
+    if frame_reference:
+        return _infer_aspect_ratio(frame_reference)
+
+    if (
+        input_.get("model") == "magichour-flux-2-klein-text"
+        and not text_to_image_images(input_)
+    ):
+        return "1:1"
+
+    return "4:3"
 
 
 def run(job: dict) -> None:
@@ -125,6 +155,20 @@ def run(job: dict) -> None:
     with db.connect() as conn:
         mark_processing(conn, job["id"])
         try:
+            if feature == "text_to_image":
+                role_conflicts = image2_reference_role_conflicts(input_)
+                if role_conflicts:
+                    details = "; ".join(
+                        f"{item['tag']} is saved as {item['saved_role'].title()} "
+                        f"but the prompt explicitly assigns it as {item['prompt_role'].title()}"
+                        for item in role_conflicts
+                    )
+                    raise Image2RoleConflictError(
+                        "Image2 reference role conflict: " + details + ". "
+                        "The saved role is authoritative. Edit the prompt or change the role "
+                        "in Image2; no provider request was sent."
+                    )
+
             prompt = build_feature_prompt(feature, input_)
             prompt = add_image_reference_map(prompt, input_)
 
@@ -153,30 +197,7 @@ def run(job: dict) -> None:
                     req["imageUrl"] = _image_reference_to_data_uri(primary_image)
 
             requested_ratio = input_.get("aspectRatio") or "4:3"
-
-            if requested_ratio == "auto":
-                frame_reference = image2_frame_reference(req)
-
-                if frame_reference:
-                    # A real destination frame always has priority.
-                    req["resolvedAspectRatio"] = _infer_aspect_ratio(
-                        frame_reference
-                    )
-
-                elif (
-                    input_.get("model") == "magichour-flux-2-klein-text"
-                    and not text_to_image_images(input_)
-                ):
-                    # Magic Hour text-only Generator defaults to square.
-                    # Keep Auto compatible with its native output frame.
-                    req["resolvedAspectRatio"] = "1:1"
-
-                else:
-                    # Preserve the existing project default for other cases.
-                    req["resolvedAspectRatio"] = _infer_aspect_ratio(None)
-
-            else:
-                req["resolvedAspectRatio"] = requested_ratio
+            req["resolvedAspectRatio"] = _resolve_image2_aspect_ratio(input_, req)
 
             if feature == "text_to_image":
                 image_count = len(text_to_image_images(req))
