@@ -24,21 +24,20 @@ def _magichour_candidate():
     )
 
 
-def test_magic_hour_frame_capabilities_depend_on_input_mode():
-    candidate = _magichour_candidate()
+def test_auto_frame_does_not_use_primary_image_when_base_is_missing():
+    req = {
+        "imageUrl": "primary.png",
+        "referenceUrls": [
+            "style.png",
+            "detail.png",
+        ],
+        "referenceRoles": [
+            "style",
+            "detail",
+        ],
+    }
 
-    # Text-only generation uses the narrower Generator API ratio set.
-    assert candidate_text_to_image_frame_ratios(
-        candidate,
-        has_input_images=False,
-    ) == ("1:1", "16:9", "9:16")
-
-    # Requests with images use Editor and retain its wider supported set.
-    assert candidate_text_to_image_frame_ratios(
-        candidate,
-        has_input_images=True,
-    ) == candidate.frame_ratios
-
+    assert image2_frame_reference(req) is None
 
 def test_auto_frame_prefers_base_over_primary_image():
     req = {
@@ -58,21 +57,23 @@ def test_auto_frame_prefers_base_over_primary_image():
     assert image2_frame_reference(req) == "base-scene.png"
 
 
-def test_auto_frame_uses_primary_image_when_no_base_exists():
+def test_auto_frame_does_not_fall_back_to_element_when_base_is_missing():
     req = {
-        "imageUrl": "primary.png",
         "referenceUrls": [
             "style.png",
             "detail.png",
+            "first-element.png",
+            "second-element.png",
         ],
         "referenceRoles": [
             "style",
             "detail",
+            "element",
+            "element",
         ],
     }
 
-    assert image2_frame_reference(req) == "primary.png"
-
+    assert image2_frame_reference(req) is None
 
 def test_auto_frame_falls_back_to_first_element_reference():
     req = {
