@@ -308,3 +308,314 @@ This is an administrative handoff request, not an agent findings entry. It does 
 6. Append the complete CHAT1 Round 0/1 entry under the append-only marker, then explicitly hand off to CHAT2 for Round 2.
 
 Please do not ask CHAT2 to begin until the CHAT1 entry is persisted against the same source revision and the handoff is explicit.
+
+
+## CHAT1 — ROUND 1 INVESTIGATION FINDINGS (2026-11-12)
+
+### 0. Repository and source-state verification
+
+- Repository: https://github.com/axac1823-art/mk-studio-ai-
+- Branch: codex
+- Source-code HEAD inspected: 72f07b0364e53480365eb8a4e1b6cb12716474a0
+- HEAD observed immediately before this append: c4c68763ce6ae0dfa8c314f91f77f099816ebea1
+- The only commit between those SHAs is c4c6876. Its diff changes CONVIRSATION only (15 added lines; no application source changed). Therefore the application source findings below apply to 72f07b0 and remain the source tree at c4c6876.
+- Repository and branch were read from GitHub. CHAT1 cannot inspect the local filesystem in this session; current local worktree status is UNKNOWN. The last user-provided local snapshot in the conversation was branch codex at 73919f67dc810acbacc5f65bd1d85807f56b27b2, ahead 1 of its then-origin/codex, with README.md modified and numerous tracked/untracked web/.next-dev artifacts. This is historical, not today's local state. Do not sync, checkout, reset, clean, or overwrite it.
+- Root AGENTS.md was read. No nested AGENTS.md was found at worker/, worker/workflows/, worker/providers/, worker/tests/, web/, web/app/, or web/components/.
+- IMAGE2_BATCH1_README.txt and apply_image2_batch1.py were read. The script is dry-run by default; it targets four Batch 1 files, refuses dirty targets, requires exact anchors and AST parsing, and writes backups outside the repo only with --apply. It is historical tooling, not an instruction to rerun: Batch 1 source changes are already present in the inspected source tree.
+- CHAT1 made no source edits, ran no tests, and made no live provider calls.
+- GitHub combined status for 72f07b0 showed Vercel success only; the GitHub Actions workflow-runs lookup returned no runs. This does not prove Python tests passed.
+- Official provider documentation was accessed on 2026-11-12.
+
+### 1. Complete Image2 request-path map
+
+1. UI — web/components/studio/image2-workspace.tsx
+   - Lines 552-583 define Image2AspectRatio, ratio descriptions, and IMAGE2_ASPECT_RATIOS. Auto plus 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3 and 21:9 are exposed. 4:5 is absent.
+   - Lines 1420-1485 build FormData: feature=text_to_image, sceneDetails, quality, aspectRatio, resolution, quantity, optional model/project; each reference is appended in array order as referenceMeta with index/source/assetId/tag/role and, for uploaded files, referenceFile_index.
+   - The UI sends one shared Image2 request shape; provider endpoints are not selected in the browser.
+   - Source: https://github.com/axac1823-art/mk-studio-ai-/blob/72f07b0364e53480365eb8a4e1b6cb12716474a0/web/components/studio/image2-workspace.tsx#L552-L585
+
+2. Next.js API — web/app/api/generate/route.ts
+   - Lines 85-88 define the accepted ratio lists and resolution list. Both ratio lists omit 4:5.
+   - Lines 224-273 parse referenceMeta, validate roles (element/base/style/detail), default missing legacy roles to element, and resolve uploaded files or user-owned assets.
+   - Lines 274-339 retain legacy references and keep Style separate from @img references. Web-side MAX_REFERENCES checks referenceItems plus a separate Style reference; the optional primary imageUrl is not included in this count.
+   - Lines 344-351 silently map any unknown/unsupported aspectRatio to 1:1. This is a confirmed violation of explicit-ratio immutability. A direct request containing an unsupported explicit value does not receive a clear unsupported-ratio error.
+   - Lines 352-362 validate resolution.
+   - Lines 405-507 upload source/reference bytes using Buffer.from(arrayBuffer()) and uploadSource, then save imageUrl, referenceUrls, tags, roles, Style, aspectRatio, resolution, quantity, prompt and model in job input. No image resize/re-encode step is visible in this route.
+   - Source: https://github.com/axac1823-art/mk-studio-ai-/blob/72f07b0364e53480365eb8a4e1b6cb12716474a0/web/app/api/generate/route.ts#L224-L362
+
+3. Worker API — worker/routes/generate.py and worker/main.py
+   - The generate router is registered behind require_worker_key in worker/main.py. The route accepts the job request, loads/validates the job and schedules image_render.run as background work; provider behavior is not implemented at the HTTP route.
+   - worker/main.py lines 19-21 enables INFO logging globally. This has a security implication discussed below.
+   - Sources: worker/routes/generate.py#L1-L64 and worker/main.py#L19-L35
+
+4. Shared workflow — worker/workflows/image_render.py
+   - Lines 53-63 convert worker-local storage references to data URIs; existing data URIs and external URLs remain unchanged.
+   - Lines 65-121 infer the ratio from image dimensions using PIL and EXIF orientation in memory. It does not save a transposed or resized source.
+   - Lines 123-139 resolve the frame once: an explicit ratio is returned unchanged; Auto uses exactly one Base; no Base defaults to 4:3, except the selected Magic Hour text-only/no-image case uses its documented square Generator default 1:1.
+   - Lines 142-214 load the job, normalize roles, detect role conflicts before provider execution, build the prompt and request context.
+   - Lines 220-352 filter candidates by image-input eligibility, reference count, identity objects, resolution and the actual mode's supported ratios. Magic Hour Generator ratios are selected separately from Editor ratios.
+   - Lines 353-378 attach the output validator for feature=text_to_image. Both text-only and with-reference Image2 requests use this feature, so both are validated.
+   - Lines 379-435 call execute_with_fallback with stop_on_output_validation_error enabled for Image2.
+   - Lines 453-505 preserve rejected output(s) as Assets where storage succeeds, fail the job and avoid marking a frame-invalid output complete.
+   - Source: https://github.com/axac1823-art/mk-studio-ai-/blob/72f07b0364e53480365eb8a4e1b6cb12716474a0/worker/workflows/image_render.py#L53-L139 and #L142-L214 and #L220-L435 and #L439-L505
+
+5. Catalog and reference manifest — worker/catalog.py and worker/prompts.py
+   - Candidate declares provider/model id, input builder, timeout_ms, max_references, supports_image_input, resolutions, frame_ratios, max_identity_objects, identity priority and optional Generator-specific ratios (catalog.py lines 23-72).
+   - image2_frame_reference (catalog.py lines 522-548) accepts exactly one saved Base. Multiple Base raises; no Base returns None. Primary, Element, Style and Detail are never Auto fallbacks.
+   - text_to_image_images (catalog.py lines 558-570) orders provider image inputs as Style, primary imageUrl, then referenceUrls.
+   - prompts.py lines 441-575 map each @img tag and saved role to the corresponding provider input position, offsetting for any Style and primary images.
+   - supports_style_reference in Candidate is explicitly described as passing an image as multimodal context; it is not proof of a provider-native Style-only input field.
+   - Sources: worker/catalog.py#L23-L147 and #L522-L610; worker/prompts.py#L441-L575
+
+6. Adapter, response, storage and validation
+   - Each provider adapter serializes its own request and normalizes its response into image URLs.
+   - engine.py chooses/order candidates, invokes adapters, extracts output URLs and runs the validator.
+   - common.py stores local URLs/data URIs/remote URLs, creates Assets and completes/fails jobs. The user credit ledger is charged on successful completion; frame-invalid output is stored as a rejected Asset before job failure when possible.
+   - frame_ratio.py reads the original output dimensions and applies 2.5% tolerance. normalize_image_output_frame() contains padding/letterbox logic but the Image2 call does not pass an output_transformer; that helper is not connected to current Image2.
+   - Sources: worker/workflows/engine.py#L100-L210; worker/workflows/common.py#L44-L120; worker/frame_ratio.py#L1-L171
+
+### 2. Active Image2 candidate matrix
+
+Runtime configured/unconfigured state is UNKNOWN from public source alone: list_feature_models calls is_provider_configured(), which checks worker runtime secrets. CHAT1 did not inspect secrets or call provider APIs.
+
+| Candidate | Exact model id | Text-only | With references | Current app declaration |
+|---|---|---|---|---|
+| OpenAI GPT Image 2.5 Sunburst | gpt-image-2.5-sunburst | POST /v1/images/generations JSON | POST /v1/images/edits multipart image[] | max_references 13; 1K/2K/4K; common Image2 ratios; max_identity_objects 13 |
+| Google Nano Banana 2 | gemini-3.1-flash-image | POST /v1beta/models/{id}:generateContent | same endpoint with text + inline_data image parts | max_references 13; 1K/2K/4K; common ratios; max_identity_objects 10 |
+| Google Nano Banana 2 Lite | gemini-3.1-flash-lite-image | same GenerateContent endpoint | same endpoint with inline_data parts | max_references 13; 1K; common ratios; max_identity_objects 10 |
+| Magic Hour Flux 2 Klein | flux-2-klein | POST /v1/ai-image-generator | POST /v1/ai-image-editor after file upload | max_references 5; app resolution pinned to 640px; Generator 1:1/16:9/9:16; Editor broader |
+| BFL Flux Pro 1.1 | flux-pro-1.1 | POST /v1/flux-pro-1.1 asynchronous | ineligible because supports_image_input=False | max_references 1 and description claims one reference, contradicting supports_image_input=False |
+| BFL Flux Dev | flux-dev | adapter uses POST /v1/{model_id} asynchronous | ineligible because supports_image_input=False | max_references 1 and description claims one reference, contradicting supports_image_input=False |
+
+Candidate definitions: worker/catalog.py#L1042-L1179. Provider code: worker/providers/openai.py#L46-L126 and #L164-L180; google.py#L25-L81; magichour.py#L54-L72 and #L297-L461 and #L593-L660; bfl.py#L26-L68.
+
+### 3. Provider API findings
+
+#### OpenAI — GPT Image 2.5 Sunburst
+
+VERIFIED FACT:
+- Current official OpenAI Image documentation lists gpt-image-2.5-sunburst and separate Images API Generations and Edits operations.
+- Project selects Generations when images[] is empty and Edits when images[] contains input images (openai.py lines 46-126 and 164-180).
+- Edits uses repeated multipart image[] fields, preserving list order, and sends model, prompt, size, quality and output_format.
+- Catalog builder maps frame ratios to explicit dimensions. Pro maps to xhigh; current GPT Image 2.5 docs include xhigh/max quality options. Prior claims that xhigh is invalid for 2.5 are rejected.
+- OpenAI Edits documentation allows up to 16 input images, PNG/JPEG/WebP under 50MB each. App max_references=13 is a conservative app limit, not the provider maximum.
+- GPT Image 2.5 supports custom dimensions subject to API constraints; 4:5 is within the documented general ratio range if dimensions meet requirements.
+
+VERIFIED DEFECT:
+- Candidate timeout_ms is 180,000ms but OpenAI adapter uses a hard-coded 300-second HTTP timeout and ignores timeout_ms.
+
+UNKNOWN:
+- Runtime account access and visual identity retention were not tested.
+- No final HTTP transport mock was run to capture multipart bytes/field order.
+
+Official docs:
+- https://developers.openai.com/api/docs/guides/image-generation
+- https://developers.openai.com/api/reference/resources/images/methods/edit
+- https://developers.openai.com/api/reference/resources/images/methods/generate
+
+#### Google — Nano Banana 2 and Nano Banana 2 Lite
+
+VERIFIED FACT:
+- Google documents gemini-3.1-flash-image and gemini-3.1-flash-lite-image as image-capable models.
+- Image2's google_text_to_image_input() does pass aspectRatio and resolution into the adapter. It is incorrect to attribute their omission to google_edit_input(), which is a Generic Image Edit builder, not Image2.
+- Google Adapter creates one text part followed by inline_data parts for each image and parses candidates[].content.parts[].inlineData.
+- Lite is restricted to 1K by Catalog and is documented as less optimized for multiple-reference/sequential editing than full Nano Banana 2.
+
+HIGH-CONFIDENCE REQUEST-CONTRACT DRIFT / INFERENCE:
+- Project sends raw REST to /v1beta/models/{model}:generateContent with image configuration nested under generationConfig.imageConfig.
+- Current official raw REST examples for Gemini 3.1 image generation use /v1/models/{model}:generateContent and generationConfig.responseFormat.image with aspectRatio and imageSize.
+- The source request shape therefore differs from the current official raw REST example. This is a strong payload-contract defect hypothesis, but source alone does not prove whether the old v1beta shape is rejected, ignored or still accepted. A final HTTP mock can prove what our client sends; only an approved live request can prove provider behavior.
+- The Catalog builder itself supplies requested ratio/resolution correctly.
+
+VERIFIED DEFECT:
+- Candidate timeout_ms is 180,000ms, while Google generate() does not pass timeout_ms into _run_one()/post_json; the helper defaults to 60 seconds.
+
+UNKNOWN:
+- Whether Google still accepts the precise v1beta + imageConfig structure for both model ids.
+- Runtime quota/access and visual identity preservation.
+- supports_style_reference is application-level multimodal context, not a dedicated native Google Style slot.
+- Catalog max_identity_objects=10 for Lite is conservative versus the higher object-reference ceiling in Google docs, but Lite's multiple-reference optimization warning means no automatic capability expansion should happen without product/visual evidence.
+
+Official docs:
+- https://ai.google.dev/gemini-api/docs/generate-content/image-generation
+- https://ai.google.dev/gemini-api/docs/generate-content
+- https://ai.google.dev/gemini-api/docs/interactions
+
+#### Magic Hour — Flux 2 Klein
+
+VERIFIED FACT:
+- Adapter routes text-only to POST /v1/ai-image-generator and with images to POST /v1/ai-image-editor.
+- Generator body includes model, image_count=1, resolution, aspect_ratio and style.prompt.
+- Editor body includes model, image_count=1, aspect_ratio, resolution, style.prompt and assets.image_file_paths.
+- Local/Data URI references are resolved/uploaded before Edit; upload PUT sends original bytes with detected MIME. No resizing/cropping/padding is present in this input path.
+- ThreadPoolExecutor.map preserves the input order when resolving uploaded file paths.
+- Generator ratios are 1:1/16:9/9:16. Editor ratios include auto, 1:1, 16:9, 9:16, 4:3, 3:2, 2:3 and 4:5.
+- Adapter accepts 640px/1k/2k; Candidate exposes only 640px. This is the owner's current Basic/free-tier product/account constraint, not proof of the model API maximum.
+- Official Editor docs describe up to five additional reference images. Current Candidate max_references=5 is used as a total-image count in the application; the exact semantic difference between provider “additional input images” and app total inputs remains UNKNOWN and should stay conservative until verified.
+- Candidate.frame_ratios omits 4:5 although the Editor adapter and official docs support 4:5. UI/API/Frame Validator also omit 4:5.
+
+VERIFIED TIMEOUT DEFECT:
+- Candidate timeout_ms=180,000 is used as the overall polling deadline, but upload URL request, PUT upload, submit POST and status GET use helper/default HTTP timeouts (generally 60s). The deadline does not bound each individual network request.
+
+HISTORICAL 16:9 → 640x448:
+- Returned 640x448 is not 16:9; reported deviation 19.64% exceeds 2.5%.
+- Current validator measures the returned image and rejects the mismatch. Image2 does not attach an output_transformer; the padding helper in frame_ratio.py is not connected.
+- The historical app-level sent_ratio log is emitted before the post_json call and is not itself proof that the final serialized HTTP body contained the field.
+- Existing Magic Hour tests inspect some post_json URL/body values, reference order and ratio, but do not reproduce the historical Editor 16:9 + 640px request together with original 640x448 output.
+- Root cause is UNKNOWN: exact historical source revision/final body/API payload and output artifact are missing. No basis to quarantine or declare 16:9 unsupported.
+
+Official docs:
+- https://docs.magichour.ai/api-reference/image-projects/ai-image-generator
+- https://docs.magichour.ai/api-reference/image-projects/ai-image-editor
+- https://docs.magichour.ai/api-reference/files/upload-urls
+
+#### BFL — Flux Pro 1.1 / Flux Dev in current Image2 catalog
+
+VERIFIED FACT:
+- Both candidates have supports_image_input=False, so the current Image2 resolver must exclude them from reference mode.
+- Adapter uses BFL asynchronous POST /v1/{model_id}, obtains polling_url/id, polls until Ready, and extracts result.sample.
+- Catalog description says each “supports one reference image” and max_references=1 / max_identity_objects=1, while supports_image_input=False. This is an internal metadata contradiction; the image-input flag currently blocks the unsupported path.
+- Current official FLUX.1 Pro 1.1 endpoint contract documents prompt/width/height generation, not an input_image reference field.
+- bfl_text_to_image_input() contains a conditional input_image branch, but proper Image2 candidate filtering should prevent that branch from being reached for these candidates.
+
+UNKNOWN:
+- Exact current official Flux Dev endpoint schema/version was not established to CHAT1's confidence. Keep it text-only as current source requires; do not infer reference editing.
+- FLUX.2 editing is not registered as a current Image2 candidate and is outside the active matrix. It would require a separate candidate proposal, exact official model/endpoint, valid configuration and tests.
+
+Official docs:
+- https://docs.bfl.ai/flux_models/flux1.1_pro
+- https://docs.bfl.ai/flux_models/flux1.1_pro/parameters
+- https://docs.bfl.ai/flux_2/flux2_overview
+- https://docs.bfl.ai/api-reference/tasks/requests
+
+### 4. Confirmed defects and cross-layer mismatches
+
+1. HIGH — Unknown explicit ratio silently becomes 1:1:
+   - web/app/api/generate/route.ts lines 344-351.
+   - 4:5 is absent from Image2 UI, API allowlist, Catalog ratio map and Frame Validator.
+   - This directly violates explicit ratio immutability. Unsupported explicit ratios must be rejected clearly; 4:5 should be added only end-to-end for documented provider/endpoint combinations.
+
+2. HIGH — Google raw REST contract drift:
+   - worker/providers/google.py uses /v1beta and generationConfig.imageConfig.
+   - Current official raw REST example uses /v1 and generationConfig.responseFormat.image.
+   - This is a high-confidence integration mismatch requiring exact contract tests and review. Do not claim provider rejection/ignore without live evidence.
+
+3. HIGH — Timeouts are not propagated to actual requests:
+   - Catalog IMAGE_TIMEOUT_MS is 180,000ms.
+   - OpenAI HTTP is fixed at 300 seconds.
+   - Google uses helper default 60 seconds.
+   - Magic Hour upload/submit/status calls generally use 60-second helper defaults; timeout_ms applies mainly to poll deadline.
+   - BFL submit/status calls also use 60-second helper defaults while timeout_ms applies to poll deadline.
+   - poll_until_done does not pass remaining deadline to fetch_status(), so one GET may exceed the total deadline.
+
+4. HIGH RISK — Fallback after ambiguous paid submit:
+   - engine broad exception handling may try another candidate after an adapter/network exception.
+   - If the first provider accepted a paid request but the response/job id was lost, fallback can create a second paid generation. This is a credible risk, not evidence a duplicate was historically charged.
+   - Distinguish local preflight, provider-declared rejection, accepted-with-id, and ambiguous post-submit outcome. Do not automatically retry/fallback for ambiguous acceptance without idempotency/reconciliation.
+
+5. MEDIUM-HIGH — BFL metadata is self-contradictory:
+   - supports_image_input=False with max_references=1 and descriptions claiming one input reference.
+   - Correct labels/limits after independent review; do not turn on image references for FLUX.1 Pro 1.1/Dev.
+
+6. MEDIUM — Magic Hour Editor 4:5 is under-advertised:
+   - Adapter/docs support 4:5 in Editor; Candidate, UI, API and validator omit it.
+   - Do not add it to Generator.
+   - Keep 640px for current product/account policy; do not raise resolution in this work.
+
+7. MEDIUM — Reference count semantics may be off by one:
+   - Web count checks referenceItems + Style, not optional primary imageUrl.
+   - Worker text_to_image_images counts Style + primary + referenceUrls against Candidate.max_references.
+   - Candidate max_references therefore means total provider image inputs in current worker filtering, while provider documentation may call references “additional” inputs.
+   - Test mixed primary+Style+references and clarify semantics before changing limits.
+
+8. SECURITY — Signed URL leakage:
+   - worker/main.py lines 19-21 enables INFO logging globally.
+   - httpx INFO logs include request URLs. A historical user-provided worker log exposed a Magic Hour signed upload URL/query.
+   - http_helpers error strings include full URLs and response snippets.
+   - Logs must redact query signatures/tokens, Authorization, base64, image data and sensitive body content; preserve useful metadata only.
+
+### 5. Reference roles, frame, and output contract
+
+VERIFIED FACT:
+- Saved referenceRoles are normalized and remain authoritative; prompt text is used for conflict detection, not to mutate saved metadata.
+- Missing/invalid legacy role defaults to element.
+- Detected explicit conflict fails before provider execution.
+- Auto uses exactly one Base; no Base returns None and the workflow applies the agreed default. Primary, Element, Style and Detail are never Auto fallbacks.
+- EXIF transpose is used only for measurement in memory; no rewritten file is sent.
+- Provider order is Style -> primary image -> references. Prompt @img position mapping offsets for Style and primary.
+- Image2 is feature=text_to_image for both no-image and with-reference modes, and frame validation is applied to both.
+- 2.5% tolerance is preserved. 640x448 at 16:9 is rejected; the rejected output is retained as Asset where storage succeeds, the job fails, and no successful completion/credit ledger spend occurs.
+- Current Image2 does not pass an output_transformer; padding/normalization helper is not connected to this path.
+
+INFERENCE / LIMIT:
+- Role labels are conveyed as ordered image inputs plus prompt instructions; current provider APIs do not expose a shared Base/Element/Style/Detail native field. HTTP acceptance only proves image delivery/order, not that the model visually understood roles.
+- Conflict detection is pattern-based English/Arabic matching, not semantic parsing; ambiguous paraphrases may be missed or over-detected. This should be evaluated separately, not rewritten speculatively.
+- Role identity preservation requires visual benchmark; cannot be proved by mocks.
+
+### 6. Test coverage status
+
+CHAT1 did not run any tests. No pass/fail claims are made for source SHA 72f07b0.
+
+Existing tests inspected:
+- test_image2_frame_contract_preservation.py: accepts/rejects output ratios, checks 640x448/16:9 = 19.64% against 2.50%, and verifies no crop/padding.
+- test_image2_role_prompt_regressions.py: saved roles, conflict detection, prompt mapping, candidate ordering, provider payload builder-level assertions, Auto/EXIF/source-byte tests.
+- test_image2_magichour_routing.py: Magic Hour routing, payload/order/ratio and ratio enum tests.
+- test_magichour_image2_routing.py: basic Generator/Editor routing.
+- test_reference_mapping.py: @img/tag mapping.
+- test_fallback.py: output validation stops fallback after a result has been returned; generic exceptions allow fallback.
+- There are no dedicated OpenAI or Google final HTTP-boundary tests. The Magic Hour editor test patches post_json and inspects its arguments, but this is not a full transport or provider-response test for the historical 16:9 failure.
+- Source contradiction: test_image2_magichour_routing.py contains two tests for the same Element-only request, one expecting None and another expecting first-element.png (approximately lines 60-95). Both expectations cannot pass against the same function. This is a test defect; it is not a reason to change the Base-only production rule.
+- GitHub status shows Vercel success only and no workflow runs. No Python CI evidence was available.
+
+### 7. Ranked root-cause hypotheses
+
+1. HIGH CONFIDENCE: explicit aspectRatio can be silently rewritten to 1:1 by Next route; 4:5 is missing end-to-end.
+2. HIGH CONFIDENCE: Candidate timeout budgets are not consistently propagated to actual HTTP calls/polling.
+3. HIGH CONFIDENCE / NEEDS PROVIDER CONFIRMATION: Google raw REST body/version is out of step with the current official REST example, so ratio/size might not be honored as intended.
+4. HIGH RISK: broad fallback after ambiguous paid submission can create duplicate provider jobs.
+5. MEDIUM: Magic Hour Editor 4:5 is documented but blocked by Catalog/UI/API/frame contract.
+6. MEDIUM: primary/Style/reference count semantics may differ between web API and worker Candidate filtering.
+7. MEDIUM: BFL Image2 Candidate descriptions/reference limits contradict supports_image_input=False.
+8. UNRESOLVED: historical Magic Hour 16:9 -> 640x448. It is proven output non-compliance, but final outgoing HTTP body and historical adapter revision are missing. Do not quarantine.
+9. UNRESOLVED: visual preservation of architectural identity and semantic role adherence requires a controlled visual benchmark.
+
+### 8. Minimum-risk repair direction for later rounds (not implementation)
+
+- Keep one shared Image2 workflow and provider-specific adapters.
+- First add deterministic HTTP transport contract tests for each active candidate/mode, capturing final URL/method/body/content type/field names/order/timeout with secrets and signed URLs redacted.
+- Fix ratio validation to reject unknown explicit values; add 4:5 only through UI/API/Catalog/validator and only for documented eligible endpoint/mode.
+- Review/align Google raw REST schema/version with current official docs; retain GenerateContent for current round rather than mixing an API migration with payload repair.
+- Propagate a bounded deadline through submit, upload, every poll GET and result download; per-request timeout must not exceed remaining operation budget.
+- Add Image2-specific safe submission-state classification; do not retry/fallback after ambiguous provider acceptance.
+- Correct BFL metadata to be honestly text-only for these candidates; do not activate FLUX.2 in this round.
+- Advertise Magic Hour 4:5 for Editor only; retain current 640px app/account cap.
+- Resolve input-count semantics; retain role ordering and original bytes.
+- Sanitize HTTP diagnostics and signed URL logging.
+- Do not add a large new provider framework. Keep documented capability, operational evidence and routing policy distinct, but implement only the minimum representation supported by findings.
+
+### 9. Unresolved items and decision boundary
+
+- CHAT2 must independently challenge Google REST version/body, BFL Dev docs, reference count semantics, timeout/fallback classification, historical Magic Hour proof and the contradictory test.
+- ARENA AI has not run current SHA tests. After CHAT2 review, ARENA should run only local/no-cost tests on the same source tree and report exact commands/exit counts. Test-file edits require explicit user approval.
+- A paid Magic Hour/OpenAI/Google/BFL call is not authorized. A live test would be needed only to establish provider behavior after final outgoing request mock is correct; request exact approval and cost/risk first.
+- D6 (whether Unverified candidates are allowed in normal manual selection or diagnostic-only) remains the user's decision; CHAT1 does not decide it.
+- No code, dependency, config, database, provider settings, Video, Voice or 3D changes were made.
+
+### 10. Explicit handoff — CHAT2 ROUND 2
+
+CHAT2: Please independently audit source SHA 72f07b0364e53480365eb8a4e1b6cb12716474a0 (current branch HEAD c4c6876 differs only by this log file). Do not simply agree with CHAT1.
+
+Please challenge with independent source and official documentation:
+1. Google: Is /v1beta + generationConfig.imageConfig still a supported exact schema for both current model ids, or should raw REST use /v1 + generationConfig.responseFormat.image? Distinguish documented API acceptance from live behavior.
+2. Ratio: Is the silent 1:1 fallback and missing 4:5 chain correctly characterized and what minimum fix is justified?
+3. Reference limit: Does web MAX_REFERENCES excluding primary while worker counts it produce a real eligibility mismatch? Define whether each model/API maximum means total inputs or additional images.
+4. BFL: Verify exact current Flux Dev contract and whether metadata is definitely misleading.
+5. Timeout: Verify every adapter's submit/upload/poll HTTP timeout and whether the deadline can be exceeded.
+6. Fallback: Identify precise exception/status windows where accepted paid submission is ambiguous; propose the smallest safe state model.
+7. Magic Hour: Does the existing test capture final outgoing request sufficiently? What does it not prove about the historical 16:9/640x448 result?
+8. Test contradiction: Confirm duplicate incompatible assertions in test_image2_magichour_routing.py.
+
+Mark each disagreement VERIFIED FACT / INFERENCE / HYPOTHESIS / UNKNOWN with exact file lines and official docs. No source edits, no live paid calls. Do not begin implementation. Append your independent review after completing Round 2, then hand off to ARENA AI for Round 3.
+
+---
+End of CHAT1 Round 1 findings.
