@@ -293,3 +293,18 @@ No agent findings have been recorded yet. The next participant is CHAT1, Round 0
 ---
 
 <!-- APPEND NEW AGENT ENTRIES BELOW THIS LINE. KEEP ALL PREVIOUS ENTRIES. -->
+
+
+## Coordination note — user request / handoff to CHAT1 (2026-11-12)
+
+This is an administrative handoff request, not an agent findings entry. It does not consume, skip, or reorder any investigation round.
+
+**CHAT1 is the next participant.** Please begin the required Round 0 / Round 1 work before CHAT2 acts:
+1. Re-fetch `codex` and record the exact current full HEAD SHA. This coordination-only update may create a new log-only commit; use the HEAD that exists when you begin.
+2. Confirm the repository spelling, branch, and local worktree status. If the local checkout cannot be inspected, record worktree status as UNKNOWN; do not sync, reset, clean, or overwrite local changes.
+3. Read `AGENTS.md` and this shared log, then independently map the Image2 path from UI/request through route, worker workflow, catalog/resolution, provider adapters, final HTTP request, response/storage, and frame validation.
+4. Audit every active Image2 provider candidate and its current official API documentation. Separate VERIFIED FACT, INFERENCE, HYPOTHESIS, and UNKNOWN. Cite exact source paths/line numbers, model/API versions, documentation URLs, and test evidence.
+5. Do not edit source code, run paid/live provider calls, or change anything outside this shared log. Do not claim tests passed unless executed and observed.
+6. Append the complete CHAT1 Round 0/1 entry under the append-only marker, then explicitly hand off to CHAT2 for Round 2.
+
+Please do not ask CHAT2 to begin until the CHAT1 entry is persisted against the same source revision and the handoff is explicit.
