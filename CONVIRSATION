@@ -1,1 +1,295 @@
+# IMAGE2 MULTI-AGENT INVESTIGATION — SHARED WORK LOG
 
+Version: 1.0
+Repository: https://github.com/axac1823-art/mk-studio-ai-
+Branch: codex
+Shared file: https://github.com/axac1823-art/mk-studio-ai-/blob/codex/CONVIRSATION
+
+## 0. Purpose and communication rule
+
+This file is the single shared source of truth for the investigation. CHAT1, CHAT2, and ARENA AI must read it before acting and append a dated, clearly labelled entry after each turn. Never overwrite or silently edit another agent's entry. Work sequentially in the order below; do not have two agents edit this file simultaneously.
+
+Every entry must state:
+- Agent and round number.
+- Exact repository, branch, full HEAD SHA, and worktree status observed.
+- Files, commands, and official docs actually inspected.
+- Findings classified as VERIFIED FACT, INFERENCE, HYPOTHESIS, or UNKNOWN.
+- Evidence: file path and line numbers, exact test and result, or official API documentation URL and relevant model/API version.
+- Response to earlier objections: accepted, rejected, or unresolved, with reasons.
+- Exact next handoff owner and task.
+
+If an agent cannot read or update this file, it must say so. It must not pretend that communication occurred. The user can relay the entry manually.
+
+## 1. Mission and success criteria
+
+Make Image2 reliable for BOTH:
+1. Text-only image generation.
+2. Image2 generation with reference images, using the provider's documented multimodal/edit request path.
+
+Preserve the user's selected frame, saved reference roles, reference order, original input bytes, and architectural identity intent. Provider-specific API differences belong in provider-specific adapters. Do not force all providers into one endpoint or payload format.
+
+The investigation is complete only when:
+- The current codex HEAD is pinned and all agents use that exact SHA.
+- Every active Image2 candidate is mapped to provider, model, endpoint, input mode, documented ratios/resolutions/reference limits, configuration state, and API version.
+- The final outgoing HTTP request is proven with mock/contract tests, not inferred only from a diagnostic log created before the adapter.
+- Explicit frame choice is never silently changed by an adapter or fallback.
+- Auto follows the Base-only rule below.
+- Saved role metadata and reference order are preserved.
+- Original input bytes are not transformed before upload.
+- The original provider output is measured and validated at the agreed 2.5% tolerance. No crop, resize, padding, canvas expansion, or output transformer may hide a non-compliant output.
+- A failed output is preserved as an asset/diagnostic artifact according to existing project behavior, with a clear failure reason. It is never silently marked successful.
+- Retry/fallback cannot create duplicate paid generations after an ambiguous provider submission.
+- Mock tests and relevant regressions pass. Live paid tests require separate explicit user approval.
+- Video, Voice, 3D, billing, database, and unrelated workflows remain unchanged unless a shared dependency is proven necessary and regression coverage is added.
+
+## 2. Scope
+
+IN SCOPE:
+- Image2 UI-to-route-to-worker request contract.
+- Image2 candidates, capability declarations, payload builders, and filtering in worker/catalog.py.
+- Image2 routing, frame resolution, reference manifest, validation in worker/workflows/image_render.py.
+- Image2-specific adapters in worker/providers/openai.py, google.py, magichour.py, and bfl.py.
+- worker/workflows/engine.py only where Image2 fallback/retry safety requires it.
+- worker/frame_ratio.py only for Image2 output inspection and validation; preserve 2.5% tolerance.
+- Focused Image2 tests and mock HTTP contract tests.
+- Official provider API documentation research for every active candidate.
+
+OUT OF SCOPE unless source evidence proves otherwise:
+- Generic Image Edit candidates/builders such as magichour_edit_input() and google_edit_input().
+- Video, Voice, 3D, upscale, background removal, unrelated UI redesign, database redesign, queue architecture, broad refactors.
+- New providers/models until current candidates and contracts are audited. Do not enable an unconfigured or unsupported model to make the matrix appear complete.
+
+## 3. Established technical rules
+
+### 3.1 One shared Image2 workflow; provider-specific adapters
+
+Image2 remains one shared workflow for text-only and with-reference requests. An adapter may select the provider's correct endpoint and serialize its native payload. Shared policy for frame, roles, identity intent, validation, and error classification stays centralized.
+
+Provider semantics are different and must be verified:
+- OpenAI: verify the current Images API operation for text-only versus image-input requests, model-specific endpoint, multipart fields, accepted image formats/counts, size, quality, output format, and response parsing.
+- Google Gemini: verify the current model's documented API surface. Text-only and text-plus-image may use the same multimodal generation endpoint; do not invent a separate edit endpoint.
+- Magic Hour: verify the generator endpoint for text-only and editor endpoint when input images exist. Treat their parameter sets, ratio lists, resolution, upload flow, and output behavior separately.
+- BFL: reviewed Image2 FLUX.1 Pro 1.1 and Dev candidates were recorded as text-only (supports_image_input=false, max_references=0) and unconfigured. Keep them unavailable for reference mode unless current official docs and current source prove otherwise. Do not confuse Image2 with Generic Image Edit or Flux Kontext. Any FLUX.2 candidate is a separate proposal requiring exact model, endpoint, docs, configuration, and tests.
+
+### 3.2 Frame Contract
+
+- An explicit user ratio is authoritative. It must remain the effective ratio. An adapter only translates it into the provider-native representation; it never recalculates or substitutes it.
+- Auto uses exactly one saved reference whose role is base, measuring visual dimensions with EXIF orientation accounted for in memory only.
+- Auto with no Base uses the shared default 4:3, except a documented provider/model-specific native default may be supported only when explicitly selected and clearly represented by the request/UI contract. Audit the previously observed Magic Hour text-only square behavior; do not generalize it to other models.
+- Multiple Base references, missing/unreadable Base, or ambiguous role state must fail clearly before paid provider submission. Never silently use Primary Image, Element, Style, or Detail as Base.
+- Never crop, resize, pad, expand canvas, or transform source references to force a ratio.
+- Inspect the original returned image dimensions. Tolerance remains 2.5%; do not relax it to accommodate a provider.
+- API acceptance of a ratio is not proof that the output obeys it.
+- Provider, model, endpoint, and input mode are distinct compatibility dimensions. Generator and Editor ratio capabilities must not be merged.
+
+### 3.3 Reference roles and identity
+
+Allowed roles: element, base, style, detail.
+- Saved role metadata is authoritative; prompt prose cannot mutate it.
+- Missing or invalid legacy role defaults to element.
+- A clear prompt/role conflict is rejected before provider submission; never silently reclassify an image.
+- Preserve manifest order and the mapping between references, roles, and prompt tags such as @img1.
+- Style and Detail are not identity-locked object sources.
+- Element identity means preserving geometry, silhouette, proportions, material, color, texture, details, logos/text, and other visible identifying properties as applicable.
+- API acceptance of an image does not prove semantic role compliance or visual identity preservation. That requires a separate visual benchmark.
+
+### 3.4 Separate capability, evidence, and routing policy
+
+Do not compress these into one catalog boolean or status.
+
+A. Documented Capability Registry:
+Provider + model + endpoint + input mode + documented ratios/resolutions/reference limits/API revision.
+
+B. Operational Evidence Registry:
+Observed success/failure, request contract, adapter version, source aspect class, reference count/roles, output dimensions, validation result, timestamp, test profile. Do not store private image contents.
+
+C. Routing Policy:
+Whether a combination is eligible for Auto, ordinary manual use, diagnostic-only use, or temporarily blocked.
+
+Compatibility Key:
+provider + model + endpoint + input_mode + aspect_ratio + resolution
+
+Test Profile, separate from the primary key:
+reference_count + roles + source_aspect_classes + file_format + input_size_range
+
+Evidence must distinguish application defects from provider non-compliance. One observed failure does not automatically prove unsupported capability or justify quarantine.
+
+Quarantine only after verifying:
+1. Correct model and endpoint were selected.
+2. Final outgoing payload conforms to the current official API contract.
+3. The correct effective ratio was actually sent.
+4. Reference order and original bytes were preserved.
+5. No post-processing altered the output.
+6. Dimensions were measured from the original provider output.
+7. The failure is repeatable and not explained by quota, credits, rate limiting, auth, network ambiguity, or our own payload/decoder bug.
+
+HTTP 402, 429, and unresolved timeout are not Frame Contract failures. HTTP 400/422 may indicate our payload or integration defect and must be diagnosed before blaming model capability.
+
+## 4. Prior evidence and hypotheses — re-verify on current branch
+
+- A historical Magic Hour Editor result logged requested/resolved/sent ratio 16:9, resolution 640px, one image, but original output 640x448 (19.64% deviation). This proves the received output failed validation. It does NOT prove that the final HTTP request contained the correct ratio field or that the provider ignored a valid request.
+- Another historical run produced OpenAI/Google 429 quota errors. This proves quota/rate-limit failure, not frame incompatibility.
+- Prior review found possible timeout propagation inconsistencies: OpenAI may use a fixed timeout; Google may accept timeout_ms but fail to pass it to the actual HTTP request; Magic Hour upload/submit/status calls may have different timeouts from the overall poll budget; BFL submit/poll budgets may also differ. Re-check current code and prove with mocks.
+- Fallback after an ambiguous timeout may duplicate a paid generation if the provider accepted the request but the app did not receive its job ID. Classify submission outcomes; do not blindly retry after ambiguous acceptance.
+- Image2 output validation should apply to both text-only and with-reference modes because both are Image2 text_to_image requests.
+- Generic Edit builders are separate. Do not attribute an Image2 failure to them unless the current request path demonstrably calls them.
+- Historical local snapshots differed (1074dd3... and 73919f6...). A previous remote check reported 657e223..., and the current codex branch was later found two commits ahead of it: one adds this shared file and one modifies worker/tests/test_image2_magichour_routing.py. Never assume any of these is today's HEAD. Fetch and record the current full SHA at the start.
+- Review IMAGE2_BATCH1_README.txt and apply_image2_batch1.py. Do not assume the patch runner was executed or tests passed merely because these files exist.
+- Previous architecture discussion proposed separate documented capability, operational evidence, and routing policy records; a compatibility key plus test profiles; quarantine only after root-cause review; safe diagnostics; and no adapter-side frame substitution. Verify the smallest implementation needed rather than building an unnecessary platform.
+
+## 5. Required provider audit
+
+For every current Image2 candidate, record:
+- Provider, candidate key, exact model ID, configured/unconfigured state.
+- Text-only endpoint and with-reference endpoint, or evidence that the same endpoint is used.
+- Exact API version and official documentation URL.
+- HTTP method/path, auth scheme (never print secrets), content type.
+- Prompt, ratio, resolution/size, output count fields.
+- Reference upload mechanism, accepted count/types/size, multipart/inline/base64/remote URL requirements.
+- Adapter timeout, actual HTTP timeout, and polling deadline.
+- Response parsing, output download, and asset storage path.
+- Documented support versus tested operational evidence versus routing policy.
+- Tests proving the final serialized request and image ordering.
+
+Prefer current official provider documentation over old SDK examples or blog posts. Record documentation access date and model/API version. If official docs are ambiguous, mark UNKNOWN; do not invent behavior.
+
+## 6. Failure classification and security
+
+Classify at minimum:
+- Local preflight / unsupported capability.
+- HTTP 400 / 422 invalid request or payload.
+- HTTP 401 / 403 auth or permission.
+- HTTP 402 insufficient credits/billing.
+- HTTP 413 payload too large.
+- HTTP 429 rate limit versus quota exhaustion, using structured provider error codes safely.
+- HTTP 5xx transient provider error.
+- Timeout before submission.
+- Timeout after possible submission / ambiguous acceptance.
+- Response parse, download, or storage failure.
+- Output frame validation failure.
+
+Never log API keys, authorization headers, signed query tokens, signed URLs, base64, raw image bytes, or complete sensitive request bodies.
+
+Safe diagnostics may include provider/model/endpoint, sanitized path without signed query, ratio, resolution, reference count/order/roles, dimensions, response status/code, duration, adapter/API revision, and (only if useful) SHA-256 of sanitized metadata-only canonical payload.
+
+No automatic paid retry after ambiguous submission or after a received output fails frame validation. Do not switch providers automatically if that may create a second paid generation without idempotency/reconciliation. Preserve failed output and explain the actual validation reason.
+
+## 7. Test policy — ARENA AI owns execution
+
+Start with deterministic, no-cost tests:
+1. Catalog/capability unit tests.
+2. Frame resolution and Base/EXIF tests.
+3. Reference manifest role/order/prompt-tag tests.
+4. Provider payload builder tests.
+5. Mock HTTP adapter tests capturing the FINAL request at the network boundary: endpoint, method, redacted headers, multipart field names, JSON fields, image order, timeout.
+6. Response parser and output dimension validator tests.
+7. Fallback/error classification tests, including ambiguous submit timeout.
+8. Image2 integration tests with mocked providers.
+9. Video/Voice/3D regression tests only if shared code was touched.
+
+ARENA AI reports exact commands, environment, exit codes, pass/fail counts, skipped tests and reasons, plus relevant output excerpts. Never claim a test passed unless it completed successfully.
+
+LIVE PROVIDER CALLS:
+- No paid/live generation, quota-consuming API call, or external write unless the user explicitly approves that exact test and its cost/risk.
+- Never test all providers in parallel. After mocks pass and approval is granted, start with one controlled case per provider.
+- Keep credentials private. Never request or reveal API keys in this file.
+
+## 8. Change control
+
+Until the user approves an implementation plan:
+- Read-only audit. No source-code edits.
+- Do not change dependencies, environment files, database schema, billing, provider configuration, or unrelated workflows.
+- No destructive Git commands such as reset --hard, clean, or destructive checkout/restore.
+- No commit, push, deploy, delete, or modification outside this shared log.
+- Do not overwrite worktree changes. Treat generated .next-dev artifacts separately from source code.
+- If local branch/HEAD/worktree differs from the canonical remote branch, stop implementation and report the mismatch; do not auto-sync.
+
+After the user approves a specific phase:
+- Implement only that phase and necessary Image2 files.
+- Keep diffs minimal and review every changed file.
+- Add/adjust tests with each change and run relevant regressions.
+- Do not start the next phase until current phase evidence is reviewed.
+- Commits, pushes, and deployments remain separately gated by explicit user approval. Updating this shared log is the only currently authorized repository write.
+
+## 9. Mandatory debate and handoff order
+
+Use strict round-robin. Do not run agents concurrently against the same mutable worktree or log.
+
+ROUND 0 — ALL:
+Read this file, repository AGENTS.md, and current branch state. Confirm exact repository spelling, branch, full HEAD SHA, and worktree status. Record mismatches.
+
+ROUND 1 — CHAT1, lead architect:
+Independently map UI → Next.js route → worker route → image_render.py → catalog/resolver → provider adapter → provider API → response/storage/validator. Build candidate matrix. Identify high-confidence root causes and unknowns. Do not edit code.
+
+ROUND 2 — CHAT2, independent adversarial reviewer:
+First produce an independent assessment from source and official docs; do not simply adopt CHAT1. Then compare with CHAT1. Challenge scope, assumptions, API version mismatches, unsupported capabilities, frame logic, role order, timeout/fallback safety, and missing tests. Mark every disagreement with evidence. Do not edit code.
+
+ROUND 3 — ARENA AI, test/evidence engineer:
+Inspect the same SHA and run only local/no-cost tests. Add mock contract tests only if the user has approved test-file changes; otherwise propose exact tests and run existing tests. Capture final outgoing payload at the HTTP boundary. Distinguish application defects from provider/API failures. No live paid calls. Append exact command/result evidence with secrets removed.
+
+ROUND 4 — CHAT1:
+Reconcile findings. Accept/reject each objection with reasons. Publish one ranked root-cause list, minimum-risk architecture, phased patch plan, exact likely files, acceptance criteria, and non-goals.
+
+ROUND 5 — CHAT2:
+Perform final adversarial review of the plan. Look for regressions, scope creep, missing cases, false API claims, and unsafe retries. Require a test for every critical invariant.
+
+ROUND 6 — ARENA AI:
+Verify that acceptance criteria are testable. Produce the smallest no-cost test matrix. Identify criteria that cannot be verified locally.
+
+ROUND 7 — CHAT1:
+Publish the final recommendation to the user. Separate facts, inferences, open decisions, and required approvals. Do not implement until the user approves.
+
+IMPLEMENTATION, ONLY AFTER USER APPROVAL:
+- CHAT1 owns one small phase at a time and records exact files/diff.
+- CHAT2 reviews the diff independently and requests changes with evidence.
+- ARENA AI tests the exact resulting SHA/diff, reports exact results, and checks relevant regressions.
+- CHAT1 fixes only validated issues; CHAT2 re-reviews; ARENA AI reruns affected tests.
+- Repeat until acceptance criteria pass or a concrete blocker is recorded for the user.
+
+## 10. Completion gate
+
+Do not declare success until:
+- Current branch/commit is pinned and request path mapped.
+- Every active candidate is classified by endpoint and input mode.
+- Current official provider docs and final request payload tests support capability claims.
+- Frame Contract and reference manifest invariants are tested.
+- The historical Magic Hour 640x448 failure has a defensible diagnosis or remains explicitly unresolved.
+- Timeout and fallback behavior are classified safely.
+- Test matrix has exact results.
+- CHAT1 and CHAT2 have resolved or explicitly documented disagreements.
+- ARENA AI confirms what it actually ran and what remains untested.
+- User receives the evidence-based recommendation and approves any implementation/live test.
+
+Do not loop without progress. If the next round only repeats earlier arguments, identify the exact missing evidence and stop at that blocker. Do not claim that an external agent can continue running after its session ends; each participant must resume from this file when invoked.
+
+## 11. Decision register
+
+| ID | Decision | State | Owner |
+|---|---|---|---|
+| D1 | One shared Image2 workflow with provider-specific adapters | Established | All |
+| D2 | Explicit frame ratio immutable; adapter only translates | Established | All |
+| D3 | Auto uses exactly one Base; no fallback to other roles | Established | All |
+| D4 | 2.5% tolerance; no crop/resize/padding/output transformer | Established | All |
+| D5 | Separate documented capability, operational evidence, routing policy | Proposed; validate minimum required implementation | CHAT1 + CHAT2 |
+| D6 | Policy for unverified candidate in normal manual selection vs diagnostic-only | Requires explicit user decision; do not assume | User |
+| D7 | Quarantine only after adapter/API contract and original output are verified | Established principle | All |
+| D8 | Live paid tests | Explicit approval per test | User |
+| D9 | Changes outside Image2/shared proven dependencies | Prohibited without separate approval | All |
+
+## 12. External methodology references
+
+Use these as process guidance, not as substitutes for inspecting this repository:
+- OpenAI Codex Prompting Guide: https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide
+- OpenAI orchestration and handoffs: https://developers.openai.com/api/docs/guides/agents/orchestration
+- OpenAI iterative Codex development workflows: https://developers.openai.com/cookbook/examples/codex/iterating-development-workflows-with-codex
+- OpenAI prompt engineering: https://developers.openai.com/api/docs/guides/prompt-engineering
+- Anthropic Building Effective Agents: https://www.anthropic.com/research/building-effective-agents
+
+## 13. Append-only conversation log
+
+### Bootstrap
+No agent findings have been recorded yet. The next participant is CHAT1, Round 0/1.
+
+---
+
+<!-- APPEND NEW AGENT ENTRIES BELOW THIS LINE. KEEP ALL PREVIOUS ENTRIES. -->
